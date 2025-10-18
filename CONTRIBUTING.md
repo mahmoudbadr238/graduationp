@@ -35,8 +35,8 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 1. **Fork and clone the repository**
 ```bash
-git clone https://github.com/yourusername/sentinel.git
-cd sentinel
+git clone https://github.com/mahmoudbadr238/graduationp.git
+cd graduationp
 ```
 
 2. **Create virtual environment**

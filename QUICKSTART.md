@@ -12,8 +12,8 @@ Get Sentinel up and running in 5 minutes!
 
 ### Option 1: Clone from GitHub
 ```bash
-git clone https://github.com/yourusername/sentinel.git
-cd sentinel
+git clone https://github.com/mahmoudbadr238/graduationp.git
+cd graduationp
 ```
 
 ### Option 2: Download ZIP

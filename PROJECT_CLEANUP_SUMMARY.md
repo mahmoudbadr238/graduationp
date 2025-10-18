@@ -120,8 +120,8 @@ git commit -m "Initial commit: Sentinel Endpoint Security Suite v1.0.0"
 
 2. **Create GitHub repository**:
 ```bash
-# On GitHub, create new repository named "sentinel"
-git remote add origin https://github.com/yourusername/sentinel.git
+# Repository already created: graduationp
+git remote add origin https://github.com/mahmoudbadr238/graduationp.git
 git branch -M main
 git push -u origin main
 ```
@@ -136,10 +136,10 @@ Modern endpoint security suite with real-time monitoring, built with PySide6 & Q
 python, pyside6, qml, qt, security, monitoring, system-monitoring, dark-mode, desktop-app, windows
 ```
 
-5. **Update README.md**:
-- Replace `yourusername` with your GitHub username
-- Add screenshots to `docs/` and link them in README
-- Update contact information
+5. **README.md already updated**:
+- ✅ GitHub username already set to `mahmoudbadr238`
+- Add screenshots to `docs/screenshots/` and link them in README
+- Repository: https://github.com/mahmoudbadr238/graduationp
 
 6. **Create releases**:
 ```bash

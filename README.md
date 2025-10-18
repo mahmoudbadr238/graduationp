@@ -41,8 +41,8 @@ A modern desktop security application built with PySide6 and QML, featuring real
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/sentinel.git
-cd sentinel
+git clone https://github.com/mahmoudbadr238/graduationp.git
+cd graduationp
 ```
 
 2. **Create virtual environment**
