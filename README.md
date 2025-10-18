@@ -170,7 +170,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-Project Link: [https://github.com/yourusername/sentinel](https://github.com/yourusername/sentinel)
+Project Link: [https://github.com/mahmoudbadr238/sentinel](https://github.com/yourusername/sentinel)
 
 ---
 
