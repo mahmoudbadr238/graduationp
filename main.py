@@ -12,15 +12,9 @@ if __name__ == "__main__":
     # Check for admin privileges and auto-elevate if needed
     # This ensures full access to Security event logs
     if not AdminPrivileges.is_admin():
-        print("[WARNING] Administrator privileges required for full functionality")
-        print("  Requesting UAC elevation...")
-
-        # elevate() will prompt for admin, restart the app, and exit this process
-        AdminPrivileges.elevate()
-
-        # If we're still here, user declined or it failed
-        print("[WARNING] Elevation declined or failed. Continuing with limited access...")
+        print("[INFO] Running without administrator privileges")
         print("  Some features (Security event logs) may be unavailable.\n")
+        # Skip UAC elevation for now
     else:
         print("[OK] Running with administrator privileges\n")
 

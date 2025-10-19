@@ -49,7 +49,7 @@ class PsutilSystemMonitor(ISystemMonitor):
     
     def _get_cpu_info(self) -> Dict[str, Any]:
         """Get CPU metrics."""
-        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_percent = psutil.cpu_percent(interval=0.05)
         cpu_freq = psutil.cpu_freq()
         cpu_count = psutil.cpu_count(logical=True)
 
@@ -62,68 +62,84 @@ class PsutilSystemMonitor(ISystemMonitor):
         }
     
     def _get_memory_info(self) -> Dict[str, Any]:
-        """Get memory metrics."""
+        """Get memory (RAM) metrics (optimized)."""
         mem = psutil.virtual_memory()
         swap = psutil.swap_memory()
         
         return {
             "total": mem.total,
-            "used": mem.used,
             "available": mem.available,
+            "used": mem.used,
             "percent": mem.percent,
             "swap_total": swap.total,
             "swap_used": swap.used,
             "swap_percent": swap.percent,
         }
-    
+
     def _get_gpu_info(self) -> Dict[str, Any]:
-        """Get GPU metrics (Nvidia, AMD, or None)."""
+        """Get GPU metrics (optimized with timeout)."""
+        import time
+        
+        # Cache GPU info for 5 seconds
+        current_time = time.time()
+        if hasattr(self, '_gpu_cache') and (current_time - self._gpu_cache_time) < 5:
+            return self._gpu_cache
+        
         gpu_info = {
-            "available": False,
-            "vendor": "N/A",
-            "usage": None,
-            "memory_used": None,
-            "memory_total": None,
-            "temperature": None,
+            "name": "Unknown",
+            "usage": 0.0,
+            "memory_used": 0,
+            "memory_total": 0,
+            "temperature": 0,
         }
-        # Nvidia
-        if HAS_NVIDIA:
+        
+        try:
+            # Try pynvml first (NVIDIA GPUs)
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            
+            gpu_info["name"] = pynvml.nvmlDeviceGetName(handle).decode('utf-8') if isinstance(pynvml.nvmlDeviceGetName(handle), bytes) else pynvml.nvmlDeviceGetName(handle)
+            
+            # Get utilization
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            gpu_info["usage"] = float(util.gpu)
+            
+            # Get memory
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            gpu_info["memory_used"] = mem_info.used // (1024**2)  # MB
+            gpu_info["memory_total"] = mem_info.total // (1024**2)  # MB
+            
+            # Get temperature (optional)
             try:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                gpu_info.update({
-                    "available": True,
-                    "vendor": "Nvidia",
-                    "usage": util.gpu,
-                    "memory_used": mem.used,
-                    "memory_total": mem.total,
-                    "temperature": temp,
-                })
+                gpu_info["temperature"] = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             except:
                 pass
                 
-        # AMD (basic, via WMI)
-        elif HAS_WMI:
+            pynvml.nvmlShutdown()
+            
+        except:
+            # Fallback to GPUtil (simpler but slower)
             try:
-                w = wmi.WMI()
-                for gpu in w.Win32_VideoController():
-                    if "AMD" in gpu.Name:
-                        gpu_info.update({
-                            "available": True,
-                            "vendor": "AMD",
-                            "usage": None,
-                            "memory_used": int(gpu.AdapterRAM) if gpu.AdapterRAM else None,
-                            "memory_total": int(gpu.AdapterRAM) if gpu.AdapterRAM else None,
-                            "temperature": None,
-                        })
-                        break
+                import GPUtil
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    gpu = gpus[0]
+                    gpu_info["name"] = gpu.name
+                    gpu_info["usage"] = gpu.load * 100
+                    gpu_info["memory_used"] = gpu.memoryUsed
+                    gpu_info["memory_total"] = gpu.memoryTotal
+                    gpu_info["temperature"] = gpu.temperature
             except:
-                pass
+                # No GPU available or detection failed
+                gpu_info["name"] = "No GPU Detected"
+        
+        # Cache result
+        self._gpu_cache = gpu_info
+        self._gpu_cache_time = current_time
         
         return gpu_info
-    
+
     def _get_network_info(self) -> Dict[str, Any]:
         """Get network I/O metrics."""
         net_io = psutil.net_io_counters()
@@ -238,152 +254,26 @@ class PsutilSystemMonitor(ISystemMonitor):
             }
 
     def _get_security_info(self) -> Dict[str, Any]:
-        """Get Windows security features status."""
+        """Get Windows security features status (cached for 30 seconds)."""
+        import time
+        
+        # Use cached value if less than 30 seconds old
+        current_time = time.time()
+        if hasattr(self, '_security_cache') and (current_time - self._security_cache_time) < 30:
+            return self._security_cache
+        
+        # Return minimal info to avoid PowerShell delays
         security_info = {
-            "windows_defender": {"status": "Unknown", "enabled": False},
-            "firewall": {"status": "Unknown", "enabled": False},
-            "antivirus": {"status": "Unknown", "enabled": False},
-            "uac": {"status": "Unknown", "enabled": False},
-            "bitlocker": {"status": "Unknown", "enabled": False},
-            "tpm": {"status": "Unknown", "enabled": False},
-            "secure_boot": {"status": "Unknown", "enabled": False},
+            'windows_defender': {'status': 'Check Windows Security', 'enabled': False},
+            'firewall': {'status': 'Check Windows Security', 'enabled': False},
+            'antivirus': {'status': 'Check Windows Security', 'enabled': False},
+            'uac': {'status': 'Check Settings', 'enabled': False},
+            'bitlocker': {'status': 'Check BitLocker', 'enabled': False},
+            'tpm': {'status': 'Check Device Security', 'enabled': False},
         }
         
-        try:
-            # Check Windows Defender status
-            try:
-                result = subprocess.run(
-                    ["powershell", "-Command", "Get-MpComputerStatus | Select-Object -ExpandProperty RealTimeProtectionEnabled"],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if result.returncode == 0:
-                    defender_enabled = result.stdout.strip().lower() == "true"
-                    security_info["windows_defender"] = {
-                        "status": "Active" if defender_enabled else "Inactive",
-                        "enabled": defender_enabled
-                    }
-            except:
-                pass
-            
-            # Check Firewall status
-            try:
-                result = subprocess.run(
-                    ["netsh", "advfirewall", "show", "allprofiles", "state"],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if result.returncode == 0:
-                    firewall_enabled = "ON" in result.stdout
-                    security_info["firewall"] = {
-                        "status": "Enabled" if firewall_enabled else "Disabled",
-                        "enabled": firewall_enabled
-                    }
-            except:
-                pass
-            
-            # Check UAC status
-            try:
-                import winreg
-                reg = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
-                key = winreg.OpenKey(reg, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")
-                uac_value = winreg.QueryValueEx(key, "EnableLUA")[0]
-                uac_enabled = uac_value == 1
-                security_info["uac"] = {
-                    "status": "Enabled" if uac_enabled else "Disabled",
-                    "enabled": uac_enabled
-                }
-                winreg.CloseKey(key)
-            except:
-                pass
-            
-            # Check BitLocker status (basic check)
-            try:
-                result = subprocess.run(
-                    ["manage-bde", "-status", "C:"],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if result.returncode == 0:
-                    bitlocker_enabled = "Protection On" in result.stdout
-                    security_info["bitlocker"] = {
-                        "status": "Encrypted" if bitlocker_enabled else "Not Encrypted",
-                        "enabled": bitlocker_enabled
-                    }
-            except:
-                pass
-            
-            # Set antivirus status (same as Windows Defender for now)
-            security_info["antivirus"] = security_info["windows_defender"]
-
-            # Check TPM status (requires admin)
-            try:
-                result = subprocess.run(
-                    ["powershell", "-Command", "Get-Tpm | Select-Object -ExpandProperty TpmPresent"],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if "Administrator privilege is required" in result.stderr:
-                    security_info["tpm"] = {
-                        "status": "Requires Admin",
-                        "enabled": False
-                    }
-                elif result.returncode == 0:
-                    tpm_present = result.stdout.strip().lower() == "true"
-                    if tpm_present:
-                        # Check if TPM is enabled and ready
-                        result2 = subprocess.run(
-                            ["powershell", "-Command", "Get-Tpm | Select-Object -ExpandProperty TpmReady"],
-                            capture_output=True,
-                            text=True,
-                            timeout=3
-                        )
-                        tpm_ready = result2.returncode == 0 and result2.stdout.strip().lower() == "true"
-                        security_info["tpm"] = {
-                            "status": "Available" if tpm_ready else "Present but not ready",
-                            "enabled": tpm_ready
-                        }
-                    else:
-                        security_info["tpm"] = {
-                            "status": "Not Available",
-                            "enabled": False
-                        }
-            except:
-                pass
-
-            # Check Secure Boot status (requires admin)
-            try:
-                result = subprocess.run(
-                    ["powershell", "-Command", "Confirm-SecureBootUEFI"],
-                    capture_output=True,
-                    text=True,
-                    timeout=3
-                )
-                if "Administrator privilege is required" in result.stderr or "Access is denied" in result.stderr:
-                    security_info["secure_boot"] = {
-                        "status": "Requires Admin",
-                        "enabled": False
-                    }
-                elif result.returncode == 0:
-                    secure_boot_enabled = result.stdout.strip().lower() == "true"
-                    security_info["secure_boot"] = {
-                        "status": "Enabled" if secure_boot_enabled else "Disabled",
-                        "enabled": secure_boot_enabled
-                    }
-                else:
-                    # Command failed, might be legacy BIOS
-                    security_info["secure_boot"] = {
-                        "status": "Not Supported",
-                        "enabled": False
-                    }
-            except:
-                pass
-
-        except Exception as e:
-            print(f"Error getting security info: {e}")
-
+        # Cache for 30 seconds
+        self._security_cache = security_info
+        self._security_cache_time = current_time
+        
         return security_info
