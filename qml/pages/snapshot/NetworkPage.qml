@@ -3,9 +3,15 @@ import QtQuick.Controls 2.15
 import "../../components"
 
 Column {
+    id: root
     spacing: 18
     anchors.fill: parent
     anchors.margins: 24
+
+    // This property will be set by SystemSnapshot.qml Loader
+    property var snapshotData: ({
+        "net": {"send_rate_mbps": 0, "recv_rate_mbps": 0, "adapters": []}
+    })
     
     PageHeader {
         title: "Network Usage"
@@ -44,7 +50,13 @@ Column {
                 
                 LiveMetricTile {
                     label: "Up"
-                    valueText: upMbps.toFixed(2) + " Mbps"
+                    valueText: {
+                        if (root.snapshotData && root.snapshotData.net) {
+                            var rate = root.snapshotData.net.send_rate_mbps || 0;
+                            return rate.toFixed(2) + " Mbps";
+                        }
+                        return "0.00 Mbps";
+                    }
                     positive: true
                     width: parent.width - 40
                 }
@@ -79,7 +91,13 @@ Column {
                 
                 LiveMetricTile {
                     label: "Down"
-                    valueText: downMbps.toFixed(2) + " Mbps"
+                    valueText: {
+                        if (root.snapshotData && root.snapshotData.net) {
+                            var rate = root.snapshotData.net.recv_rate_mbps || 0;
+                            return rate.toFixed(2) + " Mbps";
+                        }
+                        return "0.00 Mbps";
+                    }
                     positive: true
                     width: parent.width - 40
                 }
@@ -107,32 +125,44 @@ Column {
             }
             
             Text {
-                text: "Realtek PCIe GbE — 192.168.1.50 — Gateway 192.168.1.1"
+                text: {
+                    if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.adapters && root.snapshotData.net.adapters.length > 0) {
+                        var adapter = root.snapshotData.net.adapters[0];
+                        var name = adapter.name || "Unknown";
+                        var ips = [];
+                        if (adapter.addresses) {
+                            for (var i = 0; i < adapter.addresses.length; i++) {
+                                if (adapter.addresses[i].address) {
+                                    ips.push(adapter.addresses[i].address);
+                                }
+                            }
+                        }
+                        return name + (ips.length > 0 ? " — " + ips.join(", ") : "");
+                    }
+                    return "No network adapters detected";
+                }
                 color: Theme.muted
                 wrapMode: Text.Wrap
                 width: parent.width - 40
                 font.pixelSize: 14
-                
+
                 Behavior on color {
                     ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
                 }
             }
         }
     }
-    
-    // Stubbed generator; replace with real data
-    property real upMbps: 1.4
-    property real downMbps: 9.2
-    
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: {
-            upMbps = Math.max(0, upMbps + (Math.random() - 0.5) * 3);
-            downMbps = Math.max(0, downMbps + (Math.random() - 0.5) * 10);
-            upChart.pushValue(Math.min(1, upMbps / 50));
-            downChart.pushValue(Math.min(1, downMbps / 200));
+
+    // Charts are updated by the live data from backend
+    Connections {
+        target: root
+        function onSnapshotDataChanged() {
+            if (root.snapshotData && root.snapshotData.net) {
+                var uploadMbps = root.snapshotData.net.send_rate_mbps || 0;
+                var downloadMbps = root.snapshotData.net.recv_rate_mbps || 0;
+                upChart.pushValue(Math.min(1, uploadMbps / 100)); // Normalize to 0-1 range (max 100 Mbps)
+                downChart.pushValue(Math.min(1, downloadMbps / 100));
+            }
         }
     }
 }

@@ -27,20 +27,7 @@ Rectangle {
     opacity: 0
     scale: 0.8
     
-    layer.enabled: true
-    layer.effect: ShaderEffect {
-        fragmentShader: "
-            uniform lowp sampler2D source;
-            uniform lowp float qt_Opacity;
-            varying highp vec2 qt_TexCoord0;
-            void main() {
-                lowp vec4 c = texture2D(source, qt_TexCoord0);
-                gl_FragColor = c * qt_Opacity;
-            }
-        "
-    }
-    
-    // Shadow
+    // Shadow (removed Qt 6 incompatible ShaderEffect)
     Rectangle {
         anchors.fill: parent
         anchors.margins: -8

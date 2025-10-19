@@ -6,6 +6,18 @@ import "../components"
 AppSurface {
     id: root
     
+    // Use global snapshot data from main window
+    property var snapshotData: typeof window !== 'undefined' ? window.globalSnapshotData : ({
+        "cpu": {"usage": 0, "freq_current": 0, "core_count": 0},
+        "mem": {"used": 0, "total": 0, "percent": 0},
+        "gpu": {"available": false, "usage": 0},
+        "net": {"send_rate": 0, "recv_rate": 0},
+        "disk": {"used": 0, "total": 0, "percent": 0}
+    })
+    
+    Item {
+        anchors.fill: parent
+    
     ScrollView {
         anchors.fill: parent
         clip: true
@@ -164,54 +176,84 @@ AppSurface {
                     Layout.fillWidth: true
                     asynchronous: true
                     
+                    onLoaded: {
+                        if (item) {
+                            item.snapshotData = Qt.binding(function() { return root.snapshotData })
+                        }
+                    }
+                    
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: overviewLoader.status === Loader.Loading
                         visible: running
                     }
                 }
-                Loader { 
+                Loader {
                     id: osInfoLoader
                     source: "snapshot/OSInfoPage.qml"
                     Layout.fillWidth: true
                     asynchronous: true
-                    
+
+                    onLoaded: {
+                        if (item) {
+                            item.snapshotData = Qt.binding(function() { return root.snapshotData })
+                        }
+                    }
+
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: osInfoLoader.status === Loader.Loading
                         visible: running
                     }
                 }
-                Loader { 
+                Loader {
                     id: hardwareLoader
                     source: "snapshot/HardwarePage.qml"
                     Layout.fillWidth: true
                     asynchronous: true
-                    
+
+                    onLoaded: {
+                        if (item) {
+                            item.snapshotData = Qt.binding(function() { return root.snapshotData })
+                        }
+                    }
+
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: hardwareLoader.status === Loader.Loading
                         visible: running
                     }
                 }
-                Loader { 
+                Loader {
                     id: networkLoader
                     source: "snapshot/NetworkPage.qml"
                     Layout.fillWidth: true
                     asynchronous: true
-                    
+
+                    onLoaded: {
+                        if (item) {
+                            item.snapshotData = Qt.binding(function() { return root.snapshotData })
+                        }
+                    }
+
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: networkLoader.status === Loader.Loading
                         visible: running
                     }
                 }
-                Loader { 
+                Loader {
                     id: securityLoader
                     source: "snapshot/SecurityPage.qml"
                     Layout.fillWidth: true
                     asynchronous: true
-                    
+
+                    onLoaded: {
+                        if (item) {
+                            item.snapshotData = Qt.binding(function() { return root.snapshotData })
+                        }
+                    }
+
                     BusyIndicator {
                         anchors.centerIn: parent
                         running: securityLoader.status === Loader.Loading
@@ -220,5 +262,7 @@ AppSurface {
                 }
             }
         }
-    }
+    } // ScrollView
+    
+    } // Item wrapper
 }

@@ -1,16 +1,38 @@
 ﻿import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtCore
 import "../components"
 import "../ui"
 
 AppSurface {
     id: root
     
-    ScrollView {
+    property var scanData: []
+    
+    Item {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_md
-        clip: true
+        
+        // Listen for backend scan history
+        Connections {
+            target: typeof Backend !== 'undefined' ? Backend : null
+            
+            function onScansLoaded(scans) {
+                console.log("Scans loaded:", scans.length)
+                root.scanData = scans
+            }
+        }
+        
+        Component.onCompleted: {
+            if (typeof Backend !== 'undefined') {
+                Backend.loadScanHistory()
+            }
+        }
+        
+        ScrollView {
+            anchors.fill: parent
+            anchors.margins: Theme.spacing_md
+            clip: true
         
         ColumnLayout {
             width: Math.max(800, parent.width - Theme.spacing_md * 2)
@@ -38,19 +60,21 @@ AppSurface {
                             Accessible.name: "Export CSV"
                             
                             onClicked: {
-                                // Simulate CSV export
-                                var toast = globalToast || root.parent.parent.parent.parent.parent
-                                if (toast && toast.show) {
-                                    toast.show("✓ CSV exported successfully to Downloads folder", 3000, "success")
+                                if (typeof Backend !== 'undefined') {
+                                    var timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+                                    var homePath = StandardPaths.writableLocation(StandardPaths.DownloadLocation)
+                                    var csvPath = homePath + "/sentinel_scan_history_" + timestamp + ".csv"
+                                    Backend.exportScanHistoryCSV(csvPath)
+                                } else {
+                                    console.log("Backend not available")
                                 }
-                                console.log("Exporting scan history to CSV...")
                             }
                         }
                         
                         Item { Layout.fillWidth: true }
-                        
+
                         Text {
-                            text: "Total scans: 42"
+                            text: "Total scans: " + (root.scanData ? root.scanData.length : 0)
                             color: Theme.muted
                             font.pixelSize: Theme.typography.body.size
                         }
@@ -108,59 +132,59 @@ AppSurface {
                     ListView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 400
-                        model: ListModel {
-                            ListElement { date: "2024-01-15 14:23"; type: "Full System Scan"; findings: "0"; status: "Clean"; statusType: "success" }
-                            ListElement { date: "2024-01-15 08:45"; type: "Quick Scan"; findings: "0"; status: "Clean"; statusType: "success" }
-                            ListElement { date: "2024-01-14 22:10"; type: "Network Scan"; findings: "12"; status: "Devices Found"; statusType: "info" }
-                            ListElement { date: "2024-01-14 16:30"; type: "Malware Scan"; findings: "2"; status: "Threats Blocked"; statusType: "warning" }
-                            ListElement { date: "2024-01-13 11:15"; type: "Registry Scan"; findings: "0"; status: "Clean"; statusType: "success" }
-                        }
+                        model: root.scanData
                         spacing: Theme.spacing_sm
                         clip: true
+                        
                         delegate: Rectangle {
                             width: ListView.view.width
                             height: 56
-                            color: mouseArea.containsMouse ? Qt.lighter(Theme.panel, 1.1) : 
+                            color: mouseArea.containsMouse ? Qt.lighter(Theme.panel, 1.1) :
                                    (index % 2 === 0 ? Theme.panel : "transparent")
                             radius: Theme.radii_sm
-                            
+
                             Behavior on color {
                                 ColorAnimation { duration: Theme.duration_fast }
                             }
-                            
+
                             MouseArea {
                                 id: mouseArea
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                
+
                                 onClicked: {
-                                    console.log("Show details for scan:", model.type, model.date)
+                                    console.log("Show details for scan:", modelData.type, modelData.started_at)
                                     var toast = globalToast || root.parent.parent.parent.parent.parent
                                     if (toast && toast.show) {
-                                        toast.show("Scan details: " + model.type + " - " + model.status, 2500, "info")
+                                        toast.show("Scan details: " + modelData.type + " - " + modelData.status, 2500, "info")
                                     }
                                 }
                             }
-                            
+
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: Theme.spacing_md
                                 spacing: Theme.spacing_md
                                 Text {
-                                    text: model.date
+                                    text: modelData.started_at || "N/A"
                                     color: Theme.muted
                                     font.pixelSize: Theme.typography.body.size
                                     Layout.preferredWidth: 180
                                 }
                                 Text {
-                                    text: model.type
+                                    text: modelData.type || "Unknown"
                                     color: Theme.text
                                     font.pixelSize: Theme.typography.body.size
                                     Layout.fillWidth: true
                                 }
                                 Text {
-                                    text: model.findings
+                                    text: {
+                                        if (modelData.findings && typeof modelData.findings === 'object') {
+                                            return Object.keys(modelData.findings).length.toString()
+                                        }
+                                        return "0"
+                                    }
                                     color: Theme.text
                                     font.pixelSize: Theme.typography.body.size
                                     Layout.preferredWidth: 80
@@ -171,12 +195,11 @@ AppSurface {
                                     Layout.preferredHeight: 8
                                     radius: 4
                                     color: {
-                                        switch(model.statusType) {
-                                            case "success": return Theme.success
-                                            case "warning": return Theme.warning
-                                            case "info": return Theme.primary
-                                            default: return Theme.muted
-                                        }
+                                        var status = modelData.status || "unknown"
+                                        if (status === "completed" || status === "clean") return Theme.success
+                                        if (status === "warning" || status === "threats") return Theme.warning
+                                        if (status === "running") return Theme.primary
+                                        return Theme.muted
                                     }
                                 }
                                 Text {
@@ -198,5 +221,6 @@ AppSurface {
                 }
             }
         }
+    }
     }
 }

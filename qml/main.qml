@@ -37,7 +37,27 @@ ApplicationWindow {
         z: 1000
     }
     
-    Component.onCompleted: {
+    // Global snapshot data storage
+    property var globalSnapshotData: ({
+        "cpu": {"usage": 0, "freq_current": 0, "core_count": 0},
+        "mem": {"used": 0, "total": 0, "percent": 0},
+        "gpu": {"available": false, "usage": 0},
+        "net": {"send_rate": 0, "recv_rate": 0},
+        "disk": {"used": 0, "total": 0, "percent": 0}
+    })
+    
+      // Listen for backend updates globally
+    Connections {
+        target: typeof Backend !== 'undefined' ? Backend : null
+
+        function onSnapshotUpdated(data) {
+            window.globalSnapshotData = data
+        }
+
+        function onToast(level, message) {
+            globalToast.show(level, message)
+        }
+    }    Component.onCompleted: {
         // Restore saved theme
         var savedTheme = appSettings.themeMode
         if (savedTheme) {
@@ -48,6 +68,14 @@ ApplicationWindow {
         ThemeManager.themeModeChanged.connect(function() {
             appSettings.themeMode = ThemeManager.themeMode
         })
+        
+        // Start live monitoring immediately when app loads
+        if (typeof Backend !== 'undefined') {
+            Backend.startLive()
+            console.log("✓ Live monitoring started globally")
+        } else {
+            console.log("⚠ Backend not available")
+        }
     }
     
     // Keyboard shortcuts

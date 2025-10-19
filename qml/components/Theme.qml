@@ -12,6 +12,7 @@ Item {
     readonly property color text: ThemeManager.foreground()
     readonly property color muted: ThemeManager.muted()
     readonly property color primary: "#7C5CFF"
+    readonly property color info: "#3B82F6"
     readonly property color success: "#22C55E"
     readonly property color warning: "#F59E0B"
     readonly property color danger: "#EF4444"

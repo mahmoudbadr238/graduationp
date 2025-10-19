@@ -1,216 +1,376 @@
 ﻿import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Dialogs
 import "../components"
-import "../ui"
 
 AppSurface {
     id: root
-    property int scanProgress: 0
-    property string scanStatus: "idle"
-    property int selectedScanType: -1  // 0=Quick, 1=Full, 2=Deep
     
-    ScrollView {
+    // Scanning state properties
+    property bool fileScanning: false
+    property bool urlScanning: false
+    
+    Item {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_md
-        clip: true
         
-        ColumnLayout {
-            width: Math.max(800, parent.width - Theme.spacing_md * 2)
-            spacing: Theme.spacing_lg
-            Panel {
-                Layout.fillWidth: true
-                ColumnLayout {
-                    spacing: Theme.spacing_lg
-                    SectionHeader {
-                        title: "Scan Mode Selection"
-                        subtitle: "Choose scan type"
+        // Listen for backend scan results
+        Connections {
+            target: typeof Backend !== 'undefined' ? Backend : null
+            
+            function onScanFinished(scanType, result) {
+                console.log("Scan finished:", scanType)
+                
+                if (scanType === "file") {
+                    fileResultArea.text = JSON.stringify(result, null, 2)
+                    root.fileScanning = false
+                } else if (scanType === "url") {
+                    urlResultArea.text = JSON.stringify(result, null, 2)
+                    root.urlScanning = false
+                }
+            }
+            
+            function onToast(level, message) {
+                console.log("[" + level + "] " + message)
+            }
+        }
+        
+        Flickable {
+            id: flickable
+            anchors.fill: parent
+            anchors.margins: Theme.spacing_lg
+            clip: true
+            contentHeight: contentLayout.implicitHeight + Theme.spacing_lg * 2
+            contentWidth: width
+            boundsBehavior: Flickable.StopAtBounds
+            
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
+            
+            // Enable mouse wheel and touchpad scrolling with WheelHandler
+            WheelHandler {
+                target: flickable
+                orientation: Qt.Vertical
+                
+                onWheel: function(event) {
+                    // Smooth scrolling with pixel delta
+                    var delta = event.angleDelta.y
+                    if (delta !== 0) {
+                        flickable.flick(0, delta * 5)
                     }
+                }
+            }
+            
+            ColumnLayout {
+                id: contentLayout
+                width: parent.width
+                spacing: Theme.spacing_lg
+                
+                PageHeader {
+                    title: "Security Scan Tool"
+                    subtitle: "Scan files and URLs for threats using VirusTotal"
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing_md
+                }
+                
+                // File Scanner Section
+                SectionHeader {
+                    title: "File Scanner"
+                    subtitle: "Scan local files for malware and threats"
+                    Layout.fillWidth: true
+                }
+                
+                Panel {
+                    Layout.fillWidth: true
                     
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: root.isWideScreen ? 3 : 1
-                        rowSpacing: Theme.spacing_lg
-                        columnSpacing: Theme.spacing_lg
+                    ColumnLayout {
+                        width: parent.width - Theme.spacing_md * 2
+                        spacing: Theme.spacing_md
                         
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 300 : 400
-                            Layout.preferredHeight: 200
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: selectedScanType === 0 ? ThemeManager.accent : Theme.border
-                            border.width: selectedScanType === 0 ? 2 : 1
+                        RowLayout {
+                            spacing: Theme.spacing_md
+                            Layout.fillWidth: true
                             
-                            Behavior on border.color {
-                                ColorAnimation { duration: Theme.duration_fast }
-                            }
-                            Behavior on border.width {
-                                NumberAnimation { duration: Theme.duration_fast }
-                            }
-                            
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    selectedScanType = 0
-                                    console.log("Quick Scan selected")
+                            TextField {
+                                id: filePathField
+                                placeholderText: "Enter file path or click Browse..."
+                                Layout.fillWidth: true
+                                font.pixelSize: Theme.typography.body.size
+                                
+                                background: Rectangle {
+                                    color: Theme.surface
+                                    border.color: parent.activeFocus ? Theme.primary : Theme.border
+                                    border.width: parent.activeFocus ? 2 : 1
+                                    radius: Theme.radii_sm
                                 }
                                 
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: parent.containsMouse ? Theme.elevatedPanel : "transparent"
-                                    radius: Theme.radii_md
-                                    Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                                }
+                                color: Theme.text
+                                padding: Theme.spacing_sm
                             }
                             
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_md
-                                width: parent.width - 32
+                            Button {
+                                text: "Browse..."
+                                Layout.preferredWidth: 120
+                                onClicked: fileDialog.open()
+                                padding: Theme.spacing_sm
                                 
-                                Text {
-                                    text: "🚀"
-                                    color: Theme.primary
-                                    font.pixelSize: 48
-                                    Layout.alignment: Qt.AlignHCenter
+                                background: Rectangle {
+                                    color: parent.hovered ? Theme.elevatedPanel : Theme.panel
+                                    border.color: Theme.border
+                                    border.width: 1
+                                    radius: Theme.radii_sm
                                 }
-                                Text {
-                                    text: "Quick Scan"
+                                
+                                contentItem: Text {
+                                    text: parent.text
                                     color: Theme.text
-                                    font.pixelSize: Theme.typography.h2.size
-                                    font.weight: Font.Medium
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "~5 minutes"
-                                    color: Theme.muted
                                     font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                        
+                        Button {
+                            text: root.fileScanning ? "Scanning..." : "Scan File"
+                            enabled: !root.fileScanning && filePathField.text.length > 0
+                            Layout.preferredWidth: 150
+                            
+                            onClicked: {
+                                if (typeof Backend !== 'undefined') {
+                                    root.fileScanning = true
+                                    fileResultArea.text = "Scanning file...\n\nCalculating hash and checking VirusTotal database..."
+                                    Backend.scanFile(filePathField.text)
+                                }
+                            }
+                            
+                            background: Rectangle {
+                                color: parent.enabled ? (parent.pressed ? Qt.darker(Theme.primary, 1.2) : 
+                                       (parent.hovered ? Qt.lighter(Theme.primary, 1.1) : Theme.primary)) : Theme.muted
+                                radius: Theme.radii_sm
+                                
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.duration_fast }
+                                }
+                            }
+                            
+                            contentItem: Row {
+                                spacing: Theme.spacing_sm
+                                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                                
+                                BusyIndicator {
+                                    width: 16
+                                    height: 16
+                                    running: root.fileScanning
+                                    visible: running
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                                
+                                Text {
+                                    text: parent.parent.text
+                                    color: parent.parent.enabled ? "#FFFFFF" : Theme.text
+                                    font.pixelSize: Theme.typography.body.size
+                                    font.weight: Font.Medium
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
                         }
                         
                         Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 300 : 400
-                            Layout.preferredHeight: 200
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 300
                             color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: selectedScanType === 1 ? ThemeManager.accent : Theme.border
-                            border.width: selectedScanType === 1 ? 2 : 1
+                            border.color: Theme.border
+                            border.width: 1
+                            radius: Theme.radii_sm
                             
-                            Behavior on border.color {
-                                ColorAnimation { duration: Theme.duration_fast }
-                            }
-                            Behavior on border.width {
-                                NumberAnimation { duration: Theme.duration_fast }
-                            }
-                            
-                            MouseArea {
+                            ScrollView {
                                 anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    selectedScanType = 1
-                                    console.log("Full Scan selected")
-                                }
+                                anchors.margins: Theme.spacing_sm
+                                clip: true
                                 
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: parent.containsMouse ? Theme.elevatedPanel : "transparent"
-                                    radius: Theme.radii_md
-                                    Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                                }
-                            }
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_md
-                                width: parent.width - 32
-                                
-                                Text {
-                                    text: "🔍"
-                                    color: Theme.primary
-                                    font.pixelSize: 48
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "Full Scan"
+                                TextArea {
+                                    id: fileResultArea
+                                    readOnly: true
+                                    wrapMode: TextArea.Wrap
+                                    text: "Scan results will appear here..."
                                     color: Theme.text
-                                    font.pixelSize: Theme.typography.h2.size
-                                    font.weight: Font.Medium
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "~30 minutes"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                            }
-                        }
-                        
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 300 : 400
-                            Layout.preferredHeight: 200
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: selectedScanType === 2 ? ThemeManager.accent : Theme.border
-                            border.width: selectedScanType === 2 ? 2 : 1
-                            
-                            Behavior on border.color {
-                                ColorAnimation { duration: Theme.duration_fast }
-                            }
-                            Behavior on border.width {
-                                NumberAnimation { duration: Theme.duration_fast }
-                            }
-                            
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    selectedScanType = 2
-                                    console.log("Deep Scan selected")
-                                }
-                                
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: parent.containsMouse ? Theme.elevatedPanel : "transparent"
-                                    radius: Theme.radii_md
-                                    Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                                }
-                            }
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_md
-                                width: parent.width - 32
-                                
-                                Text {
-                                    text: "🔬"
-                                    color: Theme.primary
-                                    font.pixelSize: 48
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "Deep Scan"
-                                    color: Theme.text
-                                    font.pixelSize: Theme.typography.h2.size
-                                    font.weight: Font.Medium
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "~2 hours"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
+                                    font.pixelSize: Theme.typography.mono.size
+                                    font.family: "Consolas, Monaco, monospace"
+                                    selectByMouse: true
+                                    
+                                    background: Rectangle {
+                                        color: "transparent"
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                
+                // URL Scanner Section  
+                SectionHeader {
+                    title: "URL Scanner"
+                    subtitle: "Check URLs for phishing and malware"
+                    Layout.fillWidth: true
+                }
+                
+                Panel {
+                    Layout.fillWidth: true
+                    
+                    ColumnLayout {
+                        width: parent.width - Theme.spacing_md * 2
+                        spacing: Theme.spacing_md
+                        
+                        TextField {
+                            id: urlField
+                            placeholderText: "Enter URL (e.g., https://example.com)"
+                            Layout.fillWidth: true
+                            font.pixelSize: Theme.typography.body.size
+                            
+                            background: Rectangle {
+                                color: Theme.surface
+                                border.color: parent.activeFocus ? Theme.primary : Theme.border
+                                border.width: parent.activeFocus ? 2 : 1
+                                radius: Theme.radii_sm
+                            }
+                            
+                            color: Theme.text
+                            padding: Theme.spacing_sm
+                        }
+                        
+                        Button {
+                            text: root.urlScanning ? "Scanning..." : "Scan URL"
+                            enabled: !root.urlScanning && urlField.text.length > 0
+                            Layout.preferredWidth: 150
+                            
+                            onClicked: {
+                                if (typeof Backend !== 'undefined') {
+                                    root.urlScanning = true
+                                    urlResultArea.text = "Scanning URL...\n\nChecking VirusTotal database..."
+                                    Backend.scanUrl(urlField.text)
+                                }
+                            }
+                            
+                            background: Rectangle {
+                                color: parent.enabled ? (parent.pressed ? Qt.darker(Theme.primary, 1.2) : 
+                                       (parent.hovered ? Qt.lighter(Theme.primary, 1.1) : Theme.primary)) : Theme.muted
+                                radius: Theme.radii_sm
+                                
+                                Behavior on color {
+                                    ColorAnimation { duration: Theme.duration_fast }
+                                }
+                            }
+                            
+                            contentItem: Row {
+                                spacing: Theme.spacing_sm
+                                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+                                
+                                BusyIndicator {
+                                    width: 16
+                                    height: 16
+                                    running: root.urlScanning
+                                    visible: running
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                                
+                                Text {
+                                    text: parent.parent.text
+                                    color: parent.parent.enabled ? "#FFFFFF" : Theme.text
+                                    font.pixelSize: Theme.typography.body.size
+                                    font.weight: Font.Medium
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+                        
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 300
+                            color: Theme.surface
+                            border.color: Theme.border
+                            border.width: 1
+                            radius: Theme.radii_sm
+                            
+                            ScrollView {
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_sm
+                                clip: true
+                                
+                                TextArea {
+                                    id: urlResultArea
+                                    readOnly: true
+                                    wrapMode: TextArea.Wrap
+                                    text: "Scan results will appear here..."
+                                    color: Theme.text
+                                    font.pixelSize: Theme.typography.mono.size
+                                    font.family: "Consolas, Monaco, monospace"
+                                    selectByMouse: true
+                                    
+                                    background: Rectangle {
+                                        color: "transparent"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Info Panel
+                Card {
+                    Layout.fillWidth: true
+                    hoverable: false
+                    padding: Theme.spacing_md
+                    
+                    RowLayout {
+                        width: parent.width - Theme.spacing_md * 2
+                        spacing: Theme.spacing_md
+                        
+                        AlertTriangle {
+                            width: 24
+                            height: 24
+                        }
+                        
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            
+                            Text {
+                                text: "VirusTotal Integration Required"
+                                color: Theme.text
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                            }
+                            
+                            Text {
+                                text: "This feature requires a VirusTotal API key. Create a .env file in the project root with VT_API_KEY=your_key_here"
+                                color: Theme.muted
+                                font.pixelSize: Theme.typography.mono.size
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // File Dialog
+        FileDialog {
+            id: fileDialog
+            title: "Select file to scan"
+            nameFilters: ["All files (*)"]
+            onAccepted: {
+                // Convert file URL to local path
+                var path = fileDialog.selectedFile.toString()
+                // Remove file:/// prefix on Windows
+                if (Qt.platform.os === "windows") {
+                    path = path.replace(/^(file:\/{3})/, "")
+                } else {
+                    path = path.replace(/^(file:\/{2})/, "")
+                }
+                filePathField.text = decodeURIComponent(path)
             }
         }
     }
