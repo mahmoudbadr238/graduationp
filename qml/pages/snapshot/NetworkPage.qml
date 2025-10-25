@@ -10,7 +10,13 @@ Column {
 
     // This property will be set by SystemSnapshot.qml Loader
     property var snapshotData: ({
-        "net": {"send_rate_mbps": 0, "recv_rate_mbps": 0, "adapters": []}
+        "net": {
+            "send_rate_mbps": 0, 
+            "recv_rate_mbps": 0,
+            "send_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "recv_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "adapters": []
+        }
     })
     
     PageHeader {
@@ -31,17 +37,21 @@ Column {
                 width: parent.width
                 
                 Text {
-                    text: "Upload (Mbps)"
+                    text: {
+                        var unit = "Mbps"; // Default
+                        if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.send_rate) {
+                            unit = root.snapshotData.net.send_rate.unit || "Mbps";
+                        }
+                        return "Upload (" + unit + ")";
+                    }
                     color: Theme.text
                     font.pixelSize: 18
                     font.bold: true
-                    
+
                     Behavior on color {
                         ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
                     }
-                }
-                
-                LineChartLive {
+                }                LineChartLive {
                     id: upChart
                     width: parent.width - 40
                     height: 140
@@ -52,10 +62,15 @@ Column {
                     label: "Up"
                     valueText: {
                         if (root.snapshotData && root.snapshotData.net) {
+                            // Use new auto-scaling format if available
+                            if (root.snapshotData.net.send_rate && root.snapshotData.net.send_rate.formatted) {
+                                return root.snapshotData.net.send_rate.formatted;
+                            }
+                            // Fallback to old Mbps format
                             var rate = root.snapshotData.net.send_rate_mbps || 0;
                             return rate.toFixed(2) + " Mbps";
                         }
-                        return "0.00 Mbps";
+                        return "0.00 bps";
                     }
                     positive: true
                     width: parent.width - 40
@@ -72,17 +87,21 @@ Column {
                 width: parent.width
                 
                 Text {
-                    text: "Download (Mbps)"
+                    text: {
+                        var unit = "Mbps"; // Default
+                        if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.recv_rate) {
+                            unit = root.snapshotData.net.recv_rate.unit || "Mbps";
+                        }
+                        return "Download (" + unit + ")";
+                    }
                     color: Theme.text
                     font.pixelSize: 18
                     font.bold: true
-                    
+
                     Behavior on color {
                         ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
                     }
-                }
-                
-                LineChartLive {
+                }                LineChartLive {
                     id: downChart
                     width: parent.width - 40
                     height: 140
@@ -93,10 +112,15 @@ Column {
                     label: "Down"
                     valueText: {
                         if (root.snapshotData && root.snapshotData.net) {
+                            // Use new auto-scaling format if available
+                            if (root.snapshotData.net.recv_rate && root.snapshotData.net.recv_rate.formatted) {
+                                return root.snapshotData.net.recv_rate.formatted;
+                            }
+                            // Fallback to old Mbps format
                             var rate = root.snapshotData.net.recv_rate_mbps || 0;
                             return rate.toFixed(2) + " Mbps";
                         }
-                        return "0.00 Mbps";
+                        return "0.00 bps";
                     }
                     positive: true
                     width: parent.width - 40

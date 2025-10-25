@@ -141,22 +141,64 @@ class PsutilSystemMonitor(ISystemMonitor):
         return gpu_info
 
     def _get_network_info(self) -> Dict[str, Any]:
-        """Get network I/O metrics."""
+        """Get network I/O metrics with auto-scaling units (bps, Kbps, Mbps, Gbps)."""
         net_io = psutil.net_io_counters()
+        
+        # Helper function to format speed with appropriate unit
+        def format_speed(bytes_per_sec):
+            """Convert bytes/sec to bits/sec and format with appropriate unit."""
+            if bytes_per_sec < 0:
+                bytes_per_sec = 0
+            
+            bits_per_sec = bytes_per_sec * 8
+            
+            # Determine appropriate unit
+            if bits_per_sec >= 1_000_000_000:  # >= 1 Gbps
+                value = bits_per_sec / 1_000_000_000
+                unit = "Gbps"
+            elif bits_per_sec >= 1_000_000:  # >= 1 Mbps
+                value = bits_per_sec / 1_000_000
+                unit = "Mbps"
+            elif bits_per_sec >= 1_000:  # >= 1 Kbps
+                value = bits_per_sec / 1_000
+                unit = "Kbps"
+            else:  # < 1 Kbps
+                value = bits_per_sec
+                unit = "bps"
+            
+            # Format with appropriate decimal places
+            if value >= 100:
+                return {"value": round(value, 1), "unit": unit, "formatted": f"{value:.1f} {unit}"}
+            elif value >= 10:
+                return {"value": round(value, 2), "unit": unit, "formatted": f"{value:.2f} {unit}"}
+            else:
+                return {"value": round(value, 2), "unit": unit, "formatted": f"{value:.2f} {unit}"}
+        
         net_info = {
             "bytes_sent": net_io.bytes_sent,
             "bytes_recv": net_io.bytes_recv,
             "packets_sent": net_io.packets_sent,
             "packets_recv": net_io.packets_recv,
-            "send_rate_mbps": 0,
-            "recv_rate_mbps": 0,
+            "send_rate_mbps": 0,  # Keep for backward compatibility
+            "recv_rate_mbps": 0,  # Keep for backward compatibility
+            "send_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "recv_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
         }
+        
         if self._net_io_prev:
             sent_diff = net_io.bytes_sent - self._net_io_prev.bytes_sent
             recv_diff = net_io.bytes_recv - self._net_io_prev.bytes_recv
+            
+            # Old format (Mbps only) - for backward compatibility
             net_info["send_rate_mbps"] = round(max(0, sent_diff) * 8 / 1_000_000, 2)
             net_info["recv_rate_mbps"] = round(max(0, recv_diff) * 8 / 1_000_000, 2)
+            
+            # New format (auto-scaling units)
+            net_info["send_rate"] = format_speed(max(0, sent_diff))
+            net_info["recv_rate"] = format_speed(max(0, recv_diff))
+        
         self._net_io_prev = net_io
+        
         # Adapter details
         adapters = []
         net_if_addrs = psutil.net_if_addrs()

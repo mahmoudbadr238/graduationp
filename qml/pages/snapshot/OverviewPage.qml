@@ -13,7 +13,13 @@ Column {
         "cpu": {"usage": 0, "freq_current": 0, "core_count": 0},
         "mem": {"used": 0, "total": 0, "percent": 0},
         "gpu": {"available": false, "usage": 0},
-        "net": {"send_rate_mbps": 0, "recv_rate_mbps": 0, "adapters": []},
+        "net": {
+            "send_rate_mbps": 0, 
+            "recv_rate_mbps": 0,
+            "send_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "recv_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "adapters": []
+        },
         "disk": [{"used": 0, "total": 0, "percent": 0}]
     })
 
@@ -50,7 +56,28 @@ Column {
 
         LiveMetricTile {
             label: "Network"
-            valueText: root.snapshotData.net ? "↓ " + (root.snapshotData.net.recv_rate_mbps || 0).toFixed(2) + " Mbps ↑ " + (root.snapshotData.net.send_rate_mbps || 0).toFixed(2) + " Mbps" : "N/A"
+            valueText: {
+                if (root.snapshotData && root.snapshotData.net) {
+                    var down = "0.00 bps";
+                    var up = "0.00 bps";
+                    
+                    // Use new auto-scaling format if available
+                    if (root.snapshotData.net.recv_rate && root.snapshotData.net.recv_rate.formatted) {
+                        down = root.snapshotData.net.recv_rate.formatted;
+                    } else {
+                        down = (root.snapshotData.net.recv_rate_mbps || 0).toFixed(2) + " Mbps";
+                    }
+                    
+                    if (root.snapshotData.net.send_rate && root.snapshotData.net.send_rate.formatted) {
+                        up = root.snapshotData.net.send_rate.formatted;
+                    } else {
+                        up = (root.snapshotData.net.send_rate_mbps || 0).toFixed(2) + " Mbps";
+                    }
+                    
+                    return "↓ " + down + " ↑ " + up;
+                }
+                return "N/A";
+            }
             hint: root.snapshotData.net && root.snapshotData.net.adapters ? root.snapshotData.net.adapters.length + " adapters" : ""
             positive: true
         }
