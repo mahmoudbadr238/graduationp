@@ -1,5 +1,5 @@
 """QObject bridge connecting QML frontend to Python backend."""
-from PySide6.QtCore import QObject, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Slot, QTimer, QThreadPool
 from typing import Dict, Any
 from datetime import datetime
 from ..core.container import DI
@@ -9,87 +9,116 @@ from ..core.interfaces import (
 )
 from ..core.types import ScanType, ScanRecord, EventItem
 from ..core.errors import IntegrationDisabled, ExternalToolMissing
+from ..core.workers import CancellableWorker, get_watchdog, WorkerSignals
+from ..core.result_cache import get_scan_cache
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BackendBridge(QObject):
     """
     Backend facade exposing signals/slots to QML.
-    
+
     Signals emitted to QML:
     - snapshotUpdated: System metrics snapshot
     - eventsLoaded: Windows events list
     - toast: Notification message (level, message)
     - scanFinished: Scan completion (type, result)
     """
-    
+
     # Signals
     snapshotUpdated = Signal(dict)
     eventsLoaded = Signal(list)
     scansLoaded = Signal(list)  # scan history
     toast = Signal(str, str)  # level, message
     scanFinished = Signal(str, dict)  # type, result
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # Resolve dependencies from DI container
         self.sys_monitor = DI.resolve(ISystemMonitor)
         self.event_reader = DI.resolve(IEventReader)
         self.scan_repo = DI.resolve(IScanRepository)
         self.event_repo = DI.resolve(IEventRepository)
-        
+
         # Optional integrations (may fail if disabled/missing)
         try:
             self.net_scanner = DI.resolve(INetworkScanner)
         except (IntegrationDisabled, ExternalToolMissing) as e:
             self.net_scanner = None
-            print(f"Network scanner disabled: {e}")
-        
+            logger.warning(f"Network scanner disabled: {e}")
+
         try:
             self.file_scanner = DI.resolve(IFileScanner)
         except IntegrationDisabled as e:
             self.file_scanner = None
-            print(f"File scanner disabled: {e}")
-        
+            logger.warning(f"File scanner disabled: {e}")
+
         try:
             self.url_scanner = DI.resolve(IUrlScanner)
         except IntegrationDisabled as e:
             self.url_scanner = None
-            print(f"URL scanner disabled: {e}")
-        
-        # Timer for live updates
+            logger.warning(f"URL scanner disabled: {e}")
+
+        # Timer for live updates (throttled to 1s)
         self.live_timer = QTimer()
         self.live_timer.timeout.connect(self._tick)
-    
+        
+        # Thread pool for async operations
+        self._thread_pool = QThreadPool.globalInstance()
+        
+        # Worker watchdog
+        self._watchdog = get_watchdog()
+        self._watchdog.workerStalled.connect(self._on_worker_stalled)
+        
+        # Result cache
+        self._cache = get_scan_cache()
+        
+        # Active workers (for cancellation)
+        self._active_workers: Dict[str, CancellableWorker] = {}
+
     @Slot()
     def startLive(self):
         """Start live system monitoring (1 second interval)."""
         if not self.live_timer.isActive():
             self.live_timer.start(1000)
             self._tick()  # Emit first snapshot immediately
-            self.toast.emit("info", "Live monitoring started")
-    
+            logger.info("Live monitoring started")
+
     @Slot()
     def stopLive(self):
         """Stop live system monitoring."""
         if self.live_timer.isActive():
             self.live_timer.stop()
-            self.toast.emit("info", "Live monitoring stopped")
-    
+            logger.info("Live monitoring stopped")
+
     def _tick(self):
         """Timer callback - fetch and emit system snapshot."""
         try:
             snapshot = self.sys_monitor.snapshot()
             self.snapshotUpdated.emit(snapshot)
         except Exception as e:
-            self.toast.emit("error", f"Monitoring error: {str(e)}")
-    
-    @Slot()
+            logger.error(f"Monitoring error: {e}")
+            self.toast.emit("error", f"Monitoring error: {str(e)}")    @Slot()
     def loadRecentEvents(self):
-        """Load recent Windows event log entries."""
-        try:
+        """Load recent Windows event log entries (async)."""
+        worker_id = "load-events"
+        
+        def load_task(worker):
+            """Background task to load events"""
+            worker.signals.heartbeat.emit(worker_id)
             events = self.event_reader.tail(limit=300)
+            worker.signals.heartbeat.emit(worker_id)
             
+            # Store in database
+            self.event_repo.add_many(events)
+            
+            return events
+        
+        def on_success(wid, events):
+            """Event loading completed"""
             # Convert EventItem objects to dicts for QML
             event_dicts = [
                 {
@@ -103,19 +132,30 @@ class BackendBridge(QObject):
             
             self.eventsLoaded.emit(event_dicts)
             self.toast.emit("success", f"Loaded {len(events)} events")
-            
-            # Store events in database
-            self.event_repo.add_many(events)
+            self._watchdog.unregister_worker(worker_id)
         
-        except Exception as e:
-            self.toast.emit("error", f"Failed to load events: {str(e)}")
+        def on_error(wid, error_msg):
+            """Event loading failed"""
+            logger.error(f"Failed to load events: {error_msg}")
+            self.toast.emit("error", f"Failed to load events: {error_msg}")
             self.eventsLoaded.emit([])
-    
+            self._watchdog.unregister_worker(worker_id)
+        
+        # Create and start worker
+        worker = CancellableWorker(worker_id, load_task, timeout_ms=10000)
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+        
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+        
+        logger.info("Loading events asynchronously...")
+
     @Slot(str, bool)
     def runNetworkScan(self, target: str, fast: bool = True):
         """
-        Run network scan on target.
-        
+        Run network scan on target (async with caching).
+
         Args:
             target: IP address, hostname, or CIDR range
             fast: Quick scan (True) or comprehensive (False)
@@ -123,39 +163,89 @@ class BackendBridge(QObject):
         if not self.net_scanner:
             self.toast.emit("error", "Network scanning not available (Nmap not installed)")
             return
-        
+
         if not target:
             self.toast.emit("error", "Target cannot be empty")
             return
         
-        self.toast.emit("info", f"Starting network scan: {target}")
+        # Check cache first
+        from ..core.result_cache import ResultCache
+        cache_key = ResultCache.make_key("nmap", target, fast=fast)
+        cached_result = self._cache.get(cache_key)
         
-        try:
-            # Run scan (blocking - in production use threading)
+        if cached_result:
+            logger.info(f"Network scan cache hit for {target}")
+            self.scanFinished.emit("network", cached_result)
+            self.toast.emit("info", f"Loaded cached scan for {target}")
+            return
+
+        worker_id = f"nmap-{target}"
+        
+        def scan_task(worker):
+            """Background scan task"""
+            worker.signals.heartbeat.emit(worker_id)
+            self.toast.emit("info", f"Starting network scan: {target}")
+            
             result = self.net_scanner.scan(target, fast)
+            worker.signals.heartbeat.emit(worker_id)
             
-            # Create scan record
-            scan_rec = ScanRecord(
-                id=None,
-                started_at=datetime.now(),
-                finished_at=datetime.now(),
-                type=ScanType.NETWORK,
-                target=target,
-                status=result.get("status", "completed"),
-                findings=result,
-                meta={"fast": fast}
-            )
-            
-            # Save to database
-            scan_id = self.scan_repo.add(scan_rec)
-            result["scan_id"] = scan_id
-            
-            self.scanFinished.emit("network", result)
-            self.toast.emit("success", f"Network scan completed: {len(result.get('hosts', []))} hosts found")
+            return result
         
-        except Exception as e:
-            self.toast.emit("error", f"Network scan failed: {str(e)}")
-            self.scanFinished.emit("network", {"error": str(e)})
+        def on_success(wid, result):
+            """Scan completed"""
+            try:
+                # Create scan record
+                scan_rec = ScanRecord(
+                    id=None,
+                    started_at=datetime.now(),
+                    finished_at=datetime.now(),
+                    type=ScanType.NETWORK,
+                    target=target,
+                    status=result.get("status", "completed"),
+                    findings=result,
+                    meta={"fast": fast}
+                )
+                
+                # Save to database
+                scan_id = self.scan_repo.add(scan_rec)
+                result["scan_id"] = scan_id
+                
+                # Cache result (30 min TTL)
+                self._cache.set(cache_key, result, ttl_seconds=1800)
+                
+                self.scanFinished.emit("network", result)
+                self.toast.emit("success", f"Network scan completed: {len(result.get('hosts', []))} hosts found")
+                
+            finally:
+                self._watchdog.unregister_worker(worker_id)
+        
+        def on_error(wid, error_msg):
+            """Scan failed"""
+            logger.error(f"Network scan failed: {error_msg}")
+            self.toast.emit("error", f"Network scan failed: {error_msg}")
+            self.scanFinished.emit("network", {"error": error_msg})
+            self._watchdog.unregister_worker(worker_id)
+        
+        # Create and start worker
+        worker = CancellableWorker(worker_id, scan_task, timeout_ms=60000)  # 60s timeout
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+        
+        self._active_workers[worker_id] = worker
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+        
+        logger.info(f"Network scan started for {target}")
+    
+    def _on_worker_stalled(self, worker_id: str):
+        """Handle stalled worker (watchdog notification)"""
+        logger.warning(f"Worker stalled: {worker_id}")
+        self.toast.emit("warning", f"Task '{worker_id}' appears to be stalled")
+        
+        # Attempt to cancel
+        if worker_id in self._active_workers:
+            self._active_workers[worker_id].cancel()
+            del self._active_workers[worker_id]
     
     @Slot(result=bool)
     def nmapAvailable(self):

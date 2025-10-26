@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import QtCore
 import "components"
 import "pages"
-import "ui"
+import "theme"
 
 ApplicationWindow {
     id: window
@@ -13,30 +13,30 @@ ApplicationWindow {
     height: 900
     minimumWidth: 800
     minimumHeight: 600
-    title: "Sentinel - Endpoint Security Suite"
-    color: ThemeManager.background()
-    
+    title: "Sentinel - Endpoint Security Suite v1.0.0"
+    color: Theme.bg
+
     // Smooth theme transition
     Behavior on color {
-        ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
+        ColorAnimation { duration: Theme.duration.medium; easing.type: Easing.InOutQuad }
     }
-    
+
     property bool sidebarCollapsed: false
-    property int sidebarWidth: sidebarCollapsed ? 80 : 250
-    
+    property int sidebarWidth: sidebarCollapsed ? Theme.spacing.xl * 4 : Theme.spacing.xl * 12
+
     // Settings persistence
     Settings {
         id: appSettings
-        property string themeMode: "system"
+        property string themeMode: "dark"
     }
-    
+
     // Global toast manager
     ToastManager {
         id: globalToast
         anchors.fill: parent
-        z: 1000
+        z: Theme.zIndex.toast
     }
-    
+
     // Global snapshot data storage
     property var globalSnapshotData: ({
         "cpu": {"usage": 0, "freq_current": 0, "core_count": 0},
@@ -45,7 +45,7 @@ ApplicationWindow {
         "net": {"send_rate": 0, "recv_rate": 0},
         "disk": {"used": 0, "total": 0, "percent": 0}
     })
-    
+
       // Listen for backend updates globally
     Connections {
         target: typeof Backend !== 'undefined' ? Backend : null
@@ -57,18 +57,15 @@ ApplicationWindow {
         function onToast(level, message) {
             globalToast.show(level, message)
         }
-    }    Component.onCompleted: {
+    }
+
+    Component.onCompleted: {
         // Restore saved theme
         var savedTheme = appSettings.themeMode
         if (savedTheme) {
-            ThemeManager.themeMode = savedTheme
+            Theme.themeMode = savedTheme
         }
-        
-        // Save theme changes
-        ThemeManager.themeModeChanged.connect(function() {
-            appSettings.themeMode = ThemeManager.themeMode
-        })
-        
+
         // Start live monitoring immediately when app loads
         if (typeof Backend !== 'undefined') {
             Backend.startLive()
@@ -77,8 +74,14 @@ ApplicationWindow {
             console.log("⚠ Backend not available")
         }
     }
-    
-    // Keyboard shortcuts
+
+    // Save theme changes
+    Connections {
+        target: Theme
+        function onThemeModeChanged() {
+            appSettings.themeMode = Theme.themeMode
+        }
+    }    // Keyboard shortcuts
     Shortcut {
         sequence: "Ctrl+1"
         onActivated: sidebar.setCurrentIndex(0)
@@ -113,85 +116,64 @@ ApplicationWindow {
     }
     
     Behavior on sidebarWidth {
-        NumberAnimation { duration: Theme.duration_fast; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.duration.fast; easing.type: Easing.OutCubic }
     }
-    
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        
+
         TopStatusBar {
             Layout.fillWidth: true
+            Layout.preferredHeight: implicitHeight
         }
-        
+
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
-            
+
             SidebarNav {
                 id: sidebar
                 Layout.preferredWidth: sidebarWidth
                 Layout.fillHeight: true
-                
+
                 onNavigationChanged: function(index) {
                     stackView.replace(pageComponents[index])
                 }
             }
-            
+
             StackView {
                 id: stackView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 initialItem: pageComponents[0]
-                
-                pushEnter: Transition {
-                    // Slide the incoming page from the right (no opacity animation here)
-                    NumberAnimation {
-                        property: "x"
-                        from: stackView.width * 0.06
-                        to: 0
-                        duration: 220
-                        easing.type: Easing.OutCubic
-                    }
-                }
-                
-                pushExit: Transition {
-                    // No opacity animation to avoid conflicts
-                }
-                
+
                 replaceEnter: Transition {
-                    // Slide the incoming page from the right (no opacity animation here)
                     NumberAnimation {
-                        property: "x"
-                        from: stackView.width * 0.06
-                        to: 0
-                        duration: 220
+                        property: "opacity"
+                        from: 0.0
+                        to: 1.0
+                        duration: Theme.duration_fast
                         easing.type: Easing.OutCubic
                     }
                 }
-                
+
                 replaceExit: Transition {
-                    // No opacity animation to avoid conflicts
-                }
-                
-                popExit: Transition {
-                    // Slide the outgoing page to the right (no opacity animation here)
                     NumberAnimation {
-                        property: "x"
-                        from: 0
-                        to: stackView.width * 0.06
-                        duration: 180
+                        property: "opacity"
+                        from: 1.0
+                        to: 0.0
+                        duration: Theme.duration_fast
                         easing.type: Easing.InCubic
                     }
                 }
             }
         }
-    }
-    
-    property list<Component> pageComponents: [
+    }    property list<Component> pageComponents: [
         Component { EventViewer {} },
         Component { SystemSnapshot {} },
+        Component { GPUMonitoring {} },
         Component { ScanHistory {} },
         Component { NetworkScan {} },
         Component { ScanTool {} },
