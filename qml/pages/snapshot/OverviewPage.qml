@@ -35,6 +35,10 @@ AppSurface {
             width: Math.max(800, parent.parent.width - Theme.spacing.md * 4)
             spacing: Theme.spacing.lg
 
+            Component.onCompleted: {
+                // Ensure layout is properly initialized
+            }
+
             PageHeader {
                 title: "System Overview"
                 subtitle: "Quick health check and key metrics"

@@ -29,6 +29,10 @@ AppSurface {
             topPadding: 0
             bottomPadding: 120
 
+            Component.onCompleted: {
+                // Ensure layout is properly initialized
+            }
+
         PageHeader {
             title: "Network Usage"
             subtitle: "Live throughput & adapter details"

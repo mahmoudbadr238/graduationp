@@ -43,6 +43,10 @@ AppSurface {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Theme.spacing.lg
 
+                Component.onCompleted: {
+                    // Ensure layout is properly initialized
+                }
+
                 PageHeader {
                     title: "Hardware Usage"
                     subtitle: "Live system performance"

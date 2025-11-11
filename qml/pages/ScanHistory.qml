@@ -204,13 +204,13 @@ AppSurface {
                                     }
                                 }
                                 Text {
-                                    text: model.status
+                                    text: model.status || ""
                                     color: {
                                         switch(model.statusType) {
                                             case "success": return Theme.success
                                             case "warning": return Theme.warning
                                             case "info": return Theme.primary
-                                            default: return Theme.muted
+                                            default: return Theme.textSecondary
                                         }
                                     }
                                     font.pixelSize: Theme.typography.body.size

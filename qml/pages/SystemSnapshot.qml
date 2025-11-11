@@ -1,4 +1,4 @@
-﻿import QtQuick 2.15
+import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../components"
@@ -39,8 +39,8 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: Theme.type.body
-                        color: parent.checked ? "white" : Theme.muted
+                        font.pixelSize: Theme.typography.body.size
+                        color: parent.checked ? "white" : Theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap
@@ -65,8 +65,8 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: Theme.type.body
-                        color: parent.checked ? "white" : Theme.muted
+                        font.pixelSize: Theme.typography.body.size
+                        color: parent.checked ? "white" : Theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap
@@ -91,8 +91,8 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: Theme.type.body
-                        color: parent.checked ? "white" : Theme.muted
+                        font.pixelSize: Theme.typography.body.size
+                        color: parent.checked ? "white" : Theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap
@@ -117,8 +117,8 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: Theme.type.body
-                        color: parent.checked ? "white" : Theme.muted
+                        font.pixelSize: Theme.typography.body.size
+                        color: parent.checked ? "white" : Theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap
@@ -143,8 +143,8 @@ AppSurface {
 
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: Theme.type.body
-                        color: parent.checked ? "white" : Theme.muted
+                        font.pixelSize: Theme.typography.body.size
+                        color: parent.checked ? "white" : Theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap

@@ -108,7 +108,7 @@ AppSurface {
                                 text: parent.text
                                 color: Theme.text
                                 font.pixelSize: Theme.typography.body.size
-                                leftPadding: parent.indicator.width + parent.spacing
+                                leftPadding: (parent.indicator ? parent.indicator.width : 0) + parent.spacing
                                 verticalAlignment: Text.AlignVCenter
                                 
                                 Behavior on color {
