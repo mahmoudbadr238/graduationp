@@ -102,9 +102,8 @@ jobs:
         
       - name: Run Bandit Security Scan
         run: |
-          python -m bandit -r app/ -f json -o bandit-report.json || true
-          python -m bandit -r app/ -ll
-        continue-on-error: true
+          python -m bandit -s B101 -r app/ main.py -f json -o bandit-report.json || true
+          python -m bandit -s B101 -r app/ main.py -ll
         
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4

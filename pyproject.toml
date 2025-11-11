@@ -209,3 +209,19 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "psutil"
 ignore_missing_imports = false  # We have types-psutil
+
+# ============================================================================
+# BANDIT - Security Linting
+# ============================================================================
+[tool.bandit]
+skips = [
+    "B101",  # Skip assert_used warnings (assert is normal in tests and Qt apps)
+]
+exclude_dirs = [
+    ".venv",
+    "venv",
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+]

@@ -1,4 +1,5 @@
 """Unit tests for service implementations."""
+# nosec B101 - assert statements are expected in pytest test files
 
 import os
 import tempfile

@@ -4,7 +4,7 @@ import builtins
 import contextlib
 import logging
 import platform
-import subprocess
+import subprocess  # nosec B404 - subprocess required for Windows security checks (PowerShell, netsh, manage-bde)
 from typing import Any
 
 import psutil
@@ -569,7 +569,7 @@ class PsutilSystemMonitor(ISystemMonitor):
         try:
             # Check Windows Defender status
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607 - fixed PowerShell command, no user input
                     [
                         "powershell",
                         "-Command",
@@ -592,7 +592,7 @@ class PsutilSystemMonitor(ISystemMonitor):
 
             # Check Firewall status
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607 - fixed netsh command, no user input
                     ["netsh", "advfirewall", "show", "allprofiles", "state"],
                     check=False,
                     capture_output=True,
@@ -630,7 +630,7 @@ class PsutilSystemMonitor(ISystemMonitor):
 
             # Check BitLocker status (basic check)
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607 - fixed manage-bde command, no user input
                     ["manage-bde", "-status", "C:"],
                     check=False,
                     capture_output=True,
@@ -650,7 +650,7 @@ class PsutilSystemMonitor(ISystemMonitor):
 
             # Check TPM status (requires admin)
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607 - fixed PowerShell command, no user input
                     [
                         "powershell",
                         "-Command",
@@ -670,7 +670,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     tpm_present = result.stdout.strip().lower() == "true"
                     if tpm_present:
                         # Check if TPM is enabled and ready
-                        result2 = subprocess.run(
+                        result2 = subprocess.run(  # nosec B603 B607 - fixed PowerShell command, no user input
                             [
                                 "powershell",
                                 "-Command",
@@ -702,7 +702,7 @@ class PsutilSystemMonitor(ISystemMonitor):
 
             # Check Secure Boot status (requires admin)
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 B607 - fixed PowerShell command, no user input
                     ["powershell", "-Command", "Confirm-SecureBootUEFI"],
                     check=False,
                     capture_output=True,

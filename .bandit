@@ -1,0 +1,8 @@
+# Bandit Security Scanner Configuration
+# https://bandit.readthedocs.io/en/latest/config.html
+
+# Skip B101 (assert_used) - assert statements are normal in test files (pytest)
+# and Qt applications. Bandit should be run with: bandit -s B101 -r app/ main.py
+
+tests: ['B101']
+skips: ['B101']

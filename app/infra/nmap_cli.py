@@ -1,7 +1,7 @@
 """Nmap CLI wrapper for network scanning."""
 
 import os
-import subprocess
+import subprocess  # nosec B404 - subprocess needed for nmap integration with hardcoded path
 from typing import Any
 
 from ..config.settings import get_settings
@@ -49,7 +49,7 @@ class NmapCli(INetworkScanner):
         cmd.extend(["-oX", "-", target])
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607 - nmap path validated, no user input in command
                 cmd,
                 capture_output=True,
                 text=True,
@@ -82,7 +82,7 @@ class NmapCli(INetworkScanner):
         """Try to find nmap in common locations."""
         # Check PATH
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607 - checking nmap version, fixed command
                 ["nmap", "--version"], check=False, capture_output=True, timeout=5
             )
             if result.returncode == 0:

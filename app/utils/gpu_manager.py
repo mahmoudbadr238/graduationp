@@ -8,7 +8,7 @@ import builtins
 import contextlib
 import logging
 import platform
-import subprocess
+import subprocess  # nosec B404 - subprocess needed for pip install automation with fixed arguments
 import sys
 import time
 from dataclasses import dataclass
@@ -79,7 +79,7 @@ class LibraryInstaller:
             try:
                 # Attempt auto-install
                 logger.info(f"Auto-installing {package}...")
-                subprocess.check_call(
+                subprocess.check_call(  # nosec B603 - fixed pip command with validated package name
                     [sys.executable, "-m", "pip", "install", package, "--quiet"]
                 )
                 logger.info(f"✅ Successfully installed {package}")
