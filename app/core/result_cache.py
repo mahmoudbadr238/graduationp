@@ -129,7 +129,7 @@ class ResultCache:
                         pass
 
             self._persist_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._persist_path, "w") as f:
+            with open(self._persist_path, "w", encoding="utf-8") as f:
                 json.dump(serializable, f, indent=2)
 
         except Exception as e:
@@ -138,7 +138,7 @@ class ResultCache:
     def _load_from_disk(self):
         """Load cache from JSON"""
         try:
-            with open(self._persist_path) as f:
+            with open(self._persist_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             now = datetime.now()

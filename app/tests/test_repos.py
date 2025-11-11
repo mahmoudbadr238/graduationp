@@ -25,9 +25,28 @@ def temp_repo():
 
     yield repo
 
-    # Cleanup
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    # Cleanup - Windows requires explicit connection closure before file deletion
+    # Force garbage collection to close any lingering SQLite connections
+    import gc
+    import sqlite3
+
+    repo = None  # Release reference to repo object
+    gc.collect()  # Force garbage collection
+
+    # On Windows, SQLite may keep file locks - retry deletion with small delay
+    import time
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            if os.path.exists(db_path):
+                os.remove(db_path)
+            break
+        except PermissionError:
+            if attempt < max_retries - 1:
+                time.sleep(0.1)  # Wait 100ms before retry
+                gc.collect()  # Try GC again
+            # On final attempt, just pass - temp files will be cleaned by OS eventually
 
 
 class TestSqliteRepo:
