@@ -1,8 +1,44 @@
 ﻿pragma Singleton
 import QtQuick
+import QtQuick.Window
 
 QtObject {
     id: themeRoot
+    
+    // ============================================================
+    // RESPONSIVE SCALING SYSTEM
+    // ============================================================
+    // DPI-aware scaling
+    readonly property real dp: Screen.devicePixelRatio ?? 1.0
+    readonly property real basePixelSize: Qt.application.font.pixelSize ?? 12
+    property real scaleFactor: 1.0  // Can be adjusted for accessibility
+    
+    // RESPONSIVE WIDTH BREAKPOINTS (in pixels)
+    readonly property QtObject breakpoints: QtObject {
+        readonly property int phone_small: 320
+        readonly property int phone: 375
+        readonly property int phone_large: 414
+        readonly property int tablet: 768
+        readonly property int laptop: 1024
+        readonly property int desktop: 1366
+        readonly property int wide: 1920
+        readonly property int ultrawide: 2560
+    }
+    
+    // MINIMUM WINDOW SIZES
+    readonly property int window_min_width: 1024
+    readonly property int window_min_height: 640
+    
+    // Helper function: detect current breakpoint
+    function currentBreakpoint(width) {
+        if (width < breakpoints.phone_large) return "phone_small"
+        if (width < breakpoints.tablet) return "phone"
+        if (width < breakpoints.laptop) return "tablet"
+        if (width < breakpoints.desktop) return "laptop"
+        if (width < breakpoints.wide) return "desktop"
+        if (width < breakpoints.ultrawide) return "wide"
+        return "ultrawide"
+    }
 
     // ============================================================
     // THEME MODE MANAGEMENT
@@ -264,4 +300,24 @@ QtObject {
         readonly property int padding: spacing_lg
         readonly property int radius: radii_lg
     }
+    
+    // ============================================================
+    // RESPONSIVE CONTROL SIZING
+    // ============================================================
+    // Control height scale (responsive to DPI and base font)
+    readonly property int control_height_sm: Math.ceil(28 * dp)    // compact
+    readonly property int control_height_md: Math.ceil(36 * dp)    // standard
+    readonly property int control_height_lg: Math.ceil(44 * dp)    // large
+    readonly property int control_height_xl: Math.ceil(56 * dp)    // full-height
+    
+    // Minimum control widths
+    readonly property int control_width_min: Math.ceil(200 * dp)
+    readonly property int control_width_max: Math.ceil(600 * dp)
+    
+    // ============================================================
+    // TEXT CONFIGURATION
+    // ============================================================
+    // Standard text wrapping for responsive layouts
+    readonly property int text_wrap_mode: Text.WordWrap
+    readonly property bool text_elide_enabled: true
 }

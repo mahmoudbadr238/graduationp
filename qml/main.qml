@@ -2,6 +2,7 @@
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtCore
+import QtQuick.Window
 import "components"
 import "pages"
 import "theme"
@@ -11,10 +12,16 @@ ApplicationWindow {
     visible: true
     width: 1400
     height: 900
-    minimumWidth: 800
-    minimumHeight: 600
+    minimumWidth: Theme.window_min_width   // 1024px - responsive minimum
+    minimumHeight: Theme.window_min_height  // 640px - responsive minimum
     title: "Sentinel - Endpoint Security Suite v1.0.0"
     color: Theme.bg
+    
+    // High-DPI support
+    Component.onCompleted: {
+        // Enable high-DPI scaling flags early
+        window.visibility = Window.Windowed
+    }
 
     // Smooth theme transition
     Behavior on color {

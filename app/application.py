@@ -81,6 +81,12 @@ class DesktopSecurityApplication:
         # Add QML import paths
         qml_path = os.path.join(workspace_root, "qml")
         self.engine.addImportPath(qml_path)
+        
+        # Add subdirectories for component imports
+        self.engine.addImportPath(os.path.join(qml_path, "components"))
+        self.engine.addImportPath(os.path.join(qml_path, "theme"))
+        self.engine.addImportPath(os.path.join(qml_path, "pages"))
+        self.engine.addImportPath(os.path.join(qml_path, "ux"))  # For Theme singleton
 
         # Set QML context properties for component paths
         components_path = os.path.join(qml_path, "components").replace("\\", "/")

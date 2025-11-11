@@ -28,9 +28,10 @@ Rectangle {
     }
     
     RowLayout {
-        anchors.fill: parent
-        anchors.leftMargin: Theme.spacing.md
-        anchors.rightMargin: Theme.spacing.md
+        anchors {
+            fill: parent
+            margins: Theme.spacing.md
+        }
         spacing: Theme.spacing.md
         
         Image {
