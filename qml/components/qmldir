@@ -1,6 +1,7 @@
 ﻿
 Card 1.0 Card.qml
 AppSurface 1.0 AppSurface.qml
+PageWrapper 1.0 PageWrapper.qml
 AlertTriangle 1.0 AlertTriangle.qml
 TopStatusBar 1.0 TopStatusBar.qml
 SidebarNav 1.0 SidebarNav.qml

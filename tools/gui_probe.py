@@ -12,13 +12,16 @@ import logging
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlEngine, QQmlComponent
-from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect, QtMessageHandler
+from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect, qInstallMessageHandler
 from PySide6.QtGui import QGuiApplication, QScreen
 import signal
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
+
+# Global warning capture
+_warning_capture = None
 
 # CRITICAL 14 VIEWPORT SIZES - MUST ALL PASS
 TEST_SIZES = [
@@ -38,30 +41,10 @@ TEST_SIZES = [
     (3440, 1440),  # Ultrawide 32:9
 ]
 
-class QMLWarningCapture:
-    """Capture QML warnings into a list"""
-    def __init__(self):
-        self.warnings = []
-        
-    def message_handler(self, msgType, context, message):
-        """Qt message handler callback"""
-        if 'qml' in message.lower() or 'anchor' in message.lower() or 'layout' in message.lower():
-            self.warnings.append({
-                'type': msgType,
-                'message': message,
-                'file': context.file,
-                'line': context.line
-            })
-    
-    def clear(self):
-        """Clear warnings for next test"""
-        self.warnings = []
-
 class GUIProbe:
     def __init__(self):
         self.app = None
         self.engine = None
-        self.warning_capture = QMLWarningCapture()
         self.results = {
             'passed': [],
             'failed': [],
@@ -71,7 +54,7 @@ class GUIProbe:
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         
     def init_app(self):
-        """Initialize PySide6 application with warning capture"""
+        """Initialize PySide6 application"""
         # Enable high-DPI scaling
         QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -81,10 +64,6 @@ class GUIProbe:
         
         self.app = QGuiApplication(sys.argv)
         self.engine = QQmlEngine()
-        
-        # Install warning handler
-        from PySide6.QtCore import qInstallMessageHandler
-        qInstallMessageHandler(self.warning_capture.message_handler)
         
         # Add QML import paths
         qml_root = Path(__file__).parent.parent / 'qml'
@@ -120,9 +99,6 @@ class GUIProbe:
         size_str = f"{width}x{height}"
         log.info(f"Testing viewport: {size_str}")
         
-        # Clear warnings from previous test
-        self.warning_capture.clear()
-        
         try:
             window = self.load_qml('main.qml')
             if not window:
@@ -144,13 +120,10 @@ class GUIProbe:
             # Check for layout issues
             issues = self._check_layout(window)
             
-            # Collect all violations for this size
-            violations = issues + [w['message'] for w in self.warning_capture.warnings]
-            
-            if violations:
-                self.results['warnings_by_size'][size_str] = violations
-                for violation in violations:
-                    log.warning(f"  ⚠ {size_str}: {violation}")
+            if issues:
+                self.results['warnings_by_size'][size_str] = issues
+                for issue in issues:
+                    log.warning(f"  ⚠ {size_str}: {issue}")
             
             # Take screenshot
             screenshot_path = self.artifacts_dir / f"{size_str}.png"
@@ -166,7 +139,7 @@ class GUIProbe:
             window.deleteLater()
             
             self.results['passed'].append(size_str)
-            return len(violations) == 0
+            return len(issues) == 0
             
         except Exception as e:
             log.error(f"  ✗ Error testing {size_str}: {e}")

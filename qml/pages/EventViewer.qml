@@ -4,40 +4,46 @@ import QtQuick.Layouts 1.15
 import "../components"
 import "../theme"
 
-AppSurface {
+PageWrapper {
     id: root
     
-    // Glassmorphic background gradient
-    Rectangle {
-        anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Theme.bg }
-            GradientStop { position: 1.0; color: Qt.darker(Theme.bg, 1.1) }
-        }
-    }
-
-    // Event list model
-    ListModel {
-        id: eventModel
-    }
-
-    // Connect to backend
-    Connections {
-        target: typeof Backend !== 'undefined' ? Backend : null
-
-        function onEventsLoaded(events) {
-            eventModel.clear()
-            for (var i = 0; i < events.length; i++) {
-                eventModel.append(events[i])
+    sourceComponent: Component {
+        Item {
+            // Event list model  
+            ListModel {
+                id: eventModel
             }
-        }
 
-        function onToast(level, message) {
-            console.log("[" + level + "] " + message)
-        }
-    }
+            // Connect to backend
+            Connections {
+                target: typeof Backend !== 'undefined' ? Backend : null
 
-    ScrollView {
+                function onEventsLoaded(events) {
+                    eventModel.clear()
+                    for (var i = 0; i < events.length; i++) {
+                        eventModel.append(events[i])
+                    }
+                }
+
+                function onToast(level, message) {
+                    console.log("[" + level + "] " + message)
+                }
+            }
+            
+            AppSurface {
+                id: content
+                anchors.fill: parent
+                
+                // Glassmorphic background gradient
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Theme.bg }
+                        GradientStop { position: 1.0; color: Qt.darker(Theme.bg, 1.1) }
+                    }
+                }
+
+            ScrollView {
         anchors.fill: parent
         anchors.margins: Theme.spacing_m
         clip: true
@@ -369,14 +375,16 @@ AppSurface {
             }
         }
     }
-    } // Item wrapper
 
-    Component.onCompleted: {
-        // Auto-load events when page opens (with delay to ensure Backend is ready)
-        Qt.callLater(function() {
-            if (typeof Backend !== 'undefined' && Backend) {
-                Backend.loadRecentEvents()
+            Component.onCompleted: {
+                // Auto-load events when page opens (with delay to ensure Backend is ready)
+                Qt.callLater(function() {
+                    if (typeof Backend !== 'undefined' && Backend) {
+                        Backend.loadRecentEvents()
+                    }
+                })
             }
-        })
-    } // ScrollView
+            }  // Close AppSurface
+        }  // Close Item wrapper
+    }  // Close Component
 }

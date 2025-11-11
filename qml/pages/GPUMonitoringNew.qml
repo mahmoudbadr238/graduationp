@@ -12,15 +12,7 @@ PageWrapper {
     id: root
     
     sourceComponent: Component {
-        AppSurface {
-            id: content
-            
-            // Background
-            Rectangle {
-                anchors.fill: parent
-                color: Theme.bg
-            }
-            
+        Item {
             // Update metrics when service emits
             Connections {
                 target: typeof GPUService !== 'undefined' ? GPUService : null
@@ -35,6 +27,16 @@ PageWrapper {
                     console.error("GPU Service Error:", title, message)
                 }
             }
+            
+            AppSurface {
+                id: content
+                anchors.fill: parent
+                
+                // Background
+                Rectangle {
+                    anchors.fill: parent
+                    color: Theme.bg
+                }
             
             ScrollView {
                 anchors.fill: parent
@@ -297,6 +299,7 @@ PageWrapper {
                 if (vendor === "Intel") return "🔵"
                 return "🎮"
             }
-        }
+            }  // Close AppSurface
+        }  // Close Item wrapper
     }
 }
