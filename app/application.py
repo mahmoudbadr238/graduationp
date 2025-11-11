@@ -38,6 +38,13 @@ class DesktopSecurityApplication:
         # Set application properties
         self.app.setApplicationName("Sentinel")
         self.app.setOrganizationName("SecuritySuite")
+        # Ensure QSettings has required identifiers
+        # organizationDomain is required on some platforms to initialize QSettings
+        try:
+            self.app.setOrganizationDomain("sentinel.local")
+        except Exception:
+            # Non-critical: if setting domain fails, continue with defaults
+            pass
 
         # Configure thread pool for background tasks
         self.thread_pool = QThreadPool.globalInstance()

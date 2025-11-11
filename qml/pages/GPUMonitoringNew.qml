@@ -13,6 +13,65 @@ PageWrapper {
     
     sourceComponent: Component {
         Item {
+            id: pageItem
+            
+            // Helper functions (accessible to all children)
+            function getStatusText() {
+                if (typeof GPUService === 'undefined') return "Service unavailable"
+                var count = GPUService.gpuCount
+                var interval = GPUService.updateInterval / 1000.0
+                return count + " GPU(s) detected • Updates every " + interval.toFixed(1) + "s"
+            }
+            
+            function getStatusLabel() {
+                if (typeof GPUService === 'undefined') return "UNAVAILABLE"
+                var status = GPUService.status
+                if (status === 'running') return "ACTIVE"
+                if (status === 'stopped') return "STOPPED"
+                if (status === 'starting') return "STARTING"
+                if (status === 'degraded') return "DEGRADED"
+                if (status === 'breaker-open') return "DISABLED"
+                return status.toUpperCase()
+            }
+            
+            function getStatusColor() {
+                if (typeof GPUService === 'undefined') return Qt.rgba(0.5, 0.5, 0.5, 0.2)
+                var status = GPUService.status
+                if (status === 'running') return Qt.rgba(0.3, 0.8, 0.4, 0.2)
+                if (status === 'breaker-open' || status === 'degraded') return Qt.rgba(0.8, 0.3, 0.2, 0.2)
+                return Qt.rgba(0.8, 0.6, 0.2, 0.2)
+            }
+            
+            function getEmptyStateTitle() {
+                if (typeof GPUService === 'undefined') return "GPU Service Unavailable"
+                var status = GPUService.status
+                if (status === 'stopped') return "Monitoring Paused"
+                if (status === 'breaker-open') return "Service Disabled"
+                return "No Compatible GPUs Found"
+            }
+            
+            function getEmptyStateMessage() {
+                if (typeof GPUService === 'undefined') return "GPU service failed to initialize"
+                var status = GPUService.status
+                if (status === 'breaker-open') return "Too many failures - restart app to retry"
+                if (status === 'stopped') return "Monitoring will start when page is active"
+                return "No compatible GPUs found on this system"
+            }
+            
+            function getVendorColor(vendor) {
+                if (vendor === "NVIDIA") return "#76b900"
+                if (vendor === "AMD") return "#ed1c24"
+                if (vendor === "Intel") return "#0071c5"
+                return Theme.primary
+            }
+            
+            function getVendorIcon(vendor) {
+                if (vendor === "NVIDIA") return "🟢"
+                if (vendor === "AMD") return "🔴"
+                if (vendor === "Intel") return "🔵"
+                return "🎮"
+            }
+            
             // Update metrics when service emits
             Connections {
                 target: typeof GPUService !== 'undefined' ? GPUService : null
@@ -241,63 +300,6 @@ PageWrapper {
                         }
                     }
                 }
-            }
-            
-            // Helper functions
-            function getStatusText() {
-                if (typeof GPUService === 'undefined') return "Service unavailable"
-                var count = GPUService.gpuCount
-                var interval = GPUService.updateInterval / 1000.0
-                return count + " GPU(s) detected • Updates every " + interval.toFixed(1) + "s"
-            }
-            
-            function getStatusLabel() {
-                if (typeof GPUService === 'undefined') return "UNAVAILABLE"
-                var status = GPUService.status
-                if (status === 'running') return "ACTIVE"
-                if (status === 'stopped') return "STOPPED"
-                if (status === 'starting') return "STARTING"
-                if (status === 'degraded') return "DEGRADED"
-                if (status === 'breaker-open') return "DISABLED"
-                return status.toUpperCase()
-            }
-            
-            function getStatusColor() {
-                if (typeof GPUService === 'undefined') return Qt.rgba(0.5, 0.5, 0.5, 0.2)
-                var status = GPUService.status
-                if (status === 'running') return Qt.rgba(0.3, 0.8, 0.4, 0.2)
-                if (status === 'breaker-open' || status === 'degraded') return Qt.rgba(0.8, 0.3, 0.2, 0.2)
-                return Qt.rgba(0.8, 0.6, 0.2, 0.2)
-            }
-            
-            function getEmptyStateTitle() {
-                if (typeof GPUService === 'undefined') return "Service Unavailable"
-                var status = GPUService.status
-                if (status === 'breaker-open') return "GPU Monitoring Disabled"
-                if (status === 'stopped') return "GPU Monitoring Stopped"
-                return "No GPUs Detected"
-            }
-            
-            function getEmptyStateMessage() {
-                if (typeof GPUService === 'undefined') return "GPU service failed to initialize"
-                var status = GPUService.status
-                if (status === 'breaker-open') return "Too many failures - restart app to retry"
-                if (status === 'stopped') return "Monitoring will start when page is active"
-                return "No compatible GPUs found on this system"
-            }
-            
-            function getVendorColor(vendor) {
-                if (vendor === "NVIDIA") return "#76b900"
-                if (vendor === "AMD") return "#ed1c24"
-                if (vendor === "Intel") return "#0071c5"
-                return Theme.primary
-            }
-            
-            function getVendorIcon(vendor) {
-                if (vendor === "NVIDIA") return "🟢"
-                if (vendor === "AMD") return "🔴"
-                if (vendor === "Intel") return "🔵"
-                return "🎮"
             }
             }  // Close AppSurface
         }  // Close Item wrapper

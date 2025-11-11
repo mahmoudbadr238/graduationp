@@ -99,6 +99,13 @@ QtObject {
     readonly property int spacing_lg: 24   // 3 units
     readonly property int spacing_xl: 32   // 4 units
     readonly property int spacing_xxl: 48  // 6 units
+
+    // Backwards-compatibility aliases (older code uses spacing_m / spacing_l etc.)
+    readonly property int spacing_xs_compat: spacing_xs
+    readonly property int spacing_s: spacing_sm
+    readonly property int spacing_m: spacing_md
+    readonly property int spacing_l: spacing_lg
+    readonly property int spacing_xxl_compat: spacing_xxl
     
     // Legacy aliases (for backward compatibility)
     readonly property int gap: spacing_md

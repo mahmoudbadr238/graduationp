@@ -11,10 +11,11 @@ import json
 import logging
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
-from PySide6.QtQml import QQmlEngine, QQmlComponent
+from PySide6.QtQml import QQmlEngine, QQmlComponent, QQmlApplicationEngine
 from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect, qInstallMessageHandler
 from PySide6.QtGui import QGuiApplication, QScreen
 import signal
+from PySide6.QtCore import QObject, Slot, Signal
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -64,6 +65,78 @@ class GUIProbe:
         
         self.app = QGuiApplication(sys.argv)
         self.engine = QQmlEngine()
+        # Ensure QSettings works when loading QML Settings element
+        try:
+            self.app.setApplicationName("Sentinel")
+            self.app.setOrganizationName("SecuritySuite")
+            self.app.setOrganizationDomain("sentinel.local")
+        except Exception:
+            pass
+        # Expose a minimal Backend stub so QML pages that reference Backend don't error during probe
+        class BackendStub(QObject):
+            # Provide the signals that QML Connections may hook into
+            snapshotUpdated = Signal(object)
+            toast = Signal(str, str)
+            eventsLoaded = Signal(object)
+
+            def __init__(self):
+                super().__init__()
+
+            @Slot()
+            def startLive(self):
+                log.info("[probe] BackendStub.startLive called")
+                # Emit a minimal snapshot update so pages depending on snapshot data don't error
+                sample = {"cpu": {"usage": 0, "percent": 0}, "mem": {"used": 0, "total": 0}}
+                try:
+                    self.snapshotUpdated.emit(sample)
+                except Exception:
+                    pass
+
+            @Slot()
+            def loadRecentEvents(self):
+                log.info("[probe] BackendStub.loadRecentEvents called")
+                # Emit eventsLoaded and a harmless toast to satisfy listeners
+                sample_events = []
+                try:
+                    self.eventsLoaded.emit(sample_events)
+                except Exception:
+                    pass
+                try:
+                    self.toast.emit("info", "probe: events loaded")
+                except Exception:
+                    pass
+
+            @Slot()
+            def stopLive(self):
+                log.info("[probe] BackendStub.stopLive called")
+
+        # Keep a reference to the stub on the probe instance to avoid GC
+        try:
+            self.backend_stub = BackendStub()
+            self.engine.rootContext().setContextProperty("Backend", self.backend_stub)
+        except Exception:
+            # If rootContext not available yet, we will set Backend before loading component
+            self.backend_stub = None
+
+        # Provide a minimal GPUService stub so GPU pages can bind safely
+        class GPUServiceStub(QObject):
+            def __init__(self):
+                super().__init__()
+                self.gpuCount = 0
+
+            @Slot(int)
+            def start(self, interval_ms):
+                log.info(f"[probe] GPUServiceStub.start({interval_ms})")
+
+            @Slot(int, result='QVariant')
+            def getGPUMetrics(self, index):
+                return None
+
+        try:
+            self.gpu_service_stub = GPUServiceStub()
+            self.engine.rootContext().setContextProperty("GPUService", self.gpu_service_stub)
+        except Exception:
+            self.gpu_service_stub = None
         
         # Add QML import paths
         qml_root = Path(__file__).parent.parent / 'qml'
@@ -80,18 +153,35 @@ class GUIProbe:
         if not qml_path.exists():
             log.error(f"QML file not found: {qml_path}")
             return None
-            
-        component = QQmlComponent(self.engine, QUrl.fromLocalFile(str(qml_path)))
-        if component.isError():
-            for error in component.errors():
-                log.error(f"QML Error: {error.toString()}")
+
+        # Create a temporary QQmlApplicationEngine for each test to isolate state
+        temp_engine = QQmlApplicationEngine()
+        # Copy import paths from the main engine
+        for p in self.engine.importPathList():
+            temp_engine.addImportPath(p)
+
+        # Expose probe's stubs to the temp engine context
+        try:
+            temp_engine.rootContext().setContextProperty("Backend", getattr(self, 'backend_stub', None))
+            temp_engine.rootContext().setContextProperty("GPUService", getattr(self, 'gpu_service_stub', None))
+        except Exception:
+            pass
+
+        # Load QML file
+        temp_engine.load(QUrl.fromLocalFile(str(qml_path)))
+        if not temp_engine.rootObjects():
+            # Collect and log errors if any
+            # QQmlApplicationEngine writes errors to warnings; no direct API for errors here
+            log.error("Failed to load QML via temporary QQmlApplicationEngine")
             return None
-            
-        window = component.create()
-        if not window:
-            log.error("Failed to create QML window instance")
-            return None
-            
+
+        window = temp_engine.rootObjects()[0]
+        # Keep a reference to engine on the window to prevent premature GC
+        try:
+            window.setProperty("__probe_engine", temp_engine)
+        except Exception:
+            pass
+
         return window
         
     def test_size(self, width, height):
