@@ -53,21 +53,21 @@ class BackendBridge(QObject):
         # Optional integrations (may fail if disabled/missing)
         try:
             self.net_scanner = DI.resolve(INetworkScanner)
-        except (IntegrationDisabled, ExternalToolMissing) as e:
+        except (IntegrationDisabled, ExternalToolMissing):
             self.net_scanner = None
-            logger.warning(f"Network scanner disabled: {e}")
+            # Silenced - status printed at startup via integrations.py
 
         try:
             self.file_scanner = DI.resolve(IFileScanner)
-        except IntegrationDisabled as e:
+        except IntegrationDisabled:
             self.file_scanner = None
-            logger.warning(f"File scanner disabled: {e}")
+            # Silenced - status printed at startup via integrations.py
 
         try:
             self.url_scanner = DI.resolve(IUrlScanner)
-        except IntegrationDisabled as e:
+        except IntegrationDisabled:
             self.url_scanner = None
-            logger.warning(f"URL scanner disabled: {e}")
+            # Silenced - status printed at startup via integrations.py
 
         # Timer for live updates (throttled to 1s)
         self.live_timer = QTimer()

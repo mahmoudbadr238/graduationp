@@ -10,6 +10,8 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from .core.container import configure
 from .core.startup_orchestrator import StartupOrchestrator
+from .infra.integrations import print_integration_status
+from .infra.privileges import is_admin
 from .ui.backend_bridge import BackendBridge
 from .ui.gpu_service import get_gpu_service
 
@@ -89,19 +91,24 @@ class DesktopSecurityApplication:
             configure()
             print("[OK] Dependency injection container configured")
 
-            # DEFERRED: Backend bridge (100ms after UI loads)
-            def init_backend():
-                try:
-                    self.backend = BackendBridge()
-                    root_context = self.engine.rootContext()
-                    root_context.setContextProperty("Backend", self.backend)
-                    print("[OK] Backend bridge created")
-                    self.backend.startLive()  # Auto-start monitoring
-                except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] Backend initialization failed: {e}")
-                    self.backend = None
+            # IMMEDIATE: Create backend instance (but defer heavy initialization)
+            # This allows QML to reference Backend immediately on load
+            self.backend = BackendBridge()
+            # Register backend BEFORE loading QML to avoid "Backend not available" warnings
+            self.engine.rootContext().setContextProperty("Backend", self.backend)
 
-            self.orchestrator.schedule_deferred(100, "Backend Bridge", init_backend)
+            # DEFERRED: Heavy backend initialization (100ms after startup)
+            def init_backend_heavy():
+                try:
+                    # Start live monitoring after UI is ready
+                    self.backend.startLive()
+                    print("[OK] Backend monitoring started")
+                except (ImportError, RuntimeError, OSError) as e:
+                    print(f"[WARNING] Backend monitoring failed: {e}")
+
+            self.orchestrator.schedule_deferred(
+                100, "Backend Monitoring", init_backend_heavy
+            )
 
             # DEFERRED: GPU service (300ms after UI loads, non-blocking)
             def init_gpu():
@@ -146,16 +153,15 @@ class DesktopSecurityApplication:
     def run(self):
         """Run the application."""
         try:
-            # Check admin rights
-            try:
-                username = psutil.Process().username().lower()
-                if not username.endswith("administrator"):
-                    print(
-                        "[WARNING] Warning: Not running with administrative privileges"
-                    )
-                    print("  Some security features may be limited")
-            except (OSError, AttributeError):
-                print("[WARNING] Warning: Could not check administrative privileges")
+            # Check admin rights - single source of truth
+            if not is_admin():
+                print("[WARNING] Not running with administrative privileges")
+                print("  Some security features may be limited")
+            else:
+                print("[OK] Running with administrator privileges")
+
+            # Print integration status (nmap, VT, etc.)
+            print_integration_status()
 
             # Create QML engine and load UI
             self._create_qml_engine()

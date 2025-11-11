@@ -11,7 +11,10 @@ import "../theme"
  */
 Item {
     id: root
-    anchors.fill: parent
+    // Don't use anchors.fill here - StackView manages size automatically
+    // This prevents "conflicting anchors" warning in StackView transitions
+    width: parent ? parent.width : 0
+    height: parent ? parent.height : 0
     
     property alias sourceComponent: loader.sourceComponent
     property bool showLoading: true

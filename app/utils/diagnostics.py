@@ -23,6 +23,16 @@ def run_diagnostics() -> int:
     print(f"  OS: {platform.system()} {platform.release()} ({platform.machine()})")
     print(f"  Python: {sys.version.split()[0]}")
     print(f"  Executable: {sys.executable}")
+
+    # Admin status
+    try:
+        from app.infra.privileges import is_admin
+
+        admin_status = "✓ Administrator" if is_admin() else "⚠ Standard user"
+        print(f"  Privileges: {admin_status}")
+    except ImportError:
+        print("  Privileges: ⚠ Could not determine")
+
     print()
 
     # Version info
@@ -107,6 +117,24 @@ def run_diagnostics() -> int:
     # Database path
     db_path = Path.home() / ".sentinel"
     print(f"  ✓ Database dir: {db_path}")
+
+    # Optional integrations
+    print()
+    print("Optional Integrations:")
+    try:
+        from app.infra.integrations import nmap_available, virustotal_enabled
+
+        if nmap_available():
+            print("  ✓ Nmap: Available for network scanning")
+        else:
+            print("  ⚠ Nmap: Not found (network scanning disabled)")
+
+        if virustotal_enabled():
+            print("  ✓ VirusTotal: API key configured")
+        else:
+            print("  ⚠ VirusTotal: VT_API_KEY not set (file/URL scanning limited)")
+    except ImportError as e:
+        print(f"  ⚠ Could not check integrations: {e}")
 
     print()
     if all_ok:
