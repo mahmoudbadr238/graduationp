@@ -101,14 +101,14 @@ def collect_nvidia_metrics(nvml_enabled: bool) -> list[dict[str, Any]]:
                 power_limit = 0.0
                 try:
                     power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
-                except Exception:  # noqa: BLE001, S110 - GPU-specific error, expected failure
+                except Exception:  # nosec B110 - GPU-specific error, expected failure; noqa: BLE001, S110
                     pass  # Power usage not supported on this GPU
 
                 try:
                     power_limit = (
                         pynvml.nvmlDeviceGetPowerManagementLimit(handle) / 1000.0
                     )
-                except Exception:  # noqa: BLE001, S110 - GPU-specific error, expected failure
+                except Exception:  # nosec B110 - GPU-specific error, expected failure; noqa: BLE001, S110
                     pass  # Power limit not supported on this GPU
 
                 # Fan (safe)
