@@ -16,12 +16,6 @@ ApplicationWindow {
     minimumHeight: Theme.window_min_height  // 640px - responsive minimum
     title: "Sentinel - Endpoint Security Suite v1.0.0"
     color: Theme.bg
-    
-    // High-DPI support
-    Component.onCompleted: {
-        // Enable high-DPI scaling flags early
-        window.visibility = Window.Windowed
-    }
 
     // Smooth theme transition
     Behavior on color {
