@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import "../ui"
+import "../theme"
 
 Button {
     id: control

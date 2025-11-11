@@ -1,87 +1,63 @@
 # Pre-commit hooks for Sentinel Desktop Security Suite
-# Install: pip install pre-commit && pre-commit install
+# Install: pre-commit install
 # Run manually: pre-commit run --all-files
 
-default_language_version:
-  python: python3.11
-
 repos:
-  # Python code formatting
-  - repo: https://github.com/psf/black
-    rev: 24.3.0
-    hooks:
-      - id: black
-        name: Black (Python formatter)
-        language_version: python3
-        args: [--line-length=120]
-
-  # Import sorting
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        name: isort (Import sorter)
-        args: [--profile=black, --line-length=120]
-
-  # Python linting (Ruff - fast alternative to flake8)
+  # Ruff - Fast Python linter and formatter (replaces black, isort, flake8)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.4
+    rev: v0.1.9
     hooks:
+      # Run the linter
       - id: ruff
-        name: Ruff (Python linter)
         args: [--fix, --exit-non-zero-on-fix]
+        name: ruff-lint
+      # Run the formatter
+      - id: ruff-format
+        name: ruff-format
 
-  # Type checking (MyPy)
+  # Mypy - Static type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+    rev: v1.7.1
     hooks:
       - id: mypy
-        name: MyPy (Type checker)
         additional_dependencies:
-          - PySide6-stubs
           - types-psutil
-        args:
-          - --ignore-missing-imports
-          - --no-strict-optional
-          - app
+          - types-pywin32
+        args: [--config-file=pyproject.toml, --no-error-summary]
+        files: ^app/
 
-  # General file checks
+  # General file quality checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
-        name: Trim trailing whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
-        name: Fix end of files
-      - id: check-yaml
-        name: Check YAML syntax
-      - id: check-json
-        name: Check JSON syntax
-      - id: check-toml
-        name: Check TOML syntax
       - id: check-added-large-files
-        name: Check for large files
-        args: [--maxkb=1000]
+        args: [--maxkb=10240]
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: debug-statements
       - id: mixed-line-ending
-        name: Fix line endings
-        args: [--fix=lf]
+        args: [--fix=auto]
 
-  # Security checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.8
-    hooks:
-      - id: bandit
-        name: Bandit (Security linter)
-        args: [-r, app, -ll, -i]
-        exclude: ^app/tests/
+default_language_version:
+  python: python3.11
 
-# Optional: QML linting (requires Qt tools installed)
-# Uncomment if qmllint is available in your environment
-# - repo: local
-#   hooks:
-#     - id: qmllint
-#       name: QML Linting
-#       entry: qmllint
-#       language: system
-#       files: \.qml$
-#       pass_filenames: true
+default_stages: [commit, push]
+fail_fast: false
+
+exclude: |
+  (?x)^(
+      build/.*|
+      dist/.*|
+      \.venv/.*|
+      venv/.*|
+      __pycache__/.*|
+      \.mypy_cache/.*|
+      \.pytest_cache/.*|
+      \.git/.*
+  )$

@@ -11,7 +11,9 @@ if __name__ == "__main__":
     
     # Check for admin privileges and auto-elevate if needed
     # This ensures full access to Security event logs
-    if not AdminPrivileges.is_admin():
+    skip_uac = os.environ.get("SKIP_UAC", "").lower() in ("1", "true", "yes")
+    
+    if not AdminPrivileges.is_admin() and not skip_uac:
         print("[WARNING] Administrator privileges required for full functionality")
         print("  Requesting UAC elevation...")
 
@@ -20,7 +22,9 @@ if __name__ == "__main__":
 
         # If we're still here, user declined or it failed
         print("[WARNING] Elevation declined or failed. Continuing with limited access...")
-        print("  Some features (Security event logs) may be unavailable.\n")
+        print("  Some features may be unavailable.\n")
+    elif skip_uac:
+        print("[DEBUG] Skipping UAC (SKIP_UAC=1)\n")
     else:
         print("[OK] Running with administrator privileges\n")
 

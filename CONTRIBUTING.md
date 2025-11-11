@@ -99,6 +99,118 @@ git push origin feature/amazing-feature
 
 ## 🎨 Code Style Guidelines
 
+## 🎯 Code Quality Standards
+
+Sentinel maintains professional code quality standards using automated tooling and manual review.
+
+### Setup Development Tools
+
+1. **Install development dependencies:**
+```bash
+pip install -r requirements.txt
+pip install ruff mypy pre-commit types-psutil types-pywin32
+```
+
+2. **Install pre-commit hooks:**
+```bash
+pre-commit install
+```
+
+This will automatically run quality checks before each commit.
+
+### Linting with Ruff
+
+We use **Ruff** for fast, comprehensive Python linting and formatting.
+
+**Run linter:**
+```bash
+python -m ruff check app/
+```
+
+**Auto-fix issues:**
+```bash
+python -m ruff check app/ --fix
+```
+
+**Format code:**
+```bash
+python -m ruff format app/
+```
+
+**Configuration:** See `pyproject.toml` for ruff settings.
+
+**Key Rules:**
+- Line length: 88 characters (Black-compatible)
+- Import sorting: Automatic with isort integration
+- Complexity limits: Max 12 McCabe complexity, 8 function arguments
+- Security checks: Enabled via Bandit integration
+- Modern Python: Enforced Python 3.11+ patterns
+
+### Type Checking with MyPy
+
+We use **MyPy** in strict mode for comprehensive type safety.
+
+**Run type checker:**
+```bash
+python -m mypy app/
+```
+
+**Expected Standards:**
+- All functions must have type hints
+- No `Any` types without justification
+- Strict mode enabled
+- PySide6 imports may show warnings (expected)
+
+**Configuration:** See `[tool.mypy]` section in `pyproject.toml`.
+
+### Pre-commit Hooks
+
+Pre-commit hooks run automatically before each commit and include:
+
+- **Ruff linting** - Code quality checks with auto-fix
+- **Ruff formatting** - Consistent code style
+- **MyPy** - Type checking
+- **Trailing whitespace** - Remove extra spaces
+- **End-of-file fixer** - Ensure newline at EOF
+- **YAML/JSON/TOML validation** - Config file syntax
+- **Merge conflict detection** - Prevent accidental commits
+- **Debug statement detection** - Catch leftover breakpoints
+
+**Run manually on all files:**
+```bash
+pre-commit run --all-files
+```
+
+**Skip hooks (emergency only):**
+```bash
+git commit --no-verify
+```
+
+### Continuous Integration
+
+GitHub Actions automatically runs quality checks on every push and PR:
+
+- ✅ Ruff linting
+- ✅ Ruff formatting check
+- ✅ MyPy type checking  
+- ✅ Bandit security scan
+- ✅ Dependency vulnerability check
+- ✅ Application import verification
+
+See `.github/workflows/quality.yml` for full CI configuration.
+
+### Code Quality Metrics
+
+**Target Standards:**
+- Ruff violations: < 50 per 1000 lines
+- MyPy coverage: 100% of public functions
+- Security issues: 0 high/critical
+- Test coverage: > 80% (when tests added)
+
+**Current Status:**
+- Run `python -m ruff check app/ --statistics` for current metrics
+- See GitHub Actions for automated reports
+
 ### Python
 - Follow PEP 8 style guide
 - Use type hints where applicable

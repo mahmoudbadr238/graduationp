@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import "../ui"
+import "../theme"
 
 Rectangle {
     id: toast
@@ -17,10 +18,10 @@ Rectangle {
     
     color: {
         switch(toastType) {
-            case "success": return ThemeManager.success
-            case "warning": return ThemeManager.warning
-            case "danger": return ThemeManager.danger
-            default: return ThemeManager.accent
+            case "success": return Theme.success
+            case "warning": return Theme.warning
+            case "danger": return Theme.danger
+            default: return Theme.accent
         }
     }
     

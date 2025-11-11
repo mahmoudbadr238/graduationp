@@ -3,10 +3,11 @@ Startup Orchestrator - Manages deferred initialization and background loading
 Prevents UI blocking during app launch by scheduling non-critical tasks
 """
 
-from PySide6.QtCore import QObject, QTimer, Signal, QThreadPool, QRunnable, Slot
-from typing import Callable, Any, Optional, List
 import logging
 import time
+from collections.abc import Callable
+
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class StartupTask(QRunnable):
             logger.info(f"[StartupTask] Completed: {self.name} ({elapsed:.0f}ms)")
             self.signals.completed.emit(self.name)
         except Exception as e:
-            logger.error(f"[StartupTask] Failed {self.name}: {e}")
+            logger.exception(f"[StartupTask] Failed {self.name}: {e}")
             self.signals.failed.emit(self.name, str(e))
 
 
@@ -59,7 +60,7 @@ class StartupOrchestrator(QObject):
         self._tasks_completed = 0
         self._tasks_failed = 0
         self._total_tasks = 0
-        self._task_names: List[str] = []
+        self._task_names: list[str] = []
 
     def schedule_immediate(self, name: str, func: Callable, *args, **kwargs):
         """Execute immediately on current thread"""
@@ -71,13 +72,15 @@ class StartupOrchestrator(QObject):
             logger.info(f"[Immediate] Completed {name} ({elapsed:.0f}ms)")
             self.taskCompleted.emit(name)
         except Exception as e:
-            logger.error(f"[Immediate] Failed {name}: {e}")
+            logger.exception(f"[Immediate] Failed {name}: {e}")
             self.taskFailed.emit(name, str(e))
 
-    def schedule_deferred(self, delay_ms: int, name: str, func: Callable, *args, **kwargs):
+    def schedule_deferred(
+        self, delay_ms: int, name: str, func: Callable, *args, **kwargs
+    ):
         """Schedule to run after delay on UI thread"""
         self._task_names.append(name)
-        
+
         def execute():
             start_time = time.time()
             try:
@@ -87,16 +90,18 @@ class StartupOrchestrator(QObject):
                 logger.info(f"[Deferred] Completed {name} ({elapsed:.0f}ms)")
                 self.taskCompleted.emit(name)
             except Exception as e:
-                logger.error(f"[Deferred] Failed {name}: {e}")
+                logger.exception(f"[Deferred] Failed {name}: {e}")
                 self.taskFailed.emit(name, str(e))
-        
+
         QTimer.singleShot(delay_ms, execute)
 
-    def schedule_background(self, delay_ms: int, name: str, func: Callable, *args, **kwargs):
+    def schedule_background(
+        self, delay_ms: int, name: str, func: Callable, *args, **kwargs
+    ):
         """Schedule to run in background thread pool"""
         self._total_tasks += 1
         self._task_names.append(name)
-        
+
         def execute():
             task = StartupTask(name, func, *args, **kwargs)
             task.signals.completed.connect(self._on_task_completed)
@@ -121,16 +126,18 @@ class StartupOrchestrator(QObject):
         """Check if all tasks are done"""
         total = self._tasks_completed + self._tasks_failed
         if total >= self._total_tasks and self._total_tasks > 0:
-            logger.info(f"[Startup] All tasks completed ({self._tasks_completed} succeeded, {self._tasks_failed} failed)")
+            logger.info(
+                f"[Startup] All tasks completed ({self._tasks_completed} succeeded, {self._tasks_failed} failed)"
+            )
             self.startupComplete.emit()
 
     def wait_for_completion(self, timeout_ms: int = 30000) -> bool:
         """
         Block until all background tasks complete (for testing).
-        
+
         Args:
             timeout_ms: Maximum wait time
-            
+
         Returns:
             True if completed, False if timeout
         """

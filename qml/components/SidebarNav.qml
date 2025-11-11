@@ -1,6 +1,7 @@
-﻿import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
+﻿import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+import "../theme"
 
 Rectangle {
     id: root
@@ -37,6 +38,7 @@ Rectangle {
                 model: ListModel {
                     ListElement { label: "Event Viewer"; icon: "" }
                     ListElement { label: "System Snapshot"; icon: "" }
+                    ListElement { label: "GPU Monitoring"; icon: "" }
                     ListElement { label: "Scan History"; icon: "" }
                     ListElement { label: "Network Scan"; icon: "" }
                     ListElement { label: "Scan Tool"; icon: "" }

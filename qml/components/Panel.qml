@@ -2,6 +2,7 @@
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
+import "../theme"
 
 Item {
     id: panel

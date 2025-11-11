@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.15
 import QtCore
 import "../components"
 import "../ui"
+import "../theme"
 
 AppSurface {
     id: root

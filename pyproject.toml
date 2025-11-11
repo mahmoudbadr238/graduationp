@@ -1,0 +1,211 @@
+[project]
+name = "sentinel"
+version = "1.0.0"
+description = "Endpoint Security Suite - Professional security monitoring application"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Sentinel Team"}
+]
+dependencies = [
+    "PySide6>=6.6.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+    "types-psutil>=5.9.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+# ============================================================================
+# RUFF - Linting and Formatting
+# ============================================================================
+[tool.ruff]
+# Target Python 3.11+
+target-version = "py311"
+
+# Line length (Black-compatible)
+line-length = 88
+
+# Include/exclude patterns
+include = ["app/**/*.py", "*.py"]
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".mypy_cache",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint]
+# Enable extensive rule sets for professional code quality
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade (modernize Python syntax)
+    "YTT",    # flake8-2020
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit (security)
+    "BLE",    # flake8-blind-except
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "COM",    # flake8-commas
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "G",      # flake8-logging-format
+    "PIE",    # flake8-pie
+    "T20",    # flake8-print
+    "PYI",    # flake8-pyi
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise
+    "RET",    # flake8-return
+    "SLF",    # flake8-self
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate (commented code)
+    "PL",     # Pylint
+    "TRY",    # tryceratops
+    "FLY",    # flynt (string formatting)
+    "PERF",   # Perflint (performance)
+    "RUF",    # Ruff-specific rules
+]
+
+  # Ignore specific rules that may conflict with PySide6/Qt patterns
+  ignore = [
+      "S101",    # Allow assert statements (used in Qt development)
+      "PLR0913", # Too many arguments (Qt signals/slots pattern)
+      "PLR2004", # Magic value comparison (common in Qt properties)
+      "T201",    # Allow print statements (used for logging before logger setup)
+      "EM101",   # Allow string literals in exceptions
+      "EM102",   # Allow f-string in exceptions
+      "TRY003",  # Allow long exception messages
+      "COM812",  # May conflict with formatter
+      "ISC001",  # May conflict with formatter
+      "S607",    # Subprocess with partial path - needed for system tools
+      "PTH",     # Path library recommendations - os.path is fine for compatibility
+      "ERA001",  # Commented code - sometimes useful for documentation
+      "ARG",     # Unused arguments - required for Qt slots/signals
+      "PLW0603", # Global statements - needed for singleton pattern
+      "SLF001",  # Private member access - needed for Qt/library internals
+      "TRY300",  # Consider else - overly strict, reduces readability
+      "TRY301",  # Raise in try - sometimes necessary
+      "TRY203",  # Useless try-except-raise - false positives
+      "SIM105",  # Contextlib suppress - less readable than try-except
+      "PLC0415", # Import outside top-level - needed for optional dependencies
+      "PERF401", # Manual list comprehension - sometimes more readable
+      "PLR0912", # Too many branches - unavoidable in complex business logic
+      "PLR0915", # Too many statements - unavoidable in initialization code
+      "RUF012",  # Mutable class default - intentional for Qt properties
+      "S112",    # Try-except-continue - valid pattern for skipping errors
+      "S603",    # Subprocess without shell - false positive with check_call
+      "S608",    # Hardcoded SQL - using parameterized queries safely
+      "B025",    # Duplicate exception - intentional for layered error handling
+      "N806",    # Non-lowercase variable - Qt/enum constants use UPPER_CASE
+      "N818",    # Error suffix on exception name - not always applicable
+      "N815",    # Mixed-case class variable - Qt Signal names require camelCase
+      "DTZ005",  # Datetime without timezone - local times are acceptable
+      "DTZ006",  # Datetime from timestamp - local times are acceptable
+      "F401",    # Unused import - used for availability checks
+      "G004",    # Logging f-string - modern Python idiom, readable
+      "TRY401",  # Verbose logging - including exception in message is informative
+      "E501",    # Line too long - some lines unavoidably exceed 88 chars
+  ]# Complexity thresholds
+mccabe = {max-complexity = 12}
+pylint = {max-args = 8, max-branches = 15}
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can have additional flexibility
+"test_*.py" = ["S101", "ARG001", "PLR2004"]
+# __init__.py files can have unused imports
+"__init__.py" = ["F401"]
+# Qt/QML files need camelCase for Signal names and Slot methods
+"app/ui/*.py" = ["N802", "N815"]  # Allow camelCase function names and class variables for Qt
+"app/gpu/*.py" = ["E501"]  # GPU telemetry has some unavoidable long lines
+# Relative imports are acceptable within app package
+"app/**/*.py" = ["TID252"]
+
+[tool.ruff.lint.isort]
+# Import sorting configuration
+known-first-party = ["app"]
+known-third-party = ["PySide6", "psutil"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.lint.pydocstyle]
+# Docstring conventions (Google style)
+convention = "google"
+
+[tool.ruff.format]
+# Black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ============================================================================
+# MYPY - Type Checking
+# ============================================================================
+[tool.mypy]
+# Strict mode enabled for professional quality
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+check_untyped_defs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+strict_equality = true
+strict_concatenate = true
+
+# Include/exclude paths
+files = ["app/**/*.py", "*.py"]
+exclude = [
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+]
+
+# Show error codes
+show_error_codes = true
+show_column_numbers = true
+show_error_context = true
+pretty = true
+
+# PySide6 stubs may not be perfect, allow some flexibility
+[[tool.mypy.overrides]]
+module = "PySide6.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "psutil"
+ignore_missing_imports = false  # We have types-psutil

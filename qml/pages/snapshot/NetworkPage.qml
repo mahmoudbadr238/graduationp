@@ -1,28 +1,38 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import "../../components"
+import "../../theme"
 
-Column {
+AppSurface {
     id: root
-    spacing: 18
-    anchors.fill: parent
-    anchors.margins: 24
 
     // This property will be set by SystemSnapshot.qml Loader
     property var snapshotData: ({
         "net": {
-            "send_rate_mbps": 0, 
+            "send_rate_mbps": 0,
             "recv_rate_mbps": 0,
             "send_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
             "recv_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
             "adapters": []
         }
     })
-    
-    PageHeader {
-        title: "Network Usage"
-        subtitle: "Live throughput & adapter details"
-    }
+
+    ScrollView {
+        anchors.fill: parent
+        anchors.margins: Theme.spacing_md
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        Column {
+            spacing: 18
+            width: Math.max(800, parent.width - 48)
+            topPadding: 0
+            bottomPadding: 120
+
+        PageHeader {
+            title: "Network Usage"
+            subtitle: "Live throughput & adapter details"
+        }
     
     Row {
         spacing: 18
@@ -128,51 +138,123 @@ Column {
             }
         }
     }
-    
+
+    // Adapter Details Section
     AnimatedCard {
-        width: parent.width - 48
-        implicitHeight: 120
-        
+        width: parent.width
+        implicitHeight: adapterColumn.height + 80
+
         Column {
-            spacing: 10
-            width: parent.width
-            
+            id: adapterColumn
+            width: parent.width - 40
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 20
+            anchors.bottomMargin: 20
+            spacing: 16
+
             Text {
                 text: "Adapter Details"
                 color: Theme.text
-                font.pixelSize: 16
+                font.pixelSize: 18
                 font.bold: true
-                
-                Behavior on color {
-                    ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                }
             }
-            
-            Text {
-                text: {
-                    if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.adapters && root.snapshotData.net.adapters.length > 0) {
-                        var adapter = root.snapshotData.net.adapters[0];
-                        var name = adapter.name || "Unknown";
-                        var ips = [];
-                        if (adapter.addresses) {
-                            for (var i = 0; i < adapter.addresses.length; i++) {
-                                if (adapter.addresses[i].address) {
-                                    ips.push(adapter.addresses[i].address);
+
+            Repeater {
+                model: root.snapshotData.net && root.snapshotData.net.adapters ? 
+                       root.snapshotData.net.adapters : []
+
+                Rectangle {
+                    width: parent.width
+                    height: adapterItem.height + 24
+                    color: Theme.surface
+                    radius: 8
+                    border.color: Theme.border
+                    border.width: 1
+
+                    Row {
+                        id: adapterItem
+                        width: parent.width - 32
+                        anchors.centerIn: parent
+                        spacing: 16
+
+                        // Status indicator
+                        Rectangle {
+                            width: 10
+                            height: 10
+                            radius: 5
+                            color: modelData.is_up ? Theme.success : Theme.error
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // Adapter info
+                        Column {
+                            spacing: 4
+                            width: parent.width - 26
+
+                            Row {
+                                spacing: 12
+                                width: parent.width
+
+                                Text {
+                                    text: modelData.name
+                                    color: Theme.text
+                                    font.pixelSize: 14
+                                    font.weight: Font.Medium
+                                    elide: Text.ElideRight
+                                    width: Math.min(implicitWidth, parent.width - 80)
+                                }
+
+                                Rectangle {
+                                    height: 18
+                                    width: statusLabel.width + 12
+                                    radius: 9
+                                    color: modelData.is_up ? Theme.success + "20" : Theme.error + "20"
+                                    border.color: modelData.is_up ? Theme.success : Theme.error
+                                    border.width: 1
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    Text {
+                                        id: statusLabel
+                                        anchors.centerIn: parent
+                                        text: modelData.is_up ? "Active" : "Inactive"
+                                        color: modelData.is_up ? Theme.success : Theme.error
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                    }
                                 }
                             }
-                        }
-                        return name + (ips.length > 0 ? " — " + ips.join(", ") : "");
-                    }
-                    return "No network adapters detected";
-                }
-                color: Theme.muted
-                wrapMode: Text.Wrap
-                width: parent.width - 40
-                font.pixelSize: 14
 
-                Behavior on color {
-                    ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
+                            Text {
+                                text: {
+                                    var ips = [];
+                                    if (modelData.addresses && modelData.addresses.length > 0) {
+                                        for (var i = 0; i < modelData.addresses.length; i++) {
+                                            ips.push(modelData.addresses[i].address);
+                                        }
+                                        return ips.join(", ");
+                                    }
+                                    return "No IP configured";
+                                }
+                                color: Theme.textSecondary
+                                font.pixelSize: 12
+                                font.family: "Consolas"
+                                elide: Text.ElideRight
+                                width: parent.width
+                            }
+                        }
+                    }
                 }
+            }
+
+            // Empty state
+            Text {
+                visible: !root.snapshotData.net || !root.snapshotData.net.adapters || 
+                         root.snapshotData.net.adapters.length === 0
+                text: "No network adapters found"
+                color: Theme.textSecondary
+                font.pixelSize: 13
+                font.italic: true
             }
         }
     }
@@ -187,6 +269,8 @@ Column {
                 upChart.pushValue(Math.min(1, uploadMbps / 100)); // Normalize to 0-1 range (max 100 Mbps)
                 downChart.pushValue(Math.min(1, downloadMbps / 100));
             }
+        }
+    }
         }
     }
 }

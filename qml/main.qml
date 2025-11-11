@@ -39,11 +39,17 @@ ApplicationWindow {
 
     // Global snapshot data storage
     property var globalSnapshotData: ({
-        "cpu": {"usage": 0, "freq_current": 0, "core_count": 0},
+        "cpu": {"usage": 0, "percent": 0, "freq_current": 0, "core_count": 0},
         "mem": {"used": 0, "total": 0, "percent": 0},
         "gpu": {"available": false, "usage": 0},
-        "net": {"send_rate": 0, "recv_rate": 0},
-        "disk": {"used": 0, "total": 0, "percent": 0}
+        "net": {
+            "send_rate_mbps": 0,
+            "recv_rate_mbps": 0,
+            "send_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "recv_rate": {"value": 0, "unit": "bps", "formatted": "0.00 bps"},
+            "adapters": []
+        },
+        "disks": []
     })
 
       // Listen for backend updates globally
@@ -55,7 +61,8 @@ ApplicationWindow {
         }
 
         function onToast(level, message) {
-            globalToast.show(level, message)
+            // Backend emits (level, message); ToastManager.show expects (message, duration, type)
+            globalToast.show(message, 3000, level)
         }
     }
 
@@ -69,7 +76,7 @@ ApplicationWindow {
         // Start live monitoring immediately when app loads
         if (typeof Backend !== 'undefined') {
             Backend.startLive()
-            console.log("✓ Live monitoring started globally")
+            console.log("✓ Live monitoring started")
         } else {
             console.log("⚠ Backend not available")
         }
@@ -139,16 +146,29 @@ ApplicationWindow {
                 Layout.fillHeight: true
 
                 onNavigationChanged: function(index) {
+                    // GPU service runs continuously for dashboard widget
+                    // Only adjust update interval when navigating to/from GPU page
+                    if (index === 2 && typeof GPUService !== 'undefined') {
+                        // Increase update frequency on GPU monitoring page
+                        GPUService.start(1000)
+                    } else if (stackView.currentItem && typeof GPUService !== 'undefined') {
+                        // Use slower update interval for dashboard widget
+                        var currentIndex = pageComponents.indexOf(stackView.currentItem)
+                        if (currentIndex === 2 && index !== 2) {
+                            GPUService.start(2000)
+                        }
+                    }
+                    
+                    // Replace page
                     stackView.replace(pageComponents[index])
                 }
-            }
-
-            StackView {
+            }            StackView {
                 id: stackView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 initialItem: pageComponents[0]
 
+                // Simple fade transitions (140ms, no anchor conflicts)
                 replaceEnter: Transition {
                     NumberAnimation {
                         property: "opacity"
@@ -173,7 +193,7 @@ ApplicationWindow {
     }    property list<Component> pageComponents: [
         Component { EventViewer {} },
         Component { SystemSnapshot {} },
-        Component { GPUMonitoring {} },
+        Component { GPUMonitoringNew {} },
         Component { ScanHistory {} },
         Component { NetworkScan {} },
         Component { ScanTool {} },

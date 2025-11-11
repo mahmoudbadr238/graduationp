@@ -3,88 +3,163 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../components"
 import "../ui"
+import "../theme"
 
 AppSurface {
     id: root
+    
+    // Glassmorphic background gradient
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Theme.bg }
+            GradientStop { position: 1.0; color: Qt.darker(Theme.bg, 1.1) }
+        }
+    }
+    
     ScrollView {
         anchors.fill: parent
+        anchors.margins: Theme.spacing_md
         clip: true
+        
         ColumnLayout {
             width: Math.max(800, parent.width - Theme.spacing_md * 2)
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Theme.spacing_lg
 
-            Panel {
+            // General Settings Panel with Glassmorphism
+            Rectangle {
                 Layout.fillWidth: true
+                implicitHeight: generalContent.height + Theme.spacing_xl * 2
+                radius: 16
+                color: Theme.glass.panel
+                border.color: Theme.glass.border
+                border.width: 1
+
+                // Neon gradient overlay
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Theme.glass.gradientStart }
+                        GradientStop { position: 1.0; color: Theme.glass.gradientEnd }
+                    }
+                }
+
                 ColumnLayout {
+                    id: generalContent
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spacing_xl * 2
                     spacing: Theme.spacing_md
+                    
                     SectionHeader {
                         title: "General Settings"
                         subtitle: "Startup and system options"
                     }
                 }
             }
-            Panel {
+
+            // Scan Preferences Panel with Glassmorphism
+            Rectangle {
                 Layout.fillWidth: true
+                implicitHeight: scanContent.height + Theme.spacing_xl * 2
+                radius: 16
+                color: Theme.glass.panel
+                border.color: Theme.glass.border
+                border.width: 1
+
                 ColumnLayout {
+                    id: scanContent
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spacing_xl * 2
                     spacing: Theme.spacing_md
+                    
                     SectionHeader {
                         title: "Scan Preferences"
                         subtitle: "Scheduled and depth options"
                     }
                 }
             }
-            Panel {
+
+            // Notification Settings Panel with Glassmorphism
+            Rectangle {
                 Layout.fillWidth: true
+                implicitHeight: notifContent.height + Theme.spacing_xl * 2
+                radius: 16
+                color: Theme.glass.panel
+                border.color: Theme.glass.border
+                border.width: 1
+
                 ColumnLayout {
+                    id: notifContent
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spacing_xl * 2
                     spacing: Theme.spacing_md
+                    
                     SectionHeader {
                         title: "Notification Settings"
                         subtitle: "Notification and alert options"
                     }
                 }
             }
-            
-            // Enhanced Appearance section with Theme Selector
-            Panel {
+
+            // Enhanced Appearance section with Theme Selector and Glassmorphism
+            Rectangle {
                 Layout.fillWidth: true
-                
+                implicitHeight: appearanceContent.height + Theme.spacing_xl * 2
+                radius: 16
+                color: Theme.glass.panel
+                border.color: Theme.glass.borderActive
+                border.width: 2
+
+                // Enhanced neon gradient for appearance section
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Qt.rgba(0.49, 0.36, 1.0, 0.15) }
+                        GradientStop { position: 1.0; color: Theme.glass.gradientEnd }
+                    }
+                }
+
                 ColumnLayout {
+                    id: appearanceContent
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spacing_xl * 2
                     spacing: Theme.spacing_lg
-                    width: parent.width
-                    
+
                     SectionHeader {
                         title: "Appearance"
                         subtitle: "Theme and UI customization"
                     }
-                    
+
                     ColumnLayout {
                         spacing: Theme.spacing_md
                         Layout.fillWidth: true
-                        
+
                         Text {
                             text: "Theme Mode"
                             font.pixelSize: 16
                             font.weight: Font.Medium
-                            color: ThemeManager.foreground()
+                            color: Theme.text
                         }
-                        
+
                         ComboBox {
                             id: themeSelector
                             Layout.preferredWidth: 250
                             model: ["Dark", "Light", "System"]
-                            
+
                             Component.onCompleted: {
                                 // Set initial index based on current theme
-                                if (ThemeManager.themeMode === "dark") currentIndex = 0
-                                else if (ThemeManager.themeMode === "light") currentIndex = 1
+                                if (Theme.themeMode === "dark") currentIndex = 0
+                                else if (Theme.themeMode === "light") currentIndex = 1
                                 else currentIndex = 2
                             }
                             
                             onActivated: function(index) {
                                 var newMode = index === 0 ? "dark" : index === 1 ? "light" : "system"
                                 console.log("Theme changed to:", newMode)
-                                ThemeManager.themeMode = newMode
+                                Theme.themeMode = newMode
                             }
                             
                             delegate: ItemDelegate {
@@ -93,9 +168,9 @@ AppSurface {
                                 highlighted: themeSelector.highlightedIndex === index
                                 
                                 background: Rectangle {
-                                    color: highlighted ? ThemeManager.accent : ThemeManager.panel()
+                                    color: highlighted ? Theme.accent : Theme.panel
                                     radius: 4
-                                    
+
                                     Behavior on color {
                                         ColorAnimation { duration: 140 }
                                     }
@@ -103,7 +178,7 @@ AppSurface {
                                 
                                 contentItem: Text {
                                     text: parent.text
-                                    color: highlighted ? "#ffffff" : ThemeManager.foreground()
+                                    color: highlighted ? "#ffffff" : Theme.text
                                     font: themeSelector.font
                                     elide: Text.ElideRight
                                     verticalAlignment: Text.AlignVCenter
@@ -114,15 +189,15 @@ AppSurface {
                             background: Rectangle {
                                 implicitWidth: 250
                                 implicitHeight: 44
-                                color: ThemeManager.panel()
-                                border.color: themeSelector.activeFocus ? ThemeManager.accent : ThemeManager.border()
+                                color: Theme.panel
+                                border.color: themeSelector.activeFocus ? Theme.accent : Theme.border
                                 border.width: themeSelector.activeFocus ? 2 : 1
                                 radius: 8
-                                
+
                                 Behavior on border.color {
                                     ColorAnimation { duration: 140 }
                                 }
-                                
+
                                 Behavior on color {
                                     ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
                                 }
@@ -134,7 +209,7 @@ AppSurface {
                                 text: themeSelector.displayText
                                 font.pixelSize: 15
                                 font.weight: Font.Medium
-                                color: ThemeManager.foreground()
+                                color: Theme.text
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
@@ -148,7 +223,7 @@ AppSurface {
                                 contextType: "2d"
                                 
                                 Connections {
-                                    target: ThemeManager
+                                    target: Theme
                                     function onThemeModeChanged() {
                                         canvas.requestPaint()
                                     }
@@ -160,7 +235,7 @@ AppSurface {
                                     context.lineTo(width, 0)
                                     context.lineTo(width / 2, height)
                                     context.closePath()
-                                    context.fillStyle = ThemeManager.foreground()
+                                    context.fillStyle = Theme.text
                                     context.fill()
                                 }
                             }
@@ -172,8 +247,8 @@ AppSurface {
                                 padding: 4
                                 
                                 background: Rectangle {
-                                    color: ThemeManager.panel()
-                                    border.color: ThemeManager.border()
+                                    color: Theme.panel
+                                    border.color: Theme.border
                                     border.width: 1
                                     radius: 8
                                 }
@@ -192,7 +267,7 @@ AppSurface {
                         Text {
                             text: "Choose how Sentinel looks. 'System' follows your OS theme preference."
                             font.pixelSize: 14
-                            color: ThemeManager.muted()
+                            color: Theme.muted
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                             Layout.preferredWidth: 500

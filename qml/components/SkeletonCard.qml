@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import "../ui"
+import "../theme"
 
 Rectangle {
     id: skeleton

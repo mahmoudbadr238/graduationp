@@ -1,22 +1,46 @@
-﻿import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../theme"
 
-
-Item {
+Rectangle {
     id: listItem
+    
     property string icon: ""
     property string title: ""
     property string meta: ""
-    width: 1; height: 48
+    property bool hoverable: true
+    
+    implicitWidth: 400
+    implicitHeight: 56
+    color: hoverable && mouseArea.containsMouse ? Theme.hover : "transparent"
+    radius: Theme.radii.md
+    
+    Behavior on color {
+        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+    }
+    
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        hoverEnabled: hoverable
+        cursorShape: Qt.PointingHandCursor
+    }
+    
     RowLayout {
         anchors.fill: parent
-        spacing: Theme.gap
+        anchors.leftMargin: Theme.spacing.md
+        anchors.rightMargin: Theme.spacing.md
+        spacing: Theme.spacing.md
+        
         Image {
+            visible: listItem.icon !== ""
             source: listItem.icon
-            width: 24; height: 24
+            Layout.preferredWidth: 24
+            Layout.preferredHeight: 24
             fillMode: Image.PreserveAspectFit
         }
+        
         Text {
             text: listItem.title
             color: Theme.text
@@ -24,14 +48,23 @@ Item {
             font.weight: Theme.typography.body.weight
             elide: Text.ElideRight
             Layout.fillWidth: true
+            
+            Behavior on color {
+                ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+            }
         }
+        
         Text {
-            text: listItem.meta
-            color: Theme.muted
-            font.pixelSize: Theme.typography.mono.size
-            font.family: "monospace"
-            elide: Text.ElideRight
             visible: listItem.meta !== ""
+            text: listItem.meta
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typography.mono.size
+            font.family: Theme.typography.mono.family
+            elide: Text.ElideRight
+            
+            Behavior on color {
+                ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+            }
         }
     }
 }

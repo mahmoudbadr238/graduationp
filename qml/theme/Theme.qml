@@ -27,6 +27,7 @@ QtObject {
     
     // Text colors
     readonly property color text: isDark() ? "#e6e9f2" : "#1a1b1e"
+    readonly property color textSecondary: isDark() ? "#8B97B0" : "#6c757d"  // Alias for muted
     readonly property color muted: isDark() ? "#8B97B0" : "#6c757d"
     
     // Border colors
@@ -39,6 +40,7 @@ QtObject {
     readonly property color success: "#22C55E"
     readonly property color warning: "#F59E0B"
     readonly property color danger: "#EF4444"
+    readonly property color error: "#EF4444"  // Alias for danger
     
     // Glass/Neon effects
     readonly property color purpleGlow: "#7C5CFF44"
@@ -84,10 +86,10 @@ QtObject {
     readonly property int radii_lg: 18
     readonly property int radii_xl: 24
     readonly property int radii_full: 9999
-    
+
     // Legacy alias
     readonly property int radius: radii_lg
-    
+
     // Nested radii object (modern API)
     readonly property QtObject radii: QtObject {
         readonly property int xs: radii_xs
@@ -96,9 +98,8 @@ QtObject {
         readonly property int lg: radii_lg
         readonly property int xl: radii_xl
         readonly property int full: radii_full
-    }
-
-    // ============================================================
+        readonly property int pill: radii_full  // Pill shape = fully rounded
+    }    // ============================================================
     // TYPOGRAPHY SYSTEM
     // ============================================================
     readonly property QtObject typography: QtObject {
@@ -215,9 +216,15 @@ QtObject {
     }
     
     readonly property QtObject neon: QtObject {
+        readonly property color purple: "#7C5CFF"
+        readonly property color blue: "#3B82F6"
+        readonly property color green: "#22C55E"
         readonly property color purpleGlow: "#7C5CFF44"
         readonly property color blueGlow: "#3B82F644"
         readonly property color greenGlow: "#22C55E44"
+        readonly property color purpleDim: "#7C5CFF22"  // Dimmed purple for backgrounds
+        readonly property color blueDim: "#3B82F622"
+        readonly property color greenDim: "#22C55E22"
     }
 
     // ============================================================
