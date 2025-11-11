@@ -2,6 +2,7 @@
 
 import builtins
 import contextlib
+import logging
 import platform
 import subprocess
 from typing import Any
@@ -10,6 +11,8 @@ import psutil
 
 from ..core.interfaces import ISystemMonitor
 from ..utils.admin import check_admin
+
+logger = logging.getLogger(__name__)
 
 try:
     import pynvml
@@ -79,7 +82,11 @@ class PsutilSystemMonitor(ISystemMonitor):
         return {
             "cpu": self._get_cpu_info(),
             "mem": self._get_memory_info(),
-            "gpu": {"available": False, "gpus": [], "count": 0},  # Stub - use GPUService for real GPU data
+            "gpu": {
+                "available": False,
+                "gpus": [],
+                "count": 0,
+            },  # Stub - use GPUService for real GPU data
             "net": self._get_network_info(),
             "disks": self._get_disk_info(),
             "os": self._get_os_info(),
@@ -124,11 +131,11 @@ class PsutilSystemMonitor(ISystemMonitor):
         import time
 
         current_time = time.time()
-        
+
         # Return cached result if less than 10 seconds old
         if hasattr(self, "_gpu_cache") and (current_time - self._gpu_cache_time) < 10:
             return self._gpu_cache
-        
+
         # Otherwise, call the full GPU detection (this will also cache for 5s internally)
         return self._get_gpu_info()
 
@@ -217,13 +224,18 @@ class PsutilSystemMonitor(ISystemMonitor):
                             "power_usage_watts": power_usage,
                         }
                         detected_gpus.append(gpu_data)
-                    except (RuntimeError, AttributeError, ValueError, Exception):
+                    except (RuntimeError, AttributeError, ValueError, OSError) as e:
+                        # Fix: BLE001 - Use specific exception types (psutil errors + NVML RuntimeError)
                         # NVML GPU query failed - may not support all features
                         # Catches pynvml.NVMLError_Unknown and other NVML errors
+                        logger.debug("GPU query failed for device %d: %s", i, e)
                         continue
-            except (RuntimeError, AttributeError):
+            except (RuntimeError, AttributeError) as e:
+                # Fix: S110 - Log exception instead of pass
                 # NVML device enumeration failed
-                pass  # Method 2: WMI for AMD/Intel/Other GPUs + Performance Counters for AMD usage
+                logger.debug(
+                    "NVML device enumeration failed: %s", e
+                )  # Method 2: WMI for AMD/Intel/Other GPUs + Performance Counters for AMD usage
         if platform.system() == "Windows":
             try:
                 # Use cached WMI connection for performance
