@@ -12,8 +12,8 @@ ApplicationWindow {
     visible: true
     width: 1400
     height: 900
-    minimumWidth: Theme.window_min_width   // 1024px - responsive minimum
-    minimumHeight: Theme.window_min_height  // 640px - responsive minimum
+    minimumWidth: 320     // Allow down to phone sizes for testing
+    minimumHeight: 400    // Minimum height for usability
     title: "Sentinel - Endpoint Security Suite v1.0.0"
     color: Theme.bg
 

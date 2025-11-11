@@ -10,44 +10,41 @@ AppSurface {
     property bool isScanning: false
     property string scanResults: ""
     
-    Item {
-        anchors.fill: parent
+    // Connect to backend
+    Connections {
+        target: typeof Backend !== 'undefined' ? Backend : null
         
-        // Connect to backend
-        Connections {
-            target: typeof Backend !== 'undefined' ? Backend : null
-            
-            function onScanFinished(type, result) {
-                if (type === "network") {
-                    isScanning = false
+        function onScanFinished(type, result) {
+            if (type === "network") {
+                isScanning = false
+                
+                if (result.error) {
+                    scanResults = "Error: " + result.error
+                } else {
+                    scanResults = "Network Scan Results\n"
+                    scanResults += "Target: " + result.target + "\n"
+                    scanResults += "Status: " + result.status + "\n"
+                    scanResults += "Hosts found: " + (result.hosts ? result.hosts.length : 0) + "\n\n"
                     
-                    if (result.error) {
-                        scanResults = "Error: " + result.error
-                    } else {
-                        scanResults = "Network Scan Results\n"
-                        scanResults += "Target: " + result.target + "\n"
-                        scanResults += "Status: " + result.status + "\n"
-                        scanResults += "Hosts found: " + (result.hosts ? result.hosts.length : 0) + "\n\n"
-                        
-                        if (result.hosts && result.hosts.length > 0) {
-                            for (var i = 0; i < result.hosts.length; i++) {
-                                var host = result.hosts[i]
-                                scanResults += "Host " + (i + 1) + ":\n"
-                                scanResults += "  Address: " + host.address + "\n"
-                                scanResults += "  Status: " + host.status + "\n"
-                                if (host.ports_found) {
-                                    scanResults += "  Ports: " + host.ports_found + "\n"
-                                }
-                                scanResults += "\n"
+                    if (result.hosts && result.hosts.length > 0) {
+                        for (var i = 0; i < result.hosts.length; i++) {
+                            var host = result.hosts[i]
+                            scanResults += "Host " + (i + 1) + ":\n"
+                            scanResults += "  Address: " + host.address + "\n"
+                            scanResults += "  Status: " + host.status + "\n"
+                            if (host.ports_found) {
+                                scanResults += "  Ports: " + host.ports_found + "\n"
                             }
+                            scanResults += "\n"
                         }
                     }
                 }
             }
-            
-            function onToast(level, message) {
-                console.log("[" + level + "] " + message)
-            }
+        }
+        
+        function onToast(level, message) {
+            console.log("[" + level + "] " + message)
+        }
         }
     
     ScrollView {
@@ -251,5 +248,5 @@ AppSurface {
             }
         }
     }
-    } // Item wrapper
 }
+

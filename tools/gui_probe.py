@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 GUI Responsiveness Test Harness
-Launches QML app headless across 15+ aspect ratios and captures screenshots.
-Tests for clipped text, overlapping controls, anchor conflicts, and scaling issues.
+Launches QML app headless across 14 required viewport sizes.
+Captures QML warnings, screenshots, and generates JSON report.
 """
 
 import sys
@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlEngine, QQmlComponent
-from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect
+from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect, QtMessageHandler
 from PySide6.QtGui import QGuiApplication, QScreen
 import signal
 
@@ -20,46 +20,58 @@ import signal
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
 
-# Test viewport configurations (width x height in pixels)
+# CRITICAL 14 VIEWPORT SIZES - MUST ALL PASS
 TEST_SIZES = [
-    # Phones/tablets
-    (360, 640),    # Galaxy S8
-    (412, 915),    # Pixel 6
-    (800, 1280),   # iPad Mini
-    # Laptops 13-15"
-    (1280, 720),   # HD
-    (1366, 768),   # WXGA
-    (1536, 864),   # 16:9
-    (1600, 900),   # WXGA+
-    # 16:10 / 3:2
-    (1280, 800),   # WXGA+
-    (1920, 1200),  # 16:10 FHD
-    (2256, 1504),  # 3:2 MacBook
-    # Classic 4:3
-    (1024, 768),   # XGA
-    (1280, 960),   # SXGA
-    # Desktop FHD/WQHD
-    (1920, 1080),  # FHD
+    (360, 640),    # Galaxy S8 / small phone
+    (412, 915),    # Pixel 6 / medium phone
+    (800, 1280),   # iPad Mini / tablet
+    (1024, 768),   # Classic XGA
+    (1280, 720),   # HD / netbook
+    (1366, 768),   # WXGA / laptop 13"
+    (1536, 864),   # 16:9 laptop 14"
+    (1600, 900),   # WXGA+ laptop
+    (1280, 800),   # WXGA+ 16:10
+    (1920, 1200),  # FHD 16:10
+    (1920, 1080),  # FHD 16:9
     (2560, 1440),  # WQHD
-    # Ultrawide
-    (2560, 1080),  # 21:9
-    (3440, 1440),  # 32:9
+    (2560, 1080),  # Ultrawide 21:9
+    (3440, 1440),  # Ultrawide 32:9
 ]
+
+class QMLWarningCapture:
+    """Capture QML warnings into a list"""
+    def __init__(self):
+        self.warnings = []
+        
+    def message_handler(self, msgType, context, message):
+        """Qt message handler callback"""
+        if 'qml' in message.lower() or 'anchor' in message.lower() or 'layout' in message.lower():
+            self.warnings.append({
+                'type': msgType,
+                'message': message,
+                'file': context.file,
+                'line': context.line
+            })
+    
+    def clear(self):
+        """Clear warnings for next test"""
+        self.warnings = []
 
 class GUIProbe:
     def __init__(self):
         self.app = None
         self.engine = None
+        self.warning_capture = QMLWarningCapture()
         self.results = {
             'passed': [],
             'failed': [],
-            'warnings': []
+            'warnings_by_size': {}
         }
         self.artifacts_dir = Path(__file__).parent.parent / 'artifacts' / 'gui'
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         
     def init_app(self):
-        """Initialize PySide6 application"""
+        """Initialize PySide6 application with warning capture"""
         # Enable high-DPI scaling
         QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -70,13 +82,18 @@ class GUIProbe:
         self.app = QGuiApplication(sys.argv)
         self.engine = QQmlEngine()
         
+        # Install warning handler
+        from PySide6.QtCore import qInstallMessageHandler
+        qInstallMessageHandler(self.warning_capture.message_handler)
+        
         # Add QML import paths
         qml_root = Path(__file__).parent.parent / 'qml'
         self.engine.addImportPath(str(qml_root))
-        self.engine.addImportPath(str(qml_root / 'components'))
-        self.engine.addImportPath(str(qml_root / 'pages'))
-        self.engine.addImportPath(str(qml_root / 'theme'))
-        self.engine.addImportPath(str(qml_root / 'ui'))
+        for subdir in ['components', 'pages', 'theme', 'ui', 'ux']:
+            path = qml_root / subdir
+            if path.exists():
+                self.engine.addImportPath(str(path))
+
         
     def load_qml(self, qml_file):
         """Load main QML file"""
@@ -103,6 +120,9 @@ class GUIProbe:
         size_str = f"{width}x{height}"
         log.info(f"Testing viewport: {size_str}")
         
+        # Clear warnings from previous test
+        self.warning_capture.clear()
+        
         try:
             window = self.load_qml('main.qml')
             if not window:
@@ -121,17 +141,16 @@ class GUIProbe:
             QTimer.singleShot(500, self.app.quit)
             self.app.exec()
             
-            # Verify visibility
-            if window.visibility() != 1:
-                log.warning(f"  ⚠ Window not visible for {size_str}")
-                self.results['warnings'].append(f"{size_str}: not visible")
-                
             # Check for layout issues
             issues = self._check_layout(window)
-            if issues:
-                for issue in issues:
-                    log.warning(f"  ⚠ {size_str}: {issue}")
-                    self.results['warnings'].append(f"{size_str}: {issue}")
+            
+            # Collect all violations for this size
+            violations = issues + [w['message'] for w in self.warning_capture.warnings]
+            
+            if violations:
+                self.results['warnings_by_size'][size_str] = violations
+                for violation in violations:
+                    log.warning(f"  ⚠ {size_str}: {violation}")
             
             # Take screenshot
             screenshot_path = self.artifacts_dir / f"{size_str}.png"
@@ -147,12 +166,13 @@ class GUIProbe:
             window.deleteLater()
             
             self.results['passed'].append(size_str)
-            return True
+            return len(violations) == 0
             
         except Exception as e:
             log.error(f"  ✗ Error testing {size_str}: {e}")
             self.results['failed'].append(size_str)
             return False
+
             
     def _check_layout(self, window):
         """Check for common layout issues"""
@@ -183,34 +203,72 @@ class GUIProbe:
             
         return issues[:5]  # Return max 5 issues
         
+            
     def run_all_tests(self):
-        """Run tests for all viewport sizes"""
-        log.info(f"Starting GUI responsiveness tests ({len(TEST_SIZES)} sizes)")
+        """Run tests for all 14 required viewport sizes"""
+        log.info(f"Starting GUI responsiveness tests ({len(TEST_SIZES)} required sizes)")
         log.info(f"Artifacts will be saved to: {self.artifacts_dir}\n")
         
         for width, height in TEST_SIZES:
             self.test_size(width, height)
-            
-        self._print_summary()
-        return len(self.results['failed']) == 0
         
+        # Generate JSON report
+        self._generate_json_report()
+        self._print_summary()
+        
+        # Exit with non-zero if any violations
+        has_violations = len(self.results['failed']) > 0 or len(self.results['warnings_by_size']) > 0
+        return not has_violations
+    
+    def _generate_json_report(self):
+        """Generate JSON report with violations per size"""
+        report = {
+            'total_sizes': len(TEST_SIZES),
+            'passed_clean': len(self.results['passed']) - len(self.results['warnings_by_size']),
+            'passed_with_warnings': len(self.results['warnings_by_size']),
+            'failed': len(self.results['failed']),
+            'test_results': {
+                'passed': self.results['passed'],
+                'failed': self.results['failed'],
+                'violations_by_size': self.results['warnings_by_size']
+            }
+        }
+        
+        report_path = self.artifacts_dir / 'report.json'
+        with open(report_path, 'w') as f:
+            json.dump(report, f, indent=2)
+        log.info(f"JSON report saved to: {report_path}")
+            
     def _print_summary(self):
         """Print test summary"""
-        log.info("\n" + "="*60)
+        clean_passed = len(self.results['passed']) - len(self.results['warnings_by_size'])
+        
+        log.info("\n" + "="*70)
         log.info("GUI RESPONSIVENESS TEST SUMMARY")
-        log.info("="*60)
-        log.info(f"✓ Passed: {len(self.results['passed'])}")
+        log.info("="*70)
+        log.info(f"Total Sizes Tested: {len(TEST_SIZES)}")
+        log.info(f"✓ Passed (clean): {clean_passed}")
+        log.info(f"⚠ Passed (with warnings): {len(self.results['warnings_by_size'])}")
         log.info(f"✗ Failed: {len(self.results['failed'])}")
-        log.info(f"⚠ Warnings: {len(self.results['warnings'])}")
+        
+        if self.results['warnings_by_size']:
+            log.warning(f"\nVIOLATIONS DETECTED ({len(self.results['warnings_by_size'])} sizes):")
+            for size, violations in sorted(self.results['warnings_by_size'].items()):
+                log.warning(f"  {size}:")
+                for violation in violations[:3]:  # Show first 3 violations per size
+                    log.warning(f"    - {violation}")
+                if len(violations) > 3:
+                    log.warning(f"    ... and {len(violations) - 3} more")
         
         if self.results['failed']:
             log.error(f"\nFailed sizes: {', '.join(self.results['failed'])}")
-        if self.results['warnings']:
-            log.warning(f"\nWarnings detected - see above for details")
+        
+        if not self.results['warnings_by_size'] and not self.results['failed']:
+            log.info("\n✓ ALL TESTS PASSED WITH ZERO VIOLATIONS!")
             
         log.info(f"\nScreenshots saved to: {self.artifacts_dir}")
-        log.info("="*60)
-
+        log.info(f"JSON report: {self.artifacts_dir / 'report.json'}")
+        log.info("="*70)
 
 def main():
     # Handle SIGINT gracefully

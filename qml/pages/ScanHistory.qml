@@ -11,23 +11,20 @@ AppSurface {
     
     property var scanData: []
     
-    Item {
-        anchors.fill: parent
+    // Listen for backend scan history
+    Connections {
+        target: typeof Backend !== 'undefined' ? Backend : null
         
-        // Listen for backend scan history
-        Connections {
-            target: typeof Backend !== 'undefined' ? Backend : null
-            
-            function onScansLoaded(scans) {
-                console.log("Scans loaded:", scans.length)
-                root.scanData = scans
-            }
+        function onScansLoaded(scans) {
+            console.log("Scans loaded:", scans.length)
+            root.scanData = scans
         }
-        
-        Component.onCompleted: {
-            if (typeof Backend !== 'undefined') {
-                Backend.loadScanHistory()
-            }
+    }
+    
+    Component.onCompleted: {
+        if (typeof Backend !== 'undefined') {
+            Backend.loadScanHistory()
+        }
         }
         
         ScrollView {
@@ -223,5 +220,5 @@ AppSurface {
             }
         }
     }
-    }
 }
+

@@ -12,8 +12,8 @@ PageWrapper {
     id: root
     
     sourceComponent: Component {
-        Item {
-            anchors.fill: parent
+        AppSurface {
+            id: content
             
             // Background
             Rectangle {
@@ -38,7 +38,7 @@ PageWrapper {
             
             ScrollView {
                 anchors.fill: parent
-                anchors.margins: Theme.spacing_md
+                anchors.margins: Theme.spacing_m
                 contentWidth: availableWidth
                 clip: true
                 

@@ -10,15 +10,13 @@ AppSurface {
     // Bind to global snapshot data from main window - use proper binding
     property var snapshotData: window.globalSnapshotData
 
-    Item {
-        anchors.fill: parent
-    
     ScrollView {
         anchors.fill: parent
+        anchors.margins: Theme.spacing_m
         clip: true
         
         ColumnLayout {
-            width: Math.max(1100, parent.width)
+            width: Math.max(320, parent.width - Theme.spacing_m * 2)
             spacing: 0
             
             TabBar {
@@ -41,10 +39,11 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.type.body
                         color: parent.checked ? "white" : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
                         
                         Behavior on color {
                             ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
@@ -66,10 +65,11 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.type.body
                         color: parent.checked ? "white" : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
                         
                         Behavior on color {
                             ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
@@ -91,10 +91,11 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.type.body
                         color: parent.checked ? "white" : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
                         
                         Behavior on color {
                             ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
@@ -116,10 +117,11 @@ AppSurface {
                     
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.type.body
                         color: parent.checked ? "white" : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
                         
                         Behavior on color {
                             ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
@@ -141,10 +143,11 @@ AppSurface {
 
                     contentItem: Text {
                         text: parent.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.type.body
                         color: parent.checked ? "white" : Theme.muted
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
 
                         Behavior on color {
                             ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
@@ -256,6 +259,4 @@ AppSurface {
             }
         }
     } // ScrollView
-    
-    } // Item wrapper
 }

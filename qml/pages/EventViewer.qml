@@ -15,38 +15,35 @@ AppSurface {
             GradientStop { position: 1.0; color: Qt.darker(Theme.bg, 1.1) }
         }
     }
-    
-    Item {
-        anchors.fill: parent
 
-        // Event list model
-        ListModel {
-            id: eventModel
-        }
+    // Event list model
+    ListModel {
+        id: eventModel
+    }
 
-        // Connect to backend
-        Connections {
-            target: typeof Backend !== 'undefined' ? Backend : null
+    // Connect to backend
+    Connections {
+        target: typeof Backend !== 'undefined' ? Backend : null
 
-            function onEventsLoaded(events) {
-                eventModel.clear()
-                for (var i = 0; i < events.length; i++) {
-                    eventModel.append(events[i])
-                }
-            }
-
-            function onToast(level, message) {
-                console.log("[" + level + "] " + message)
+        function onEventsLoaded(events) {
+            eventModel.clear()
+            for (var i = 0; i < events.length; i++) {
+                eventModel.append(events[i])
             }
         }
+
+        function onToast(level, message) {
+            console.log("[" + level + "] " + message)
+        }
+    }
 
     ScrollView {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_md
+        anchors.margins: Theme.spacing_m
         clip: true
 
         ColumnLayout {
-            width: Math.max(800, parent.width - Theme.spacing_md * 2)
+            width: Math.max(320, parent.width - Theme.spacing_m * 2)
             spacing: Theme.spacing_lg
 
             // Header Panel with Glassmorphism
@@ -381,5 +378,5 @@ AppSurface {
                 Backend.loadRecentEvents()
             }
         })
-    }
+    } // ScrollView
 }
