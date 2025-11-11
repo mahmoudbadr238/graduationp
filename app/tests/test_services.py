@@ -42,7 +42,7 @@ class TestLocalFileScanner:
         """Test scanning a file that doesn't exist."""
         scanner = LocalFileScanner(vt_client=None)
 
-        result = scanner.scan_file("/nonexistent/file.txt")
+        result = scanner.scan_file(str(Path("nonexistent") / "file.txt"))
 
         assert "error" in result
         assert "not found" in result["error"].lower()

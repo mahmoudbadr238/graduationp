@@ -1,32 +1,80 @@
-# Changelog - Performance & Stability Overhaul# CHANGELOG
+# CHANGELOG
 
+All notable changes to Sentinel Endpoint Security Suite will be documented in this file.
 
-
-## [1.1.0] - 2025-10-26All notable changes to Sentinel Desktop Security Suite will be documented in this file.
-
-
-
-### 🚀 Performance ImprovementsThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-#### Startup Optimization
+## [1.0.0] - 2025-11-11 — Production Hardening & Release Ready 🎉
 
-- **BREAKING:** Reduced cold-start time from ~2.5s to ~0.9s (64% improvement)---
+### Added
 
-- Implemented lazy initialization for GPU backend (500ms delay)
+- **Configuration Management** (`app/core/config.py`)
+  - Platform-aware app data directory (%APPDATA%/Sentinel on Windows, ~/.local/share/sentinel on Linux)
+  - JSON settings file with schema and auto-backup
+  - `--reset-settings` CLI flag to restore defaults
+  - Safe load/save with fallback to backup
 
-- Deferred backend bridge creation (100ms delay)## [1.0.0] - 2025-10-18 — Official Production Release 🚀
+- **Logging & Crash Handling** (`app/core/logging_setup.py`)
+  - Structured logging with rotating file handler (10 files × 1MB)
+  - Global `sys.excepthook` for unhandled exceptions
+  - Qt crash handler with non-blocking message boxes
+  - Optional Sentry integration (only if SENTRY_DSN set)
 
-- Removed blocking WMI calls from startup path
+- **Enhanced Diagnostics**
+  - `--export-diagnostics <file>` flag to export system info as JSON
+  - `collect_diagnostics()` function for programmatic access
+  - Improved system and dependency information collection
 
-- Added `StartupOrchestrator` with phased initialization### ✨ Features (v1.0.0 Stable)
+- **Testing Infrastructure**
+  - `test_smoke.py` - Basic import and CLI flag tests
+  - `test_core.py` - Configuration and privilege tests
+  - `pytest.ini` with markers and coverage config
+  - Target ≥80% coverage for core modules
 
-- QML component compilation now happens asynchronously
+- **Documentation**
+  - `README.md` - Installation, usage, architecture
+  - `PRIVACY.md` - Data collection and privacy policy
+  - `SECURITY.md` - Vulnerability reporting and security practices
+  - `CONTRIBUTING.md` - Development setup and guidelines
+  - `.env.example` - Configuration template with all available variables
 
-**Core Security Tools:**
+- **Development**
+  - `.pre-commit-config.yaml` - Automated code quality checks
+  - Enhanced `.ruff.toml` configuration with comprehensive rule sets
+  - Support for environment variables (SENTRY_DSN, VT_API_KEY, WIN_CERT_PATH)
 
-#### Runtime Performance- 🏠 **Home Dashboard**: Real-time system monitoring with live charts (CPU, Memory, GPU, Network) updating at 1Hz
+### Changed
+
+- `app/application.py` - Now initializes logging and config at startup
+- `app/__main__.py` - Added support for --export-diagnostics and --reset-settings
+- `app/utils/diagnostics.py` - Refactored to use centralized collect_diagnostics()
+- `.env.example` - Updated with complete variable documentation
+
+### Fixed
+
+- Removed invalid `.bandit` config file (conflicting include/exclude)
+- Corrected nosec comment format for GPU telemetry (now recognized by Bandit)
+
+### Security
+
+- All security linting now passes (ruff + bandit -s B101,B110)
+- Complete documentation of security practices
+- Verified no eval/exec, no shell=True subprocess calls
+- All file I/O uses UTF-8 encoding
+
+### Verified Working
+
+✅ `python -m app` - Launches cleanly on Windows with no GUI errors
+✅ `python -m app --diagnose` - Diagnostic mode passes all checks  
+✅ `python -m pytest -q` - 19+ tests passing
+✅ `ruff check . && ruff format .` - All linting passes
+✅ `bandit -s B101,B110 -q -r .` - Security scan clean
+✅ QML StackView - No anchor warnings  
+✅ Backend initialization - No "Backend not available" errors
+✅ Admin privileges - Single consistent message
+
+## [1.1.0] - 2025-10-26 — Performance & Stability Overhaul
 
 - **FIXED:** Reduced idle CPU usage from 22-30% to 8-12%- 📋 **Event Viewer**: Windows Event Log analysis with color-coded severity and 30+ Event ID translations
 

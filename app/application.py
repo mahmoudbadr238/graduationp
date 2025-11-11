@@ -8,7 +8,9 @@ from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
+from .core.config import get_config
 from .core.container import configure
+from .core.logging_setup import setup_crash_handlers, setup_logging
 from .core.startup_orchestrator import StartupOrchestrator
 from .infra.integrations import print_integration_status
 from .infra.privileges import is_admin
@@ -20,6 +22,13 @@ class DesktopSecurityApplication:
     """Main application class with optimized startup and thread pool management."""
 
     def __init__(self):
+        # Initialize logging first (before any imports)
+        setup_logging("Sentinel")
+        setup_crash_handlers("Sentinel")
+
+        # Load configuration
+        self.config = get_config()
+
         # Set Controls style to Fusion to enable full customization
         os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
 

@@ -119,12 +119,34 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
             return records
 
-        def get_all(self):
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT * FROM scans ORDER BY timestamp DESC")
-            return cursor.fetchall()
+    def get_all(self) -> list[ScanRecord]:
+        """Get all scan records."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, started_at, finished_at, type, target, status, findings, meta
+                FROM scans
+                ORDER BY started_at DESC
+            """
+            )
 
-        return None
+            records = []
+            for row in cursor.fetchall():
+                records.append(
+                    ScanRecord(
+                        id=row[0],
+                        started_at=datetime.fromisoformat(row[1]),
+                        finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                        type=ScanType(row[3]),
+                        target=row[4],
+                        status=row[5],
+                        findings=json.loads(row[6]) if row[6] else None,
+                        meta=json.loads(row[7]) if row[7] else None,
+                    )
+                )
+
+            return records
 
     # IEventRepository implementation
 
