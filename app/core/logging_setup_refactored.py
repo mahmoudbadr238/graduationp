@@ -23,9 +23,7 @@ import logging.handlers
 import os
 import sys
 import time
-import traceback
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any, Optional
 
 from PySide6.QtCore import QObject, Signal

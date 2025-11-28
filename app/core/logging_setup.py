@@ -8,8 +8,6 @@ import logging
 import logging.handlers
 import os
 import sys
-import traceback
-from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal

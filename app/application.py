@@ -3,7 +3,6 @@
 import os
 import sys
 
-import psutil
 from PySide6.QtCore import QThreadPool
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
