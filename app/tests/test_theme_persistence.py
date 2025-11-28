@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test theme persistence end-to-end"""
 
+import json
 import sys
 from pathlib import Path
 

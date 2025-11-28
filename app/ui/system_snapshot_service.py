@@ -624,7 +624,7 @@ class SystemSnapshotService(QObject):
                 return f"{hours}h {minutes}m"
             else:
                 return f"{minutes}m"
-        except:
+        except Exception:
             return "Unknown"
     
     def _check_windows_firewall(self) -> str:
