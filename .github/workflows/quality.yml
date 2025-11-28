@@ -72,16 +72,16 @@ jobs:
           
       - name: Verify imports
         run: |
-          python -c "from app.application import run; print('✓ Application imports OK')"
+          python -c "from app.application import run; print('[OK] Application imports OK')"
           
       - name: Check QML files exist
         run: |
           if (!(Test-Path "qml/main.qml")) { exit 1 }
-          echo "✓ QML files present"
+          echo "[OK] QML files present"
           
       - name: Verify pyproject.toml
         run: |
-          python -c "import tomllib; f=open('config/pyproject.toml','rb'); tomllib.load(f); print('✓ pyproject.toml valid')"
+          python -c "import tomllib; f=open('config/pyproject.toml','rb'); tomllib.load(f); print('[OK] pyproject.toml valid')"
         shell: bash
         
   security-scan:

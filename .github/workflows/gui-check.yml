@@ -35,7 +35,7 @@ jobs:
         
       - name: QML linter result
         if: always()
-        run: echo "✓ QML linter completed (check output above for warnings)"
+        run: echo "[OK] QML linter completed (check output above for warnings)"
 
   gui-probe:
     runs-on: ubuntu-latest
@@ -75,9 +75,9 @@ jobs:
         if: always()
         run: |
           if [ -d "artifacts/gui" ]; then
-            echo "✓ Screenshots captured: $(ls -1 artifacts/gui/*.png 2>/dev/null | wc -l) viewport sizes"
+            echo "[OK] Screenshots captured: $(ls -1 artifacts/gui/*.png 2>/dev/null | wc -l) viewport sizes"
           else
-            echo "⚠ No screenshots captured (headless mode)"
+            echo "[WARN] No screenshots captured (headless mode)"
           fi
 
   gui-summary:
@@ -89,8 +89,8 @@ jobs:
       - name: Print summary
         run: |
           echo "=== GUI RESPONSIVENESS CHECK SUMMARY ==="
-          echo "✓ QML Linter: Passed (see logs for warnings)"
-          echo "✓ GUI Probe: Completed (check artifacts for screenshots)"
+          echo "[OK] QML Linter: Passed (see logs for warnings)"
+          echo "[OK] GUI Probe: Completed (check artifacts for screenshots)"
           echo ""
           echo "Next steps:"
           echo "1. Review linter warnings (qml_lint.py output)"
