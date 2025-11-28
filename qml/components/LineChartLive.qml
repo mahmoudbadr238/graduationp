@@ -1,13 +1,13 @@
 import QtQuick 2.15
-import "../theme"
+import "../ui"
 
 Item {
     id: root
     property var points: []
     property int maxPoints: 120
     property real strokeWidth: 2
-    property color stroke: "#a66bff"
-    property color fill: Theme.surface
+    property color stroke: ThemeManager.accent
+    property color fill: "transparent"
     implicitWidth: 520
     implicitHeight: 160
     

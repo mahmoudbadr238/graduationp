@@ -1,11 +1,14 @@
 ﻿
 Card 1.0 Card.qml
+SimpleLineChartCard 1.0 SimpleLineChartCard.qml
+SimpleDualLineChartCard 1.0 SimpleDualLineChartCard.qml
+CPUDetailChartCard 1.0 CPUDetailChartCard.qml
 AppSurface 1.0 AppSurface.qml
 PageWrapper 1.0 PageWrapper.qml
 AlertTriangle 1.0 AlertTriangle.qml
 TopStatusBar 1.0 TopStatusBar.qml
 SidebarNav 1.0 SidebarNav.qml
-ParallaxArea 1.0 ParallaxArea.qml
+ParallexArea 1.0 ParallexArea.qml
 Panel 1.0 Panel.qml
 SectionHeader 1.0 SectionHeader.qml
 ListItem 1.0 ListItem.qml
@@ -18,15 +21,18 @@ LineChartLive 1.0 LineChartLive.qml
 ToastManager 1.0 ToastManager.qml
 ToastNotification 1.0 ToastNotification.qml
 DebouncedButton 1.0 DebouncedButton.qml
+singleton Colors 1.0 Colors.qml
 SkeletonCard 1.0 SkeletonCard.qml
 StatusBadge 1.0 StatusBadge.qml
 EmptyState 1.0 EmptyState.qml
 ToggleRow 1.0 ToggleRow.qml
-PageWrapper 1.0 PageWrapper.qml
-
 GPUCard 1.0 GPUCard.qml
 MetricCard 1.0 MetricCard.qml
 SmallMetricCard 1.0 SmallMetricCard.qml
 GPUMiniWidget 1.0 GPUMiniWidget.qml
 TopBar 1.0 TopBar.qml
+StatCard 1.0 StatCard.qml
+StorageCard 1.0 StorageCard.qml
+NetworkAdapterCard 1.0 NetworkAdapterCard.qml
+SecurityCard 1.0 SecurityCard.qml
 

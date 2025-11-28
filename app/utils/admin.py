@@ -75,10 +75,10 @@ class AdminPrivileges:
             bool: True if admin privileges are available (or obtained).
         """
         if AdminPrivileges.is_admin():
-            print("✓ Running with administrator privileges")
+            print("[OK] Running with administrator privileges")
             return True
 
-        print("⚠ Warning: Not running with administrator privileges")
+        print("[WARNING] Not running with administrator privileges")
         print("  Some features (Security event logs) may be limited.")
 
         if auto_elevate:

@@ -1,0 +1,28 @@
+{
+    // Hide build artifacts and temporary folders from VS Code explorer
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/.ruff_cache": true,
+        "build/": true,
+        "dist/": true,
+        "build_artifacts/": true,
+        "artifacts/": true,
+        "_cleanup_archive/": true,
+        ".venv/": true,
+        "**/*.egg-info": true
+    },
+    
+    // Hide from search results as well
+    "search.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "build/": true,
+        "dist/": true,
+        "build_artifacts/": true,
+        "artifacts/": true,
+        "_cleanup_archive/": true,
+        ".venv/": true
+    }
+}

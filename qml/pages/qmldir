@@ -4,5 +4,4 @@ ScanHistory 1.0 ScanHistory.qml
 NetworkScan 1.0 NetworkScan.qml
 ScanTool 1.0 ScanTool.qml
 DataLossPrevention 1.0 DataLossPrevention.qml
-Settings 1.0 Settings.qml
-GPUMonitoringNew 1.0 GPUMonitoringNew.qml
+SettingsPage 1.0 SettingsPage.qml

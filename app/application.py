@@ -16,6 +16,8 @@ from .infra.integrations import print_integration_status
 from .infra.privileges import is_admin
 from .ui.backend_bridge import BackendBridge
 from .ui.gpu_service import get_gpu_service
+from .ui.system_snapshot_service import SystemSnapshotService
+from .ui.settings_service import SettingsService
 
 
 class DesktopSecurityApplication:
@@ -63,6 +65,8 @@ class DesktopSecurityApplication:
         # Initialize backend
         self.backend = None
         self.gpu_service = None
+        self.snapshot_service = None
+        self.settings_service = None
         self._setup_backend()
 
     def _setup_paths(self):
@@ -146,6 +150,29 @@ class DesktopSecurityApplication:
                     self.gpu_service = None
 
             self.orchestrator.schedule_deferred(300, "GPU Backend", init_gpu)
+            
+            # IMMEDIATE: System Snapshot Service (cross-platform)
+            try:
+                self.snapshot_service = SystemSnapshotService()
+                # Force initial data collection
+                self.snapshot_service._update_metrics()
+                self.snapshot_service._update_disk_partitions()
+                self.snapshot_service._update_network_interfaces()
+                self.engine.rootContext().setContextProperty("SnapshotService", self.snapshot_service)
+                self.snapshot_service.start(2000)  # Start with 2s interval
+                print(f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] System Snapshot service failed: {e}")
+                self.snapshot_service = None
+            
+            # IMMEDIATE: Settings Service (cross-platform)
+            try:
+                self.settings_service = SettingsService()
+                self.engine.rootContext().setContextProperty("SettingsService", self.settings_service)
+                print("[OK] Settings service initialized and exposed to QML")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] Settings service failed: {e}")
+                self.settings_service = None
 
         except (ImportError, RuntimeError, UnicodeEncodeError) as e:
             print(f"[ERROR] Critical backend setup failed: {e}")

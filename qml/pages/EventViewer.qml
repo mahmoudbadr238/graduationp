@@ -1,390 +1,314 @@
-﻿import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import "../components"
-import "../theme"
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../ui"
 
-PageWrapper {
+Item {
     id: root
+    anchors.fill: parent
     
-    sourceComponent: Component {
-        Item {
-            // Event list model  
-            ListModel {
-                id: eventModel
-            }
-
-            // Connect to backend
-            Connections {
-                target: typeof Backend !== 'undefined' ? Backend : null
-
-                function onEventsLoaded(events) {
-                    eventModel.clear()
-                    for (var i = 0; i < events.length; i++) {
-                        eventModel.append(events[i])
-                    }
+    // State
+    property var eventsList: []
+    property string filterLevel: "All"
+    property string searchText: ""
+    property int themeUpdateTrigger: 0  // Dummy property to trigger redraws
+    
+    // Listen to theme changes to trigger UI updates
+    Connections {
+        target: ThemeManager
+        function onThemeModeChanged() {
+            themeUpdateTrigger++  // This forces QML to re-evaluate bindings
+        }
+    }
+    
+    // Backend connections
+    Connections {
+        target: Backend || null
+        enabled: target !== null
+        function onEventsLoaded(events) {
+            eventsList = events
+            eventModel.clear()
+            // Apply filters and populate model
+            for (var i = 0; i < events.length; i++) {
+                var evt = events[i]
+                // Normalize level comparison (events have uppercase, filter options are title case)
+                var eventLevel = evt.level ? evt.level.toUpperCase() : ""
+                var filterLevelUpper = filterLevel.toUpperCase()
+                if ((filterLevel === "All" || eventLevel === filterLevelUpper) &&
+                    (searchText === "" || (evt.message && evt.message.indexOf(searchText) >= 0) || (evt.source && evt.source.indexOf(searchText) >= 0))) {
+                    eventModel.append(evt)
                 }
-
-                function onToast(level, message) {
-                    console.log("[" + level + "] " + message)
-                }
             }
+        }
+    }
+    
+    Component.onCompleted: {
+        if (typeof Backend !== 'undefined' && Backend !== null) {
+            Backend.loadRecentEvents()
+        }
+    }
+    
+    function applyFilters() {
+        eventModel.clear()
+        var matchedCount = 0
+        for (var i = 0; i < eventsList.length; i++) {
+            var evt = eventsList[i]
+            // Normalize level comparison (events have uppercase, filter options are title case)
+            var eventLevel = evt.level ? evt.level.toUpperCase() : ""
+            var filterLevelUpper = filterLevel.toUpperCase()
+            var levelMatch = (filterLevel === "All" || eventLevel === filterLevelUpper)
+            var searchMatch = (searchText === "" || (evt.message && evt.message.indexOf(searchText) >= 0) || (evt.source && evt.source.indexOf(searchText) >= 0))
             
-            AppSurface {
-                id: content
-                anchors.fill: parent
-                
-                // Glassmorphic background gradient
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Theme.bg }
-                        GradientStop { position: 1.0; color: Qt.darker(Theme.bg, 1.1) }
-                    }
-                }
+            if (levelMatch && searchMatch) {
+                eventModel.append(evt)
+                matchedCount++
+            }
+        }
+    }
 
-            ScrollView {
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_m
-        clip: true
+        anchors.margins: 32
+        spacing: 24
 
-        ColumnLayout {
-            width: Math.max(320, parent.width - Theme.spacing_m * 2)
-            spacing: Theme.spacing_lg
+        Text {
+            text: "Event Viewer"
+            font.pixelSize: 28
+            font.bold: true
+            color: ThemeManager.foreground()
+        }
 
-            // Header Panel with Glassmorphism
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: contentColumn.height + Theme.spacing_xl * 2
-                radius: 16
-                color: Theme.glass.panel
-                border.color: Theme.glass.border
-                border.width: 1
+        // Filter controls
+        Rectangle {
+            Layout.fillWidth: true
+            height: 60
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
 
-                // Neon gradient overlay
-                Rectangle {
-                    anchors.fill: parent
-                    radius: parent.radius
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Theme.glass.gradientStart }
-                        GradientStop { position: 1.0; color: Theme.glass.gradientEnd }
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 12
+
+                Text {
+                    text: "Level:"
+                    color: ThemeManager.foreground()
+                    font.pixelSize: 12
+                }
+
+                ComboBox {
+                    id: levelFilterCombo
+                    model: ["All", "Info", "Warning", "Error", "Critical"]
+                    currentIndex: 0
+                    onCurrentIndexChanged: {
+                        if (currentIndex >= 0) {
+                            filterLevel = model[currentIndex]
+                            root.applyFilters()
+                        }
+                    }
+                    background: Rectangle {
+                        color: ThemeManager.surface()
+                        radius: 6
+                        border.color: ThemeManager.border()
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: parent.currentText
+                        color: ThemeManager.foreground()
+                        font.pixelSize: 12
+                        leftPadding: 8
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    delegate: ItemDelegate {
+                        width: parent ? parent.width : 150
+                        text: modelData
+                        background: Rectangle {
+                            color: parent.highlighted ? ThemeManager.elevated() : ThemeManager.surface()
+                        }
+                        contentItem: Text {
+                            text: modelData
+                            color: ThemeManager.foreground()
+                            font.pixelSize: 12
+                            leftPadding: 8
+                        }
                     }
                 }
 
-                ColumnLayout {
-                    id: contentColumn
-                    anchors.centerIn: parent
-                    width: parent.width - Theme.spacing_xl * 2
-                    spacing: Theme.spacing_lg
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 40
+                    color: ThemeManager.surface()
+                    radius: 6
+                    border.color: ThemeManager.border()
+                    border.width: 1
 
-                    SectionHeader {
-                        title: "Windows Event Viewer"
-                        subtitle: "Monitor and analyze system events in real-time"
+                    TextField {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        color: ThemeManager.foreground()
+                        placeholderText: "Search events..."
+                        placeholderTextColor: ThemeManager.muted()
+                        background: Rectangle { color: "transparent" }
+                        onTextChanged: {
+                            searchText = text
+                            root.applyFilters()
+                        }
                     }
+                }
+
+                Button {
+                    text: "Refresh"
+                    onClicked: if (Backend) Backend.loadRecentEvents()
+                    background: Rectangle {
+                        color: ThemeManager.accent
+                        radius: 6
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: ThemeManager.foreground()
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+            }
+        }
+
+        // Events table
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 0
+
+                // Header
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 40
+                    color: ThemeManager.surface()
+                    radius: 6
 
                     RowLayout {
-                        spacing: Theme.spacing_md
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 12
 
-                        Button {
-                            text: "Load Recent Events"
-                            Layout.preferredWidth: 180
-                            Layout.preferredHeight: 44
-                            enabled: typeof Backend !== 'undefined'
-
-                            onClicked: {
-                                if (typeof Backend !== 'undefined') {
-                                    Backend.loadRecentEvents()
-                                }
-                            }
-
-                            contentItem: Text {
-                                text: parent.text
-                                color: Theme.text
-                                font.pixelSize: Theme.typography.body.size
-                                font.weight: Font.Medium
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-
-                                Behavior on color {
-                                    ColorAnimation { duration: Theme.duration_fast }
-                                }
-                            }
-                            background: Rectangle {
-                                color: parent.pressed ? Qt.darker(Theme.primary, 1.2) : parent.hovered ? Qt.lighter(Theme.primary, 1.1) : Theme.primary
-                                radius: Theme.radii_sm
-                                opacity: parent.enabled ? 1.0 : 0.5
-                                border.color: parent.hovered ? Theme.neon.purpleGlow : "transparent"
-                                border.width: 2
-                                
-                                Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                                Behavior on border.color { ColorAnimation { duration: Theme.duration_fast } }
-                            }
+                        Text {
+                            text: "Timestamp"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                            font.bold: true
+                            Layout.preferredWidth: 100
                         }
 
-                        Rectangle {
-                            Layout.preferredWidth: 200
-                            Layout.preferredHeight: 44
-                            radius: Theme.radii_sm
-                            color: Theme.glass.overlay
-                            border.color: Theme.glass.border
-                            border.width: 1
+                        Text {
+                            text: "Level"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                            font.bold: true
+                            Layout.preferredWidth: 80
+                        }
+
+                        Text {
+                            text: "Source"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                            font.bold: true
+                            Layout.preferredWidth: 120
+                        }
+
+                        Text {
+                            text: "Message"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                // Events list
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    
+                    ListView {
+                        width: parent.width
+                        model: eventModel
+                        spacing: 2
+
+                        delegate: Rectangle {
+                            width: ListView.view ? ListView.view.width : 500
+                            height: 50
+                            color: {
+                                var isDark = ThemeManager ? ThemeManager.isDark() : true
+                                return isDark ? 
+                                       (index % 2 === 0 ? "#0B1020" : "#050814") : 
+                                       (index % 2 === 0 ? "#F3F4F6" : "#FFFFFF")
+                            }
 
                             RowLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_sm
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 12
 
-                                Rectangle {
-                                    width: 8
-                                    height: 8
-                                    radius: 4
-                                    color: eventModel.count > 0 ? Theme.neon.green : Theme.muted
-                                    
-                                    Behavior on color { ColorAnimation { duration: Theme.duration_medium } }
+                                Text {
+                                    text: model.timestamp ? model.timestamp.substr(11, 8) : "--"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: 10
+                                    Layout.preferredWidth: 100
                                 }
 
                                 Text {
-                                    text: "Events: " + eventModel.count
-                                    color: Theme.text
-                                    font.pixelSize: Theme.typography.body.size
-                                    font.weight: Font.Medium
-
-                                    Behavior on color {
-                                        ColorAnimation { duration: Theme.duration_fast }
-                                    }
+                                    text: model.level || "--"
+                                    color: model.level === "Error" || model.level === "Critical" ? "#FF6B6B" : 
+                                           model.level === "Warning" ? "#FFD93D" : "#7C3AED"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                    Layout.preferredWidth: 80
                                 }
-                            }
-                        }
-                    }
-                }
-            }
 
-            Rectangle {
-                Layout.fillWidth: true
-                visible: eventModel.count === 0
-
-                ColumnLayout {
-                    spacing: Theme.spacing_lg
-                    
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 120
-                        color: Theme.surface
-                        radius: Theme.radii_md
-                        border.color: Theme.border
-                        border.width: 1
-                        
-                        Behavior on color {
-                            ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                        }
-                        
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: Theme.spacing_md
-                            
-                            Text {
-                                text: "�"
-                                font.pixelSize: 32
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                            Text {
-                                text: "Click 'Load Recent Events' to view Windows event logs"
-                                color: Theme.muted
-                                font.pixelSize: Theme.typography.body.size
-                                Layout.alignment: Qt.AlignHCenter
-                                
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
+                                Text {
+                                    text: model.source || "--"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: 10
+                                    Layout.preferredWidth: 120
                                 }
-                            }
-                        }
-                    }
-                }
-            }
 
-            // Event List Panel with Glassmorphism
-            Rectangle {
-                Layout.fillWidth: true
-                visible: eventModel.count > 0
-                radius: 16
-                color: Theme.glass.panel
-                border.color: Theme.glass.border
-                border.width: 1
-                implicitHeight: eventListContent.height + Theme.spacing_xl * 2
-
-                ColumnLayout {
-                    id: eventListContent
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: Theme.spacing_xl
-                    spacing: Theme.spacing_lg
-
-                    SectionHeader {
-                        title: "Recent Events"
-                        subtitle: "Latest " + eventModel.count + " events from Windows Event Log"
-                    }                    ListView {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 500
-                        model: eventModel
-                        spacing: Theme.spacing_sm
-                        clip: true
-
-                        delegate: Rectangle {
-                            width: ListView.view.width
-                            height: 80
-                            color: Theme.glass.card
-                            radius: Theme.radii_sm
-                            border.color: Qt.rgba(0.5, 0.4, 1.0, 0.15)
-                            border.width: 1
-
-                            // Hover glow effect
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: parent.radius
-                                color: Theme.neon.purpleDim
-                                opacity: mouseArea.containsMouse ? 0.3 : 0
-                                
-                                Behavior on opacity {
-                                    NumberAnimation { duration: Theme.duration_fast }
-                                }
-                            }
-
-                            MouseArea {
-                                id: mouseArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                            }
-
-                            Behavior on color {
-                                ColorAnimation { duration: Theme.duration_fast }
-                            }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: Theme.spacing_md
-                                spacing: Theme.spacing_md
-
-                                // Neon accent bar
-                                Rectangle {
-                                    Layout.preferredWidth: 4
-                                    Layout.fillHeight: true
-                                    radius: 2
-                                    color: {
-                                        switch(model.level) {
-                                            case "ERROR": return Theme.neon.red
-                                            case "WARNING": return Theme.warning
-                                            case "SUCCESS": return Theme.neon.green
-                                            case "FAILURE": return Theme.neon.red
-                                            case "INFO": return Theme.neon.blue
-                                            default: return Theme.neon.purple
-                                        }
-                                    }
-
-                                    // Glow effect
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: -2
-                                        radius: parent.radius
-                                        color: "transparent"
-                                        border.color: parent.color
-                                        border.width: 2
-                                        opacity: 0.3
-                                    }
-
-                                    Behavior on color {
-                                        ColorAnimation { duration: 300 }
-                                    }
-                                }
-                                
-                                ColumnLayout {
+                                Text {
+                                    text: model.message || "--"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
                                     Layout.fillWidth: true
-                                    spacing: 4
-                                    
-                                    RowLayout {
-                                        spacing: Theme.spacing_sm
-                                        
-                                        Text {
-                                            text: model.level
-                                            color: {
-                                                switch(model.level) {
-                                                    case "ERROR": return Theme.neon.red
-                                                    case "WARNING": return Theme.warning
-                                                    case "SUCCESS": return Theme.neon.green
-                                                    case "FAILURE": return Theme.neon.red
-                                                    case "INFO": return Theme.neon.blue
-                                                    default: return Theme.neon.purple
-                                                }
-                                            }
-                                            font.pixelSize: Theme.typography.mono.size
-                                            font.weight: Font.Bold
-
-                                            Behavior on color {
-                                                ColorAnimation { duration: Theme.duration_fast }
-                                            }
-                                        }                                        Text {
-                                            text: "•"
-                                            color: Theme.muted
-                                            font.pixelSize: Theme.typography.mono.size
-                                        }
-                                        
-                                        Text {
-                                            text: model.source
-                                            color: Theme.muted
-                                            font.pixelSize: Theme.typography.mono.size
-                                            
-                                            Behavior on color {
-                                                ColorAnimation { duration: 300 }
-                                            }
-                                        }
-                                        
-                                        Text {
-                                            text: "•"
-                                            color: Theme.muted
-                                            font.pixelSize: Theme.typography.mono.size
-                                        }
-                                        
-                                        Text {
-                                            text: model.timestamp
-                                            color: Theme.muted
-                                            font.pixelSize: Theme.typography.mono.size
-                                            
-                                            Behavior on color {
-                                                ColorAnimation { duration: 300 }
-                                            }
-                                        }
-                                    }
-                                    
-                                    Text {
-                                        text: model.message
-                                        color: Theme.text
-                                        font.pixelSize: Theme.typography.body.size
-                                        wrapMode: Text.WordWrap
-                                        Layout.fillWidth: true
-                                        maximumLineCount: 2
-                                        elide: Text.ElideRight
-                                        
-                                        Behavior on color {
-                                            ColorAnimation { duration: 300 }
-                                        }
-                                    }
                                 }
                             }
                         }
                     }
+                }
+
+                Text {
+                    text: eventModel.count === 0 ? "No events" : "Total: " + eventModel.count
+                    color: ThemeManager.muted()
+                    font.pixelSize: 10
+                    Layout.alignment: Qt.AlignRight
+                    Layout.rightMargin: 8
+                    Layout.topMargin: 8
                 }
             }
         }
     }
 
-            Component.onCompleted: {
-                // Auto-load events when page opens (with delay to ensure Backend is ready)
-                Qt.callLater(function() {
-                    if (typeof Backend !== 'undefined' && Backend) {
-                        Backend.loadRecentEvents()
-                    }
-                })
-            }
-            }  // Close AppSurface
-        }  // Close Item wrapper
-    }  // Close Component
+    // Data model
+    ListModel {
+        id: eventModel
+    }
 }

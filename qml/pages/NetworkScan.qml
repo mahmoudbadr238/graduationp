@@ -1,256 +1,212 @@
-﻿import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import "../components"
-import "../theme"
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../ui"
 
-AppSurface {
+Item {
     id: root
+    anchors.fill: parent
     
+    property var scanResults: []
     property bool isScanning: false
-    property string scanResults: ""
     
-    Item {
-        anchors.fill: parent
-        
-        // Connect to backend
-        Connections {
-            target: typeof Backend !== 'undefined' ? Backend : null
-            
-            function onScanFinished(type, result) {
-                if (type === "network") {
-                    isScanning = false
-                    
-                    if (result.error) {
-                        scanResults = "Error: " + result.error
-                    } else {
-                        scanResults = "Network Scan Results\n"
-                        scanResults += "Target: " + result.target + "\n"
-                        scanResults += "Status: " + result.status + "\n"
-                        scanResults += "Hosts found: " + (result.hosts ? result.hosts.length : 0) + "\n\n"
-                        
-                        if (result.hosts && result.hosts.length > 0) {
-                            for (var i = 0; i < result.hosts.length; i++) {
-                                var host = result.hosts[i]
-                                scanResults += "Host " + (i + 1) + ":\n"
-                                scanResults += "  Address: " + host.address + "\n"
-                                scanResults += "  Status: " + host.status + "\n"
-                                if (host.ports_found) {
-                                    scanResults += "  Ports: " + host.ports_found + "\n"
-                                }
-                                scanResults += "\n"
-                            }
-                        }
-                    }
-                }
-            }
-            
-            function onToast(level, message) {
-                console.log("[" + level + "] " + message)
-            }
+    Connections {
+        target: Backend || null
+        enabled: target !== null
+        function onScanFinished(results) {
+            scanResults = results || []
+            isScanning = false
+            scanButton.enabled = true
+            scanButton.text = "Start Scan"
         }
-        
-        ScrollView {
-            anchors.fill: parent
-            anchors.margins: Theme.spacing_m
-            clip: true
-        
-        ColumnLayout {
-            width: Math.max(800, parent.width - Theme.spacing_md * 2)
-            spacing: Theme.spacing_lg
-            
-            Panel {
-                Layout.fillWidth: true
-                ColumnLayout {
-                    spacing: Theme.spacing_lg
-                    SectionHeader {
-                        title: "Network Scanner"
-                        subtitle: "Scan your network for devices using Nmap"
-                    }
-                    
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.spacing_md
-                        
-                        TextField {
-                            id: targetField
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 44
-                            placeholderText: "Enter target (e.g., 192.168.1.0/24 or 192.168.1.1)"
-                            text: "192.168.1.0/24"
-                            enabled: !isScanning && typeof Backend !== 'undefined'
-                            
-                            color: Theme.text
-                            placeholderTextColor: Theme.muted
-                            
-                            background: Rectangle {
-                                color: Theme.surface
-                                border.color: targetField.activeFocus ? Theme.primary : Theme.border
-                                border.width: 1
-                                radius: Theme.radii_sm
-                                
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
-                                }
-                                Behavior on border.color {
-                                    ColorAnimation { duration: 300 }
-                                }
-                            }
-                        }
-                        
-                        CheckBox {
-                            id: fastCheckbox
-                            text: "Fast Scan"
-                            checked: true
-                            enabled: !isScanning
-                            
-                            contentItem: Text {
-                                text: parent.text
-                                color: Theme.text
-                                font.pixelSize: Theme.typography.body.size
-                                leftPadding: (parent.indicator ? parent.indicator.width : 0) + parent.spacing
-                                verticalAlignment: Text.AlignVCenter
-                                
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
-                                }
-                            }
-                        }
-                        
-                        Button {
-                            text: isScanning ? "Scanning..." : "Start Scan"
-                            Layout.preferredWidth: 140
-                            Layout.preferredHeight: 44
-                            enabled: !isScanning && typeof Backend !== 'undefined' && targetField.text.length > 0
-                            
-                            onClicked: {
-                                if (typeof Backend !== 'undefined') {
-                                    isScanning = true
-                                    scanResults = "Scanning " + targetField.text + "...\nThis may take a few minutes."
-                                    Backend.runNetworkScan(targetField.text, fastCheckbox.checked)
-                                }
-                            }
-                            
-                            contentItem: Text {
-                                text: parent.text
-                                color: Theme.text
-                                font.pixelSize: Theme.typography.body.size
-                                font.weight: Font.Medium
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
-                                }
-                            }
-                            background: Rectangle {
-                                color: parent.pressed ? Qt.darker(Theme.primary, 1.2) : parent.hovered ? Qt.lighter(Theme.primary, 1.1) : Theme.primary
-                                radius: Theme.radii_sm
-                                opacity: parent.enabled ? 1.0 : 0.5
-                                Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                            }
-                            
-                            BusyIndicator {
-                                anchors.right: parent.right
-                                anchors.rightMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 24
-                                height: 24
-                                running: isScanning
-                                visible: isScanning
-                            }
-                        }
-                    }
-                    
-                    Text {
-                        text: typeof Backend === 'undefined' ? 
-                              "Backend not available" : 
-                              "Requires Nmap to be installed. Fast scan checks top 100 ports (~30s), Full scan includes service detection (~5 min)"
-                        color: Theme.muted
-                        font.pixelSize: Theme.typography.mono.size
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                        
-                        Behavior on color {
-                            ColorAnimation { duration: 300 }
-                        }
-                    }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 32
+        spacing: 24
+
+        Text {
+            text: "Network Scan"
+            font.pixelSize: 28
+            font.bold: true
+            color: ThemeManager.foreground()
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            height: 180
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 12
+
+                Text {
+                    text: "Scan Configuration"
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: ThemeManager.foreground()
                 }
-            }
-            
-            Panel {
-                Layout.fillWidth: true
-                visible: scanResults.length > 0
-                
-                ColumnLayout {
-                    spacing: Theme.spacing_lg
-                    SectionHeader {
-                        title: "Scan Results"
-                        subtitle: isScanning ? "Scanning in progress..." : "Completed scan output"
-                    }
-                    
-                    ScrollView {
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 400
-                        clip: true
-                        
-                        Rectangle {
-                            width: parent.width
-                            height: Math.max(400, resultsText.contentHeight + 32)
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: Theme.border
-                            border.width: 1
-                            
-                            Behavior on color {
-                                ColorAnimation { duration: 300 }
-                            }
-                            
-                            Text {
-                                id: resultsText
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                text: scanResults
-                                color: Theme.text
-                                font.family: "Consolas"
-                                font.pixelSize: Theme.typography.body.size
-                                wrapMode: Text.WordWrap
-                                
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
-                                }
+                        spacing: 4
+
+                        Text {
+                            text: "Target"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                        }
+
+                        TextField {
+                            id: targetInput
+                            Layout.fillWidth: true
+                            placeholderText: "192.168.1.0/24"
+                            color: ThemeManager.foreground()
+                            placeholderTextColor: ThemeManager.muted()
+                            background: Rectangle {
+                                color: ThemeManager.surface()
+                                radius: 6
+                                border.color: ThemeManager.border()
+                                border.width: 1
                             }
                         }
                     }
-                    
+
                     Button {
-                        text: "Clear Results"
+                        id: scanButton
+                        text: isScanning ? "Scanning..." : "Start Scan"
                         Layout.preferredWidth: 140
-                        Layout.preferredHeight: 36
-                        enabled: !isScanning
+                        enabled: !isScanning && targetInput.text.length > 0
                         
-                        onClicked: scanResults = ""
+                        onClicked: {
+                            if (Backend && targetInput.text.length > 0) {
+                                isScanning = true
+                                scanButton.enabled = false
+                                scanResults = []
+                                Backend.runNetworkScan(targetInput.text, false)
+                            }
+                        }
                         
+                        background: Rectangle {
+                            color: parent.enabled ? "#7C3AED" : "#4B5563"
+                            radius: 6
+                        }
+
                         contentItem: Text {
                             text: parent.text
-                            color: Theme.muted
-                            font.pixelSize: Theme.typography.mono.size
+                            color: ThemeManager.foreground()
+                            font.pixelSize: 12
+                            font.bold: true
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        background: Rectangle {
-                            color: parent.pressed ? Theme.elevatedPanel : parent.hovered ? Theme.panel : "transparent"
-                            radius: Theme.radii_sm
-                            border.color: Theme.border
-                            border.width: 1
-                            opacity: parent.enabled ? 1.0 : 0.5
-                            Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 16
+
+                Text {
+                    text: "Scan Results (" + scanResults.length + " hosts)"
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: ThemeManager.foreground()
+                }
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 8
+
+                        Repeater {
+                            model: scanResults.length
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 50
+                                color: ThemeManager.elevated()
+                                radius: 6
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 12
+
+                                    Text {
+                                        text: (scanResults[index] && scanResults[index].ip) ? scanResults[index].ip : "N/A"
+                                        color: ThemeManager.foreground()
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                        Layout.preferredWidth: 150
+                                    }
+
+                                    Text {
+                                        text: (scanResults[index] && scanResults[index].hostname) ? scanResults[index].hostname : "-"
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: 10
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        text: (scanResults[index] && scanResults[index].status) ? scanResults[index].status : "up"
+                                        color: (scanResults[index] && scanResults[index].status === "up") ? "#10B981" : "#EF4444"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+                                }
+                            }
+                        }
+
+                        // Empty state
+                        Text {
+                            visible: scanResults.length === 0 && !isScanning
+                            text: "Run a scan to see results"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 14
+                            Layout.alignment: Qt.AlignCenter
+                            Layout.topMargin: 50
+                        }
+
+                        // Scanning state
+                        Text {
+                            visible: isScanning
+                            text: "Scanning..."
+                            color: "#7C3AED"
+                            font.pixelSize: 14
+                            Layout.alignment: Qt.AlignCenter
+                            Layout.topMargin: 50
+                            font.bold: true
                         }
                     }
                 }
             }
-        } // ScrollView
-    } // Item
+        }
+    }
 }
-}
-

@@ -25,7 +25,9 @@ AppSurface {
 
         Column {
             spacing: 18
-            width: Math.max(800, parent.width - 48)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            width: parent.width
             topPadding: 0
             bottomPadding: 120
 
@@ -33,44 +35,46 @@ AppSurface {
                 // Ensure layout is properly initialized
             }
 
-        PageHeader {
-            title: "Network Usage"
-            subtitle: "Live throughput & adapter details"
-        }
-    
-    Row {
-        spacing: 18
-        width: parent.width
-        
-        AnimatedCard {
-            width: (parent.width - 18) / 2
-            implicitHeight: 340
+            PageHeader {
+                title: "Network Usage"
+                subtitle: "Live throughput & adapter details"
+            }
             
-            Column {
-                spacing: 10
+            Row {
+                spacing: 18
                 width: parent.width
                 
-                Text {
-                    text: {
-                        var unit = "Mbps"; // Default
-                        if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.send_rate) {
-                            unit = root.snapshotData.net.send_rate.unit || "Mbps";
-                        }
-                        return "Upload (" + unit + ")";
-                    }
-                    color: Theme.text
-                    font.pixelSize: 18
-                    font.bold: true
+                AnimatedCard {
+                    width: (parent.width - 18) / 2
+                    implicitHeight: 340
+                    
+                    Column {
+                        spacing: 10
+                        width: parent.width
+                        
+                        Text {
+                            text: {
+                                var unit = "Mbps"; // Default
+                                if (root.snapshotData && root.snapshotData.net && root.snapshotData.net.send_rate) {
+                                    unit = root.snapshotData.net.send_rate.unit || "Mbps";
+                                }
+                                return "Upload (" + unit + ")";
+                            }
+                            color: Theme.text
+                            font.pixelSize: 18
+                            font.bold: true
 
-                    Behavior on color {
-                        ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                    }
-                }                LineChartLive {
-                    id: upChart
-                    width: parent.width - 40
-                    height: 140
-                    stroke: "#6ee7a8"
-                }
+                            Behavior on color {
+                                ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
+                            }
+                        }
+
+                        LineChartLive {
+                            id: upChart
+                            width: parent.width - 40
+                            height: 140
+                            stroke: "#6ee7a8"
+                        }
                 
                 LiveMetricTile {
                     label: "Up"

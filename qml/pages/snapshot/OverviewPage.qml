@@ -1,3 +1,4 @@
+import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../../components"
@@ -25,19 +26,9 @@ AppSurface {
         }
     })
 
-    ScrollView {
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacing.md
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-        ColumnLayout {
-            width: Math.max(800, parent.parent.width - Theme.spacing.md * 4)
-            spacing: Theme.spacing.lg
-
-            Component.onCompleted: {
-                // Ensure layout is properly initialized
-            }
+        spacing: Theme.spacing_lg
 
             PageHeader {
                 title: "System Overview"
@@ -48,8 +39,8 @@ AppSurface {
             GridLayout {
                 Layout.fillWidth: true
                 columns: 4
-                columnSpacing: Theme.spacing.md
-                rowSpacing: Theme.spacing.md
+                columnSpacing: Theme.spacing_md
+                rowSpacing: Theme.spacing_md
 
                 LiveMetricTile {
                     label: "CPU"
@@ -209,4 +200,4 @@ AppSurface {
             }
         }
     }
-}
+}\n

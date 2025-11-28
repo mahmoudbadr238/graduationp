@@ -288,7 +288,7 @@ For full Security event log access:3. Add Component to `main.qml` pageComponents
 
 ```powershell4. Add navigation item to `SidebarNav.qml`
 
-.\run_as_admin.bat
+.\\scripts\\run_as_admin.bat
 
 ```## 📝 Changelog
 
@@ -304,13 +304,13 @@ For full Security event log access:3. Add Component to `main.qml` pageComponents
 
 - **[API Integration Guide](docs/API_INTEGRATION_GUIDE.md)** - VirusTotal & Nmap setupContributions are welcome! Please feel free to submit a Pull Request.
 
-- **[Quick Start Guide](QUICKSTART.md)** - 5-minute getting started
+- **[Quick Start Guide](docs/QUICKSTART.md)** - 5-minute getting started
 
 - **[Architecture Overview](docs/README_BACKEND.md)** - Clean Architecture, DI1. Fork the repository
 
 - **[QA Report](docs/development/QA_COMPREHENSIVE_REPORT.md)** - Testing results2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
 
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 
 - **[Changelog](CHANGELOG.md)** - Version history4. Push to the branch (`git push origin feature/AmazingFeature`)
 
@@ -381,7 +381,7 @@ python main.py
 → Install Nmap and add to PATH: `where nmap`
 
 **"Not running with administrator privileges"**  
-→ Use `run_as_admin.bat` for full Security log access
+→ Use `scripts/run_as_admin.bat` for full Security log access
 
 **"Could not set initial property duration"**  
 → Known non-blocking warning (cosmetic only)
@@ -441,6 +441,30 @@ python main.py
 - Plugin system for custom scanners
 - AI-powered threat detection
 - Cloud sync (optional)
+
+---
+
+## 📚 Documentation
+
+Comprehensive documentation is organized in the [`docs/`](docs/) directory:
+
+### Getting Started
+- **[Quick Start Guide](docs/guides/QUICK_START.md)** - Get up and running in 5 minutes
+- **[Metrics Reference](docs/guides/METRICS_REFERENCE_GUIDE.md)** - Understanding system metrics
+
+### User Guides
+- **[User Manual](docs/user/USER_MANUAL.md)** - Complete feature reference
+- **[Layout Guide](docs/guides/SPACIOUS_LAYOUT_GUIDE.md)** - UI/UX best practices
+
+### Development
+- **[Architecture Overview](docs/development/README.md)** - System design and structure
+- **[Backend API](docs/api/README_BACKEND.md)** - Backend service documentation
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute
+
+### Project Information
+- **[Project Status](docs/project/)** - Implementation and completion tracking
+- **[Release Notes](docs/releases/)** - Version history and changes
+- **[Refactoring Reports](docs/development/refactoring/)** - Technical improvements
 
 ---
 

@@ -3,16 +3,18 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import "../theme"
 
+/**
+ * SidebarNav: Fixed-width navigation sidebar
+ * Uses Layout.preferredWidth to maintain consistent width without pushing content
+ */
 Rectangle {
     id: root
-    width: 240
     color: Theme.panel
-    radius: Theme.radii_lg
+    radius: 0  // Edge-to-edge sidebar
     
-    // Smooth color transition
-    Behavior on color {
-        ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-    }
+    // Fixed width - no responsive scaling
+    implicitWidth: 260
+    Layout.preferredWidth: 260
     
     property int currentIndex: 0
     signal navigationChanged(int index)
@@ -27,108 +29,118 @@ Rectangle {
     Accessible.role: Accessible.List
     Accessible.name: "Navigation menu"
     
+    // Smooth color transition
+    Behavior on color {
+        ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
+    }
+    
+    // Right border separator
+    Rectangle {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 1
+        color: Theme.border
+    }
+    
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_md
-        spacing: 10
+        anchors.margins: 12
+        anchors.topMargin: 16
+        anchors.bottomMargin: 16
+        spacing: 8
+        
         ListView {
-                id: navList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                model: ListModel {
-                    ListElement { label: "Event Viewer"; icon: "" }
-                    ListElement { label: "System Snapshot"; icon: "" }
-                    ListElement { label: "GPU Monitoring"; icon: "" }
-                    ListElement { label: "Scan History"; icon: "" }
-                    ListElement { label: "Network Scan"; icon: "" }
-                    ListElement { label: "Scan Tool"; icon: "" }
-                    ListElement { label: "Data Loss Prevention"; icon: "" }
-                    ListElement { label: "Settings"; icon: "" }
+            id: navList
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            model: ListModel {
+                ListElement { label: "Event Viewer"; icon: "📋" }
+                ListElement { label: "System Snapshot"; icon: "📊" }
+                ListElement { label: "GPU Monitoring"; icon: "🎮" }
+                ListElement { label: "Scan History"; icon: "📁" }
+                ListElement { label: "Network Scan"; icon: "🌐" }
+                ListElement { label: "Scan Tool"; icon: "🔍" }
+                ListElement { label: "Data Loss Prevention"; icon: "🛡️" }
+                ListElement { label: "Settings"; icon: "⚙️" }
+            }
+            spacing: 4
+            clip: true
+            currentIndex: root.currentIndex
+            
+            delegate: ItemDelegate {
+                width: ListView.view.width
+                height: 44
+                focusPolicy: Qt.StrongFocus
+                hoverEnabled: true
+                padding: 0
+                
+                background: Rectangle {
+                    color: {
+                        if (ListView.isCurrentItem) {
+                            return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.2)
+                        } else if (parent.hovered) {
+                            return Qt.rgba(1, 1, 1, 0.08)
+                        }
+                        return "transparent"
+                    }
+                    radius: 8
+                    
+                    Behavior on color {
+                        ColorAnimation { duration: 200; easing.type: Easing.InOutQuad }
+                    }
                 }
-                spacing: 10
-                clip: true
-                currentIndex: root.currentIndex
-                delegate: ItemDelegate {
-                    width: ListView.view.width
-                    height: 40
-                    focusPolicy: Qt.StrongFocus
+                
+                // Left indicator for selected item
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 0
+                    width: ListView.isCurrentItem ? 4 : 0
+                    height: 24
+                    radius: 2
+                    color: Theme.primary
                     
-                    // Override default background
-                    background: Rectangle {
-                        color: "transparent"
+                    Behavior on width {
+                        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                    }
+                }
+                
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 8
+                    
+                    Label {
+                        text: model.icon
+                        font.pixelSize: 18
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                     
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: model.label
-                    onClicked: {
-                        root.currentIndex = index
-                        root.navigationChanged(index)
-                    }
-                    
-                    // Focus ring
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: -2
-                        radius: Theme.radii_sm + 2
-                        color: "transparent"
-                        border.color: Theme.focusRing
-                        border.width: Theme.focusRingWidth
-                        opacity: parent.activeFocus ? 1.0 : 0.0
-                        z: 100
+                    Label {
+                        text: model.label
+                        font.pixelSize: 13
+                        font.weight: ListView.isCurrentItem ? Font.DemiBold : Font.Normal
+                        color: Theme.text
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                         
-                        Behavior on opacity {
-                            NumberAnimation { duration: Theme.duration_fast }
+                        Behavior on font.weight {
+                            NumberAnimation { duration: 200 }
                         }
                     }
-                    
-                    Rectangle {
-                        id: selectionPill
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.ListView.isCurrentItem ? 6 : 0
-                        height: 28
-                        radius: 3
-                        color: Theme.primary
-                        opacity: parent.ListView.isCurrentItem ? 0.85 : 0
-                        Behavior on width { NumberAnimation { duration: Theme.duration_fast } }
-                        Behavior on opacity { NumberAnimation { duration: Theme.duration_fast } }
-                    }
-                    Rectangle {
-                        anchors.fill: parent
-                        color: parent.ListView.isCurrentItem ? "transparent" : (parent.hovered ? Theme.elevatedPanel : "transparent")
-                        radius: Theme.radii_sm
-                        z: -1
-                        Behavior on color { ColorAnimation { duration: Theme.duration_fast } }
-                    }
-                    RowLayout {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Theme.spacing_md
-                        Text {
-                            text: model.icon
-                            font.pixelSize: 20
-                            Layout.preferredWidth: 28
-                            horizontalAlignment: Text.AlignHCenter
-                            color: Theme.text
-                            
-                            Behavior on color {
-                                ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                            }
-                        }
-                        Text {
-                            text: model.label
-                            color: Theme.text
-                            font.pixelSize: Theme.typography.body.size
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                            
-                            Behavior on color {
-                                ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
-                            }
-                        }
-                    }
+                }
+                
+                onClicked: {
+                    console.log("[SIDEBAR] Item clicked:", model.label, "index:", index)
+                    root.currentIndex = index
+                    root.navigationChanged(index)
                 }
             }
+        }
     }
 }

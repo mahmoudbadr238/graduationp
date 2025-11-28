@@ -5,20 +5,86 @@ QtObject {
     id: themeManager
     
     property string themeMode: "system"  // "dark", "light", "system"
+    property string fontSize: "medium"  // "small", "medium", "large"
+    property int fontSizeUpdateTrigger: 0  // Trigger for UI updates
+    
+    // Connect to SettingsService on startup
+    function initializeTheme() {
+        if (typeof SettingsService !== 'undefined' && SettingsService) {
+            // Load from settings
+            themeMode = SettingsService.themeMode
+            fontSize = SettingsService.fontSize
+            
+            // Connect for changes
+            try {
+                SettingsService.themeModeChanged.connect(onThemeModeChanged)
+                SettingsService.fontSizeChanged.connect(onFontSizeChanged)
+            } catch(e) {
+                console.warn("Could not connect to SettingsService signals:", e)
+            }
+        }
+    }
+    
+    function onThemeModeChanged() {
+        if (typeof SettingsService !== 'undefined' && SettingsService) {
+            themeMode = SettingsService.themeMode
+        }
+    }
+    
+    function onFontSizeChanged() {
+        if (typeof SettingsService !== 'undefined' && SettingsService) {
+            fontSize = SettingsService.fontSize
+        }
+        // Trigger re-render by changing this counter
+        fontSizeUpdateTrigger = fontSizeUpdateTrigger + 1
+    }
+    
+    function setThemeMode(mode) {
+        themeMode = mode
+        if (typeof SettingsService !== 'undefined' && SettingsService) {
+            SettingsService.themeMode = mode
+        }
+    }
+    
+    function setFontSize(size) {
+        fontSize = size
+        if (typeof SettingsService !== 'undefined' && SettingsService) {
+            SettingsService.fontSize = size
+        }
+        // Trigger re-render
+        fontSizeUpdateTrigger = fontSizeUpdateTrigger + 1
+    }
+    
+    function getFontScale() {
+        if (fontSize === "small") return 0.85
+        if (fontSize === "large") return 1.15
+        return 1.0  // medium
+    }
+    
+    // Font size helpers
+    function fontSize_h1() { return Math.round(28 * getFontScale()) }
+    function fontSize_h2() { return Math.round(22 * getFontScale()) }
+    function fontSize_h3() { return Math.round(18 * getFontScale()) }
+    function fontSize_body() { return Math.round(14 * getFontScale()) }
+    function fontSize_small() { return Math.round(12 * getFontScale()) }
+    
+    Component.onCompleted: {
+        initializeTheme()
+    }
     
     // Color palette
-    readonly property color accent: "#6c5ce7"
-    readonly property color darkBg: "#0f1420"
+    readonly property color accent: "#7C3AED"
+    readonly property color darkBg: "#050814"
     readonly property color lightBg: "#f6f8fc"
-    readonly property color darkText: "#e6e9f2"
+    readonly property color darkText: "#F9FAFB"
     readonly property color lightText: "#1a1b1e"
-    readonly property color darkPanel: "#131A28"
+    readonly property color darkPanel: "#0B1020"
     readonly property color lightPanel: "#ffffff"
-    readonly property color darkSurface: "#0C1220"
+    readonly property color darkSurface: "#050814"
     readonly property color lightSurface: "#e8ecf4"
-    readonly property color darkMuted: "#8B97B0"
+    readonly property color darkMuted: "#9CA3AF"
     readonly property color lightMuted: "#6c757d"
-    readonly property color darkBorder: "#232B3B"
+    readonly property color darkBorder: "#1F2937"
     readonly property color lightBorder: "#d1d5db"
     readonly property color darkElevated: "#1A2233"
     readonly property color lightElevated: "#f3f4f6"

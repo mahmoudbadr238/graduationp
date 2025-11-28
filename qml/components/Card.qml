@@ -2,7 +2,7 @@
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
-import "../theme"
+import "../ui"
 
 Rectangle {
     id: root
@@ -11,8 +11,8 @@ Rectangle {
     property bool hoverable: true
     default property alias children: contentContainer.children
     // Internal padding for content
-    property int padding: Theme.spacing_md
-    property int spacing: Theme.spacing_md
+    property int padding: 16
+    property int spacing: 16
     // Let layouts compute size from content
     implicitWidth: Math.max(titleLabel.implicitWidth, contentContainer.implicitWidth) + padding * 2
     implicitHeight: (title !== "" ? titleLabel.implicitHeight + spacing : 0) + contentContainer.implicitHeight + padding * 2
@@ -20,8 +20,8 @@ Rectangle {
     Accessible.role: Accessible.Grouping
     Accessible.name: title !== "" ? title : "Card"
     
-    color: Theme.elevatedPanel
-    radius: Theme.radii_md
+    color: ThemeManager.elevated()
+    radius: 12
     
     // Smooth color transitions
     Behavior on color {
@@ -38,7 +38,7 @@ Rectangle {
     ]
     
     transitions: Transition {
-        NumberAnimation { properties: "scale,shadowBlur"; duration: Theme.duration_fast; easing.type: Easing.OutCubic }
+        NumberAnimation { properties: "scale,shadowBlur"; duration: 140; easing.type: Easing.OutCubic }
     }
     
     MultiEffect {
@@ -46,7 +46,7 @@ Rectangle {
         source: root
         anchors.fill: root
         shadowEnabled: true
-        shadowColor: root.hoverable ? Theme.primary : Theme.border
+        shadowColor: root.hoverable ? ThemeManager.accent : ThemeManager.border()
         shadowHorizontalOffset: 0
         shadowVerticalOffset: 4
         shadowBlur: 12
@@ -63,13 +63,13 @@ Rectangle {
             visible: title !== ""
             id: titleLabel
             text: title
-            color: Theme.text
+            color: ThemeManager.foreground()
             
             Behavior on color {
                 ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
             }
-            font.pixelSize: Theme.typography.h2.size
-            font.weight: Theme.typography.h2.weight
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
             Layout.fillWidth: true
         }
         
@@ -77,7 +77,7 @@ Rectangle {
             id: contentContainer
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.spacing_md
+            spacing: 16
         }
     }
     

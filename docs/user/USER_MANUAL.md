@@ -45,8 +45,8 @@ Sentinel is your personal security assistant for Windows. Think of it as a guard
    - Install dependencies: `pip install -r requirements.txt`
 
 3. **Launch Sentinel:**
-   - Double-click `run_as_admin.bat` (for full features)
-   - **OR** run `python main.py` (for basic features)
+   - Double-click `scripts/run_as_admin.bat` (for full features)
+   - **OR** run `python main.py` from root directory (for basic features)
 
 4. **First Launch:**
    - Wait 3-5 seconds for Sentinel to load
@@ -519,8 +519,8 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 - Some network scans might fail
 
 **Solution:**
-- Right-click `run_as_admin.bat` → Run as Administrator
-- **OR** Right-click `main.py` → Run as Administrator
+- Right-click `scripts/run_as_admin.bat` → Run as Administrator
+- **OR** Right-click `main.py` in root folder → Run as Administrator
 
 **Why:** Windows protects sensitive logs from normal users.
 

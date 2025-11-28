@@ -4,40 +4,37 @@ import "../theme"
 
 Rectangle {
     id: root
-    radius: Theme.radii.lg
-    color: Theme.glass.card
-    border.color: Theme.glass.border
+    radius: 12
+    color: Theme.panel
+    border.color: Theme.border
     border.width: 1
     layer.enabled: true
     layer.smooth: true
     
-    // NO hardcoded dimensions - let content define size or use Layout
-    implicitWidth: content.childrenRect.width + Theme.spacing.xl * 2
-    implicitHeight: content.childrenRect.height + Theme.spacing.xl * 2
+    // Consistent padding - all cards have 16px margins
+    implicitWidth: content.childrenRect.width + 32
+    implicitHeight: content.childrenRect.height + 32
 
-    // Smooth color transitions
+    // Smooth transitions
     Behavior on color {
-        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+        ColorAnimation { duration: 200; easing.type: Easing.InOutQuad }
     }
     Behavior on border.color {
-        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+        ColorAnimation { duration: 200; easing.type: Easing.InOutQuad }
     }
 
-    // Content container
+    // Content container with consistent 16px padding
     default property alias data: content.data
 
     Item {
         id: content
         anchors.fill: parent
-        anchors.margins: Theme.spacing.xl
+        anchors.margins: 16
     }
 
-    // Hover/press animation
+    // Hover/press states
     property bool hovered: false
     property bool pressed: false
-
-    Behavior on scale { NumberAnimation { duration: Theme.duration.fast; easing.type: Easing.OutCubic } }
-    Behavior on opacity { NumberAnimation { duration: Theme.duration.fast } }
 
     MouseArea {
         anchors.fill: parent
@@ -48,21 +45,25 @@ Rectangle {
         onReleased: root.pressed = false
     }
 
-    // Subtle scale on hover, avoid y offset to prevent layout shift
-    scale: pressed ? 0.995 : (hovered ? 1.005 : 1.0)
+    // Smooth hover animations
+    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+    scale: pressed ? 0.98 : (hovered ? 1.02 : 1.0)
     opacity: enabled ? 1.0 : 0.6
     
-    // Neon glow on hover
+    // Subtle glow on hover
     Rectangle {
         anchors.fill: parent
         anchors.margins: -2
         radius: parent.radius
         color: "transparent"
-        border.color: Theme.neon.purpleGlow
+        border.color: Theme.primary
         border.width: 2
-        opacity: hovered ? 0.4 : 0
+        opacity: hovered ? 0.3 : 0
+        
         Behavior on opacity {
-            NumberAnimation { duration: Theme.duration.fast }
+            NumberAnimation { duration: 150 }
         }
     }
 }

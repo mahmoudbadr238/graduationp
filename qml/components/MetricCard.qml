@@ -1,84 +1,50 @@
-import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import "../theme"
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 
 Rectangle {
-    id: metricCard
-    
+    id: card
     property string title: ""
-    property string value: "0"
-    property string unit: ""
-    property string icon: "📊"
+    property string value: ""
     property string subtitle: ""
-    property string statusText: ""
-    property color statusColor: Theme.primary
-    
-    color: Qt.rgba(1, 1, 1, 0.03)
-    radius: 8
-    border.color: Qt.rgba(1, 1, 1, 0.05)
+    property color accentColor: theme.colorAccent
+
+    Theme { id: theme }
+
+    color: theme.colorSurface
+    radius: theme.radiusLarge
+    border.color: theme.colorBorderSubtle
     border.width: 1
-    
+    implicitWidth: 280
+    implicitHeight: 160
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacing_sm
-        spacing: Theme.spacing_xs
+        anchors.margins: theme.paddingM
+        spacing: theme.gapSmall
         
-        // Icon and Title
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing_xs
-            
-            Label {
-                text: metricCard.icon
-                font.pixelSize: 16
-            }
-            
-            Label {
-                text: metricCard.title
-                font.pixelSize: Theme.typography.body.size - 1
-                color: Theme.textSecondary
-                Layout.fillWidth: true
-            }
-            
-            Label {
-                text: metricCard.statusText
-                font.pixelSize: Theme.typography.body.size - 2
-                font.weight: Font.DemiBold
-                color: metricCard.statusColor
-                visible: metricCard.statusText !== ""
-            }
+        Text {
+            text: card.title
+            color: theme.colorTextSecondary
+            font.pixelSize: 12
+            font.capitalization: Font.AllUppercase
         }
-        
+
+        Text {
+            text: card.value
+            color: accentColor
+            font.pixelSize: 36
+            font.bold: true
+        }
+
+        Text {
+            visible: card.subtitle !== ""
+            text: card.subtitle
+            color: theme.colorTextMuted
+            font.pixelSize: 11
+            wrapMode: Text.Wrap
+        }
+
         Item { Layout.fillHeight: true }
-        
-        // Value
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 4
-            
-            Label {
-                text: metricCard.value !== undefined && metricCard.value !== null ? metricCard.value : "N/A"
-                font.pixelSize: Theme.typography.h2.size
-                font.weight: Font.Bold
-                color: metricCard.statusColor
-            }
-            
-            Label {
-                text: metricCard.unit
-                font.pixelSize: Theme.typography.h3.size
-                color: Theme.textSecondary
-                Layout.alignment: Qt.AlignBottom
-                visible: metricCard.unit !== ""
-            }
-        }
-        
-        // Subtitle
-        Label {
-            text: metricCard.subtitle
-            font.pixelSize: Theme.typography.body.size - 2
-            color: Theme.textSecondary
-            visible: metricCard.subtitle !== ""
-        }
     }
 }

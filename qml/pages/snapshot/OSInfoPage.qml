@@ -17,7 +17,9 @@ Column {
     PageHeader {
         title: "Operating System"
         subtitle: "Version, build, and update information"
-    }    AnimatedCard {
+    }
+    
+    AnimatedCard {
         width: parent.width - 48
         implicitHeight: 280
         
@@ -86,7 +88,9 @@ Column {
                 color: Theme.text
                 font.pixelSize: 14
                 Behavior on color { ColorAnimation { duration: 300; easing.type: Easing.InOutQuad } }
-            }            Text {
+            }
+            
+            Text {
                 text: "Uptime:"
                 color: Theme.muted
                 font.pixelSize: 14

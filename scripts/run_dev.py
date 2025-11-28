@@ -5,6 +5,10 @@ import logging
 import sys
 from pathlib import Path
 
+# Add parent directory to path to allow imports from root
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root_dir))
+
 # Set up logging before any other imports
 log_dir = Path.home() / ".sentinel" / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)

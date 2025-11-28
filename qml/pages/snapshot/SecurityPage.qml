@@ -17,9 +17,17 @@ AppSurface {
         "is_admin": false
     })
 
-    Column {
-        width: Math.min(800, parent.width - Theme.spacing_md * 2)
-        spacing: Theme.spacing_lg
+    ScrollView {
+        anchors.fill: parent
+        anchors.margins: 0
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        contentWidth: availableWidth
+
+        Column {
+            width: Math.min(800, parent.width)
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Theme.spacing_lg
 
         PageHeader {
             title: "Security Features"
@@ -190,6 +198,7 @@ AppSurface {
                     }
                 }
             }
+        }
         }
     }
 }

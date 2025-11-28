@@ -1,142 +1,191 @@
-﻿import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
-import "../components"
-import "../theme"
-AppSurface {
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../ui"
+
+Item {
     id: root
+    anchors.fill: parent
     
-    ScrollView {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing_md
-        clip: true
+    // Sample DLP rules model
+    ListModel {
+        id: rulesModel
         
-        ColumnLayout {
-            width: Math.max(800, parent.width - Theme.spacing_md * 2)
-            spacing: Theme.spacing_lg
-            Panel {
-                Layout.fillWidth: true
+        Component.onCompleted: {
+            rulesModel.append({ name: "No USB Exports", description: "Block USB device exports", enabled: true })
+            rulesModel.append({ name: "Prevent Printing", description: "Disable printing sensitive docs", enabled: true })
+            rulesModel.append({ name: "Cloud Upload Block", description: "Block cloud storage uploads", enabled: true })
+            rulesModel.append({ name: "Email Encryption", description: "Enforce encrypted emails", enabled: false })
+            rulesModel.append({ name: "Screenshot Block", description: "Disable screenshot captures", enabled: true })
+            rulesModel.append({ name: "Remote Desktop Block", description: "Block RDP/remote sessions", enabled: true })
+            rulesModel.append({ name: "Webcam Block", description: "Disable webcam access", enabled: false })
+            rulesModel.append({ name: "Microphone Block", description: "Disable microphone access", enabled: true })
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 32
+        spacing: 24
+
+        Text {
+            text: "Data Loss Prevention"
+            font.pixelSize: 28
+            font.bold: true
+            color: ThemeManager.foreground()
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            height: 120
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 30
+
                 ColumnLayout {
-                    spacing: Theme.spacing_lg
-                    SectionHeader {
-                        title: "DLP Status Overview"
-                        subtitle: "Data Loss Prevention metrics"
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: "DLP Status"
+                        font.pixelSize: 12
+                        color: ThemeManager.muted()
                     }
-                    
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: root.isWideScreen ? 4 : 2
-                        rowSpacing: Theme.spacing_lg
-                        columnSpacing: Theme.spacing_lg
-                        
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 200 : 160
-                            Layout.preferredHeight: 100
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: Theme.border
-                            border.width: 1
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_sm
-                                
-                                Text {
-                                    text: "Total Blocks"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "1,247"
-                                    color: Theme.success
-                                    font.pixelSize: 28
-                                    font.weight: Font.Bold
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
+
+                    Text {
+                        text: "Active"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: "#22C55E"
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: "Active Rules"
+                        font.pixelSize: 12
+                        color: ThemeManager.muted()
+                    }
+
+                    Text {
+                        text: {
+                            var count = 0
+                            for (var i = 0; i < rulesModel.count; i++) {
+                                if (rulesModel.get(i).enabled) count++
                             }
+                            return count
                         }
-                        
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 200 : 160
-                            Layout.preferredHeight: 100
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: Theme.border
-                            border.width: 1
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_sm
-                                
-                                Text {
-                                    text: "Compliance Score"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "98%"
-                                    color: Theme.success
-                                    font.pixelSize: 28
-                                    font.weight: Font.Bold
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                            }
-                        }
-                        
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 200 : 160
-                            Layout.preferredHeight: 100
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: Theme.border
-                            border.width: 1
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_sm
-                                
-                                Text {
-                                    text: "Policies Active"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "24"
-                                    color: Theme.primary
-                                    font.pixelSize: 28
-                                    font.weight: Font.Bold
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                            }
-                        }
-                        
-                        Rectangle {
-                            Layout.preferredWidth: root.isWideScreen ? 200 : 160
-                            Layout.preferredHeight: 100
-                            color: Theme.surface
-                            radius: Theme.radii_md
-                            border.color: Theme.border
-                            border.width: 1
-                            
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.spacing_sm
-                                
-                                Text {
-                                    text: "Protected Files"
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.typography.body.size
-                                    Layout.alignment: Qt.AlignHCenter
-                                }
-                                Text {
-                                    text: "8,432"
-                                    color: Theme.primary
-                                    font.pixelSize: 28
-                                    font.weight: Font.Bold
-                                    Layout.alignment: Qt.AlignHCenter
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: ThemeManager.foreground()
+                    }
+
+                    Text {
+                        text: "0"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: ThemeManager.foreground()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 12
+
+                Text {
+                    text: "Active Rules"
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: ThemeManager.foreground()
+                }
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 8
+
+                        Repeater {
+                            model: rulesModel
+
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                height: 60
+                                color: model.enabled ? ThemeManager.elevated() : ThemeManager.surface()
+                                radius: 6
+                                border.color: model.enabled ? ThemeManager.border() : ThemeManager.border()
+                                border.width: 1
+                                opacity: model.enabled ? 1.0 : 0.6
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    spacing: 12
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Text {
+                                            text: model.name
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: model.description
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: 9
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: 40
+                                        height: 24
+                                        color: model.enabled ? "#7C3AED" : "#4B5563"
+                                        radius: 12
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: model.enabled ? "ON" : "OFF"
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 9
+                                            font.bold: true
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                rulesModel.setProperty(index, "enabled", !model.enabled)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

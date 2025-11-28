@@ -44,12 +44,29 @@ QtObject {
     // THEME MODE MANAGEMENT
     // ============================================================
     property string themeMode: "dark"  // "dark", "light", "system"
+    property string fontSize: "medium"  // "small", "medium", "large"
     
     function isDark() {
         if (themeMode === "dark") return true
         if (themeMode === "light") return false
         return Qt.styleHints.colorScheme === Qt.Dark
     }
+    
+    function setThemeMode(mode) {
+        themeMode = mode
+        themeChanged()
+    }
+    
+    function setFontSize(size) {
+        fontSize = size
+    }
+    
+    function getFontScale() {
+        var scales = {"small": 0.9, "medium": 1.0, "large": 1.15}
+        return scales[fontSize] || 1.0
+    }
+    
+    signal themeChanged()
 
     // ============================================================
     // COLOR PALETTE - Centralized & Reactive
@@ -87,6 +104,17 @@ QtObject {
     readonly property color focusRing: primary
     readonly property int focusRingWidth: 2
     readonly property int focusRingRadius: 8
+    
+    // ============================================================
+    // COLOR FUNCTIONS (for dynamic theme changes)
+    // ============================================================
+    function background() { return bg }
+    function foreground() { return text }
+    function panel_color() { return panel }
+    function surface_color() { return surface }
+    function elevated() { return elevatedPanel }
+    function border_color() { return border }
+    function muted_color() { return muted }
 
     // ============================================================
     // SPACING SYSTEM (8px base unit)
@@ -145,6 +173,16 @@ QtObject {
     }    // ============================================================
     // TYPOGRAPHY SYSTEM
     // ============================================================
+    function fontSize_h1() { return Math.round(32 * getFontScale()) }
+    function fontSize_h2() { return Math.round(24 * getFontScale()) }
+    function fontSize_h3() { return Math.round(20 * getFontScale()) }
+    function fontSize_h4() { return Math.round(18 * getFontScale()) }
+    function fontSize_body() { return Math.round(15 * getFontScale()) }
+    function fontSize_bodySmall() { return Math.round(13 * getFontScale()) }
+    function fontSize_bodyLarge() { return Math.round(17 * getFontScale()) }
+    function fontSize_label() { return Math.round(12 * getFontScale()) }
+    function fontSize_caption() { return Math.round(11 * getFontScale()) }
+    
     readonly property QtObject typography: QtObject {
         // Headings
         readonly property QtObject h1: QtObject {

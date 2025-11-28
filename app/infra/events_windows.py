@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from datetime import datetime
+import logging
 
 import win32con
 import win32evtlog
@@ -9,12 +10,19 @@ import win32evtlog
 from ..core.interfaces import IEventReader
 from ..core.types import EventItem
 
+logger = logging.getLogger(__name__)
+
 
 class WindowsEventReader(IEventReader):
     """Read recent Windows event logs."""
 
     # Event log sources to monitor (prioritized order)
     SOURCES = ["Application", "System", "Security"]
+
+    # ASCII-safe icons for output (no encoding issues)
+    SAFE_ICON_SUCCESS = "[OK]"
+    SAFE_ICON_ERROR = "[!]"
+    SAFE_ICON_WARNING = "[*]"
 
     # Map Windows event types to severity levels
     EVENT_TYPE_MAP = {
@@ -26,99 +34,160 @@ class WindowsEventReader(IEventReader):
     }
 
     def tail(self, limit: int = 100) -> Iterable[EventItem]:
-        """Return recent Windows event log entries."""
+        """Return recent Windows event log entries.
+        
+        Returns gracefully with available events if some sources are inaccessible.
+        """
         events = []
-
-        # Read more events per source to ensure we get the requested total
-        # Even if Security log is inaccessible, we'll have enough from Application + System
-        per_source_limit = limit // 2  # Divide by 2 instead of 3 for better coverage
+        per_source_limit = limit // 2
 
         for source in self.SOURCES:
             try:
-                # Try to read each source, but continue if access denied
                 source_events = self._read_source(source, per_source_limit)
                 events.extend(source_events)
-                print(f"✓ Read {len(source_events)} events from {source}")
-            except (OSError, PermissionError, ValueError) as e:
-                # Gracefully handle permission errors and invalid sources
-                error_msg = str(e)
-                if "1314" in error_msg or "privilege" in error_msg.lower():
-                    print(
-                        f"⚠ {source} events require administrator privileges (skipped)"
-                    )
-                else:
-                    print(f"⚠ Could not read {source} events: {e}")
+                logger.debug(f"Read {len(source_events)} events from {source}")
+            except PermissionError as e:
+                logger.warning(f"{source} requires admin privileges: {e}")
+                continue
+            except (OSError, ValueError) as e:
+                # Gracefully handle Event Viewer unavailable or encoding errors
+                logger.warning(f"Could not read {source} events: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error reading {source}: {e}")
                 continue
 
         # Sort by timestamp descending and limit
         events.sort(key=lambda e: e.timestamp, reverse=True)
-        return events[:limit]
+        result = events[:limit]
+        
+        if not result:
+            logger.warning("No events available from any source")
+            # Return empty list gracefully instead of failing
+        
+        return result
 
     def _read_source(self, source: str, limit: int) -> list[EventItem]:
-        """Read events from a specific source."""
+        """Read events from a specific source with encoding-safe handling.
+        
+        Args:
+            source: Event log source name (Application, System, Security)
+            limit: Maximum events to read per batch
+            
+        Returns:
+            List of EventItem objects, may be empty if source unavailable
+            
+        Raises:
+            PermissionError: If access denied (e.g., Security log without admin)
+            OSError: If source doesn't exist or is inaccessible
+        """
         events = []
-
+        
         try:
             hand = win32evtlog.OpenEventLog(None, source)
+        except Exception as e:
+            # Gracefully handle Event Viewer unavailable or closed
+            logger.error(f"Cannot open {source} event log: {e}")
+            raise
+            
+        try:
             flags = (
                 win32evtlog.EVENTLOG_BACKWARDS_READ
                 | win32evtlog.EVENTLOG_SEQUENTIAL_READ
             )
 
+            batch_count = 0
             while len(events) < limit:
-                event_batch = win32evtlog.ReadEventLog(hand, flags, 0)
-                if not event_batch:
-                    break
-
-                for event in event_batch:
-                    if len(events) >= limit:
+                try:
+                    event_batch = win32evtlog.ReadEventLog(hand, flags, 0)
+                    if not event_batch:
                         break
 
-                    # Extract event information
-                    level = self.EVENT_TYPE_MAP.get(event.EventType, "UNKNOWN")
-                    timestamp = datetime.fromtimestamp(
-                        int(event.TimeGenerated.timestamp())
-                    )
+                    for event in event_batch:
+                        if len(events) >= limit:
+                            break
 
-                    # Get user-friendly message
-                    message = self._simplify_message(event, source)
+                        try:
+                            # Extract event information with encoding safety
+                            level = self.EVENT_TYPE_MAP.get(event.EventType, "UNKNOWN")
+                            timestamp = datetime.fromtimestamp(
+                                int(event.TimeGenerated.timestamp())
+                            )
 
-                    events.append(
-                        EventItem(
-                            timestamp=timestamp,
-                            level=level,
-                            source=source,
-                            message=message,
-                        )
-                    )
+                            # Get user-friendly message (encoding-safe)
+                            message = self._simplify_message(event, source)
 
-            win32evtlog.CloseEventLog(hand)
+                            events.append(
+                                EventItem(
+                                    timestamp=timestamp,
+                                    level=level,
+                                    source=source,
+                                    message=message,
+                                )
+                            )
+                        except UnicodeEncodeError as e:
+                            logger.warning(f"Encoding error processing event: {e}")
+                            # Skip this event, continue with next
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Error processing event: {e}")
+                            continue
+                    
+                    batch_count += 1
+                    if batch_count > 100:  # Prevent infinite loops
+                        logger.warning(f"Read {batch_count} batches from {source}, stopping")
+                        break
+                        
+                except OSError as e:
+                    logger.error(f"Error reading batch from {source}: {e}")
+                    break
 
-        except Exception:
-            # Re-raise to be handled by caller
+        except Exception as e:
+            logger.error(f"Unexpected error reading {source}: {e}")
             raise
+        finally:
+            try:
+                win32evtlog.CloseEventLog(hand)
+            except Exception as e:
+                logger.warning(f"Error closing event log: {e}")
 
         return events
 
     def _simplify_message(self, event, source: str) -> str:
-        """
-        Convert technical event messages into user-friendly descriptions.
+        """Convert technical event messages into user-friendly, encoding-safe descriptions.
 
         Args:
             event: Windows event object
             source: Event log source name
 
         Returns:
-            str: Simplified, user-friendly message
+            str: Simplified, user-friendly, ASCII-safe message
         """
-        event_id = event.EventID & 0xFFFF  # Mask to get actual ID
+        try:
+            event_id = event.EventID & 0xFFFF  # Mask to get actual ID
+        except Exception as e:
+            logger.warning(f"Could not extract event ID: {e}")
+            return f"{source} Event (unknown ID)"
 
-        # Try to get the original message
+        # Try to get the original message safely
         raw_message = ""
-        if event.StringInserts:
-            raw_message = " ".join([s for s in event.StringInserts if s])
+        try:
+            if event.StringInserts:
+                # Filter out None/empty strings and encode safely
+                inserts = []
+                for s in event.StringInserts:
+                    if s:
+                        # Replace any non-ASCII characters with safe alternatives
+                        try:
+                            safe_s = s.encode('ascii', errors='replace').decode('ascii')
+                            inserts.append(safe_s)
+                        except Exception:
+                            inserts.append("(text)")
+                raw_message = " ".join(inserts)
+        except Exception as e:
+            logger.warning(f"Could not extract event details: {e}")
 
-        # Common event ID translations for better UX
+        # Common event ID translations for better UX (ASCII-safe)
         EVENT_TRANSLATIONS = {
             # System Events
             1074: "System restart or shutdown",
@@ -158,12 +227,13 @@ class WindowsEventReader(IEventReader):
                 return f"{friendly}: {raw_message}"
             return friendly
 
-        # For unknown events, try to make the message cleaner
+        # For unknown events, try to make the message cleaner and ASCII-safe
         if raw_message:
-            # Limit message length for readability
+            # Limit message length for readability and safety
+            safe_msg = raw_message[:150]
             if len(raw_message) > 150:
-                return raw_message[:150] + "..."
-            return raw_message
+                safe_msg += "..."
+            return safe_msg
 
         # Fallback: just show event ID with source
         return f"{source} Event ID {event_id}"

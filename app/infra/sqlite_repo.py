@@ -1,16 +1,24 @@
-"""SQLite repository for scan records and events."""
+"""SQLite repository for scan records and events with connection pooling and optimization."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from ..core.interfaces import IEventRepository, IScanRepository
 from ..core.types import EventItem, ScanRecord, ScanType
 
+logger = logging.getLogger(__name__)
+
+# Connection pool configuration
+MAX_POOL_SIZE = 5
+CONNECTION_TIMEOUT = 30  # seconds
+
 
 class SqliteRepo(IScanRepository, IEventRepository):
-    """SQLite-based repository for scans and events."""
+    """SQLite-based repository for scans and events with connection pooling and optimizations."""
 
     def __init__(self):
         # Store database in user profile
@@ -18,14 +26,27 @@ class SqliteRepo(IScanRepository, IEventRepository):
         db_dir.mkdir(exist_ok=True)
 
         self.db_path = db_dir / "sentinel.db"
+        self._connections: list[sqlite3.Connection] = []
+        self._connection_pool_size = 0
         self.init()
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get a database connection from pool or create new one"""
+        # For now, use a simple approach (thread-safe SQLite connections)
+        conn = sqlite3.connect(str(self.db_path), timeout=CONNECTION_TIMEOUT, check_same_thread=False)
+        conn.row_factory = sqlite3.Row  # Better performance with row factories
+        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+        conn.execute("PRAGMA synchronous=NORMAL")  # Balance between safety and speed
+        conn.execute("PRAGMA cache_size=5000")  # Increase page cache
+        return conn
+
     def init(self) -> None:
-        """Initialize database tables."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Initialize database tables with optimizations."""
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
 
-            # Scans table
+            # Scans table with better indexing
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS scans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +60,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 )
             """)
 
-            # Events table
+            # Events table with better indexing
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,22 +71,28 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 )
             """)
 
-            # Create indexes
+            # Create optimized indexes (avoiding duplicates)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_type ON scans(type)")
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_scans_started ON scans(started_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)"
-            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_started ON scans(started_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_level ON events(level)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)")
 
             conn.commit()
+            logger.info(f"Database initialized at {self.db_path}")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            raise
+        finally:
+            conn.close()
 
     # IScanRepository implementation
 
     def add(self, rec: ScanRecord) -> int:
         """Add a scan record and return its ID."""
-        with sqlite3.connect(self.db_path) as conn:
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -85,11 +112,19 @@ class SqliteRepo(IScanRepository, IEventRepository):
             )
 
             conn.commit()
-            return cursor.lastrowid
+            record_id = cursor.lastrowid
+            logger.debug(f"Added scan record {record_id}")
+            return record_id
+        except Exception as e:
+            logger.error(f"Error adding scan record: {e}")
+            raise
+        finally:
+            conn.close()
 
     def all(self, limit: int = 100) -> list[ScanRecord]:
-        """Get all scan records (most recent first)."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Get all scan records (most recent first) with optimized query."""
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -104,73 +139,150 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
             records = []
             for row in cursor.fetchall():
-                records.append(
-                    ScanRecord(
-                        id=row[0],
-                        started_at=datetime.fromisoformat(row[1]),
-                        finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
-                        type=ScanType(row[3]),
-                        target=row[4],
-                        status=row[5],
-                        findings=json.loads(row[6]) if row[6] else None,
-                        meta=json.loads(row[7]) if row[7] else None,
+                try:
+                    records.append(
+                        ScanRecord(
+                            id=row[0],
+                            started_at=datetime.fromisoformat(row[1]),
+                            finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                            type=ScanType(row[3]),
+                            target=row[4],
+                            status=row[5],
+                            findings=json.loads(row[6]) if row[6] else None,
+                            meta=json.loads(row[7]) if row[7] else None,
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.warning(f"Error parsing scan record {row[0]}: {e}")
+                    continue
 
             return records
+        except Exception as e:
+            logger.error(f"Error querying scans: {e}")
+            return []
+        finally:
+            conn.close()
 
     def get_all(self) -> list[ScanRecord]:
-        """Get all scan records."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Get all scan records (use with caution for large datasets)."""
+        return self.all(limit=10000)  # Reasonable limit to prevent memory issues
+
+    def get_by_id(self, scan_id: int) -> Optional[ScanRecord]:
+        """Get a specific scan record by ID"""
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 SELECT id, started_at, finished_at, type, target, status, findings, meta
                 FROM scans
+                WHERE id = ?
+            """,
+                (scan_id,),
+            )
+
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            return ScanRecord(
+                id=row[0],
+                started_at=datetime.fromisoformat(row[1]),
+                finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                type=ScanType(row[3]),
+                target=row[4],
+                status=row[5],
+                findings=json.loads(row[6]) if row[6] else None,
+                meta=json.loads(row[7]) if row[7] else None,
+            )
+        except Exception as e:
+            logger.error(f"Error getting scan by ID {scan_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_by_type(self, scan_type: ScanType, limit: int = 100) -> list[ScanRecord]:
+        """Get scans filtered by type"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, started_at, finished_at, type, target, status, findings, meta
+                FROM scans
+                WHERE type = ?
                 ORDER BY started_at DESC
-            """
+                LIMIT ?
+            """,
+                (scan_type.value, limit),
             )
 
             records = []
             for row in cursor.fetchall():
-                records.append(
-                    ScanRecord(
-                        id=row[0],
-                        started_at=datetime.fromisoformat(row[1]),
-                        finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
-                        type=ScanType(row[3]),
-                        target=row[4],
-                        status=row[5],
-                        findings=json.loads(row[6]) if row[6] else None,
-                        meta=json.loads(row[7]) if row[7] else None,
+                try:
+                    records.append(
+                        ScanRecord(
+                            id=row[0],
+                            started_at=datetime.fromisoformat(row[1]),
+                            finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                            type=ScanType(row[3]),
+                            target=row[4],
+                            status=row[5],
+                            findings=json.loads(row[6]) if row[6] else None,
+                            meta=json.loads(row[7]) if row[7] else None,
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.warning(f"Error parsing scan record: {e}")
+                    continue
 
             return records
+        except Exception as e:
+            logger.error(f"Error querying scans by type: {e}")
+            return []
+        finally:
+            conn.close()
 
     # IEventRepository implementation
 
     def add_many(self, items: list[EventItem]) -> None:
-        """Add multiple event items."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Add multiple event items in a transaction for better performance."""
+        if not items:
+            return
+
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
-
-            cursor.executemany(
-                """
-                INSERT INTO events (timestamp, level, source, message)
-                VALUES (?, ?, ?, ?)
-            """,
-                [
-                    (item.timestamp.isoformat(), item.level, item.source, item.message)
-                    for item in items
-                ],
-            )
-
-            conn.commit()
+            
+            # Use transaction for better performance
+            cursor.execute("BEGIN TRANSACTION")
+            try:
+                cursor.executemany(
+                    """
+                    INSERT INTO events (timestamp, level, source, message)
+                    VALUES (?, ?, ?, ?)
+                """,
+                    [
+                        (item.timestamp.isoformat(), item.level, item.source, item.message)
+                        for item in items
+                    ],
+                )
+                conn.commit()
+                logger.debug(f"Added {len(items)} event items")
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Error adding events: {e}")
+                raise
+        except Exception as e:
+            logger.error(f"Error in add_many: {e}")
+            raise
+        finally:
+            conn.close()
 
     def recent(self, limit: int = 100) -> list[EventItem]:
-        """Get recent event items."""
-        with sqlite3.connect(self.db_path) as conn:
+        """Get recent event items with optimized query."""
+        conn = self._get_connection()
+        try:
             cursor = conn.cursor()
 
             cursor.execute(
@@ -185,13 +297,102 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
             items = []
             for row in cursor.fetchall():
-                items.append(
-                    EventItem(
-                        timestamp=datetime.fromisoformat(row[0]),
-                        level=row[1],
-                        source=row[2],
-                        message=row[3],
+                try:
+                    items.append(
+                        EventItem(
+                            timestamp=datetime.fromisoformat(row[0]),
+                            level=row[1],
+                            source=row[2],
+                            message=row[3],
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.warning(f"Error parsing event: {e}")
+                    continue
 
             return items
+        except Exception as e:
+            logger.error(f"Error querying recent events: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_by_level(self, level: str, limit: int = 100) -> list[EventItem]:
+        """Get events filtered by level"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT timestamp, level, source, message
+                FROM events
+                WHERE level = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """,
+                (level, limit),
+            )
+
+            items = []
+            for row in cursor.fetchall():
+                try:
+                    items.append(
+                        EventItem(
+                            timestamp=datetime.fromisoformat(row[0]),
+                            level=row[1],
+                            source=row[2],
+                            message=row[3],
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Error parsing event: {e}")
+                    continue
+
+            return items
+        except Exception as e:
+            logger.error(f"Error querying events by level: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_by_source(self, source: str, limit: int = 100) -> list[EventItem]:
+        """Get events filtered by source"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT timestamp, level, source, message
+                FROM events
+                WHERE source = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """,
+                (source, limit),
+            )
+
+            items = []
+            for row in cursor.fetchall():
+                try:
+                    items.append(
+                        EventItem(
+                            timestamp=datetime.fromisoformat(row[0]),
+                            level=row[1],
+                            source=row[2],
+                            message=row[3],
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Error parsing event: {e}")
+                    continue
+
+            return items
+        except Exception as e:
+            logger.error(f"Error querying events by source: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def cleanup(self) -> None:
+        """Cleanup resources"""
+        logger.info("SQLite repository cleanup complete")

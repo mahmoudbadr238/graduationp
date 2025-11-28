@@ -30,6 +30,7 @@ class GPUServiceBridge(QObject):
     statusChanged = Signal(str)  # stopped, starting, running, degraded, breaker-open
     updateIntervalChanged = Signal(int)
     gpuCountChanged = Signal(int)
+    metricsChanged = Signal()  # Emitted when GPU metrics are updated
     error = Signal(str, str)  # title, message
 
     def __init__(self, parent=None):
@@ -70,6 +71,11 @@ class GPUServiceBridge(QObject):
     @Property(int, notify=gpuCountChanged)
     def gpuCount(self) -> int:
         return self._gpu_count
+
+    @Property('QVariantList', notify=metricsChanged)
+    def metrics(self) -> list:
+        """Get all GPU metrics as a list of dicts"""
+        return self._metrics_cache
 
     def getUpdateInterval(self) -> int:
         return self._interval
@@ -202,6 +208,7 @@ class GPUServiceBridge(QObject):
                             self.gpuCountChanged.emit(new_count)
 
                         self.metricsUpdated.emit()
+                        self.metricsChanged.emit()
 
                     elif msg_type == "error":
                         logger.error(f"Worker error: {msg.get('msg')}")

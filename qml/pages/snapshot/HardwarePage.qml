@@ -27,25 +27,21 @@ AppSurface {
 
     ScrollView {
         anchors.fill: parent
-        anchors.margins: Theme.spacing.md
+        anchors.margins: Theme.spacing_md
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ScrollBar.vertical.policy: ScrollBar.AsNeeded
         contentWidth: availableWidth
 
         Flickable {
+            width: parent.width
             contentWidth: width
-            contentHeight: mainColumn.height + Theme.spacing.xxl
+            contentHeight: mainColumn.height + Theme.spacing_xxl
 
             ColumnLayout {
                 id: mainColumn
-                width: Math.min(1400, parent.width)
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Theme.spacing.lg
-
-                Component.onCompleted: {
-                    // Ensure layout is properly initialized
-                }
+                width: parent.width
+                spacing: Theme.spacing_lg
 
                 PageHeader {
                     title: "Hardware Usage"
@@ -55,7 +51,7 @@ AppSurface {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.spacing.md
+                    spacing: Theme.spacing_md
 
                     AnimatedCard {
                         Layout.fillWidth: true
@@ -63,8 +59,8 @@ AppSurface {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.spacing.lg
-                            spacing: Theme.spacing.sm
+                            anchors.margins: Theme.spacing_lg
+                            spacing: Theme.spacing_sm
 
                             Text {
                                 text: "CPU Usage"
@@ -102,8 +98,8 @@ AppSurface {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.spacing.lg
-                            spacing: Theme.spacing.sm
+                            anchors.margins: Theme.spacing_lg
+                            spacing: Theme.spacing_sm
 
                             Text {
                                 text: "Memory Usage"
@@ -140,7 +136,7 @@ AppSurface {
                 // GPU Monitoring Section - Using New GPUBackend with live updates
                 GPUMiniWidget {
                     Layout.fillWidth: true
-                    Layout.topMargin: Theme.spacing.md
+                    Layout.topMargin: Theme.spacing_md
                 }
 
                 Text {
@@ -148,7 +144,7 @@ AppSurface {
                     color: Theme.text
                     font.pixelSize: Theme.typography.h2.size
                     font.weight: Theme.typography.h2.weight
-                    Layout.topMargin: Theme.spacing.md
+                    Layout.topMargin: Theme.spacing_md
                     Layout.fillWidth: true
 
                     Behavior on color {
@@ -181,12 +177,12 @@ AppSurface {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.spacing.lg
-                            spacing: Theme.spacing.md
+                            anchors.margins: Theme.spacing_lg
+                            spacing: Theme.spacing_md
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: Theme.spacing.sm
+                                spacing: Theme.spacing_sm
 
                                 Text {
                                     text: modelData.mountpoint || "Drive"
@@ -266,7 +262,7 @@ AppSurface {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: Theme.spacing.lg
+                                spacing: Theme.spacing_lg
 
                                 Text {
                                     text: {
@@ -278,11 +274,11 @@ AppSurface {
                                         }
                                         return "0 GB used"
                                     }
-                                    color: Theme.textSecondary
-                                    font.pixelSize: Theme.typography.body.size
+                                    color: Theme.textSecondary || "#888888"
+                                    font.pixelSize: Theme.typography ? Theme.typography.body.size : 15
 
                                     Behavior on color {
-                                        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+                                        ColorAnimation { duration: Theme.duration_fast; easing.type: Easing.InOutQuad }
                                     }
                                 }
 
@@ -296,11 +292,11 @@ AppSurface {
                                         }
                                         return "0 GB total"
                                     }
-                                    color: Theme.textSecondary
-                                    font.pixelSize: Theme.typography.body.size
+                                    color: Theme.textSecondary || "#888888"
+                                    font.pixelSize: Theme.typography ? Theme.typography.body.size : 15
 
                                     Behavior on color {
-                                        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+                                        ColorAnimation { duration: Theme.duration_fast; easing.type: Easing.InOutQuad }
                                     }
                                 }
 
@@ -317,10 +313,10 @@ AppSurface {
                                         return "0 GB free"
                                     }
                                     color: Theme.success
-                                    font.pixelSize: Theme.typography.body.size
+                                    font.pixelSize: Theme.typography ? Theme.typography.body.size : 15
 
                                     Behavior on color {
-                                        ColorAnimation { duration: Theme.duration.fast; easing.type: Easing.InOutQuad }
+                                        ColorAnimation { duration: Theme.duration_fast; easing.type: Easing.InOutQuad }
                                     }
                                 }
                             }

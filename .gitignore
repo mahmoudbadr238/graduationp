@@ -187,3 +187,21 @@ cython_debug/
 scans/
 logs/
 sentinel_data.db
+build_artifacts/
+artifacts/
+_cleanup_archive/
+
+# Generated output and temporary files
+*.log
+*_output.txt
+*_test.txt
+debug*.txt
+temp_*.txt
+chart_*.txt
+*.spec
+
+# Build and distribution artifacts
+build/
+dist/
+*.egg
+*.whl

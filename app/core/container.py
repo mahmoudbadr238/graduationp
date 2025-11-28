@@ -58,7 +58,7 @@ def configure() -> None:
         DI.register(IUrlScanner, lambda: UrlScanner(vt))
     except IntegrationDisabled as e:
         error_msg = str(e)
-        print(f"⚠ VirusTotal integration disabled: {error_msg}")
+        print(f"[SKIP] VirusTotal integration disabled: {error_msg}")
 
         # Register dummy factories that raise IntegrationDisabled when resolved
         def _raise_disabled():
