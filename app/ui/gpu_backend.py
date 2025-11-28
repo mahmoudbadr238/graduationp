@@ -124,7 +124,7 @@ class GPUBackend(QObject):
             self._update_interval = value
             if self._update_timer.isActive():
                 self._update_timer.setInterval(value)
-            logger.info(f"GPU update interval set to {value}ms")
+            logger.info(f"GPU update interval set to {value}ms")  # nosec B608 - not SQL
 
     @Slot(result=list)
     def getGPUList(self) -> list[dict]:
