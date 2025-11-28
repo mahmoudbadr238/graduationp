@@ -4,14 +4,14 @@ on:
   push:
     paths:
       - 'qml/**'
-      - 'tools/gui_probe.py'
-      - 'tools/qml_lint.py'
+      - 'scripts/dev/gui_probe.py'
+      - 'scripts/dev/qml_lint.py'
       - '.github/workflows/gui-*.yml'
   pull_request:
     paths:
       - 'qml/**'
-      - 'tools/gui_probe.py'
-      - 'tools/qml_lint.py'
+      - 'scripts/dev/gui_probe.py'
+      - 'scripts/dev/qml_lint.py'
 
 jobs:
   gui-lint:
@@ -31,7 +31,7 @@ jobs:
           pip install PySide6 psutil
 
       - name: Run QML linter
-        run: python tools/qml_lint.py
+        run: python scripts/dev/qml_lint.py
         
       - name: QML linter result
         if: always()
@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-xfixes0
 
       - name: Run GUI probe (headless)
-        run: python tools/gui_probe.py
+        run: python scripts/dev/gui_probe.py
         env:
           QT_QPA_PLATFORM: offscreen
           QT_QPA_PLATFORM_PLUGIN_PATH: /usr/lib/qt6/plugins

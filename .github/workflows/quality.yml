@@ -40,7 +40,7 @@ jobs:
         
       - name: Run MyPy Type Checking
         run: |
-          python -m mypy app/ --config-file=pyproject.toml
+          python -m mypy app/ --config-file=config/pyproject.toml
         continue-on-error: true
         
       - name: Generate Quality Report
@@ -81,7 +81,7 @@ jobs:
           
       - name: Verify pyproject.toml
         run: |
-          python -c "import tomllib; f=open('pyproject.toml','rb'); tomllib.load(f); print('✓ pyproject.toml valid')"
+          python -c "import tomllib; f=open('config/pyproject.toml','rb'); tomllib.load(f); print('✓ pyproject.toml valid')"
         shell: bash
         
   security-scan:
