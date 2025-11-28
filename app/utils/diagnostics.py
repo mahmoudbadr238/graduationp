@@ -1,6 +1,5 @@
 """Diagnostic utility for Sentinel - smoke test and version checks"""
 
-import json
 import logging
 import platform
 import sys
