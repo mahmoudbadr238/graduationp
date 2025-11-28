@@ -189,6 +189,7 @@ logs/
 sentinel_data.db
 build_artifacts/
 artifacts/
+archive/
 _cleanup_archive/
 
 # Generated output and temporary files

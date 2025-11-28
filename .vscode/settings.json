@@ -9,6 +9,7 @@
         "dist/": true,
         "build_artifacts/": true,
         "artifacts/": true,
+        "archive/": true,
         "_cleanup_archive/": true,
         ".venv/": true,
         "**/*.egg-info": true
@@ -22,6 +23,7 @@
         "dist/": true,
         "build_artifacts/": true,
         "artifacts/": true,
+        "archive/": true,
         "_cleanup_archive/": true,
         ".venv/": true
     }
