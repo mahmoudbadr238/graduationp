@@ -646,7 +646,7 @@ class SystemSnapshotService(QObject):
                 elif "state" in output and "off" in output:
                     return "Disabled"
             return "Unknown"
-        except:
+        except Exception:
             return "Unknown"
     
     def _check_windows_antivirus(self) -> str:
@@ -669,7 +669,7 @@ class SystemSnapshotService(QObject):
             
             # Fallback: assume Windows Defender
             return "Windows Security"
-        except:
+        except Exception:
             return "Windows Security"
     
     def _check_secure_boot(self) -> str:
@@ -690,7 +690,7 @@ class SystemSnapshotService(QObject):
                 elif "false" in output:
                     return "Disabled"
             return "N/A"
-        except:
+        except Exception:
             return "N/A"
     
     def _check_tpm(self) -> str:
@@ -712,7 +712,7 @@ class SystemSnapshotService(QObject):
                 elif "false" in output:
                     return "Not Present"
             return "Unknown"
-        except:
+        except Exception:
             return "Unknown"
     
     def _check_linux_firewall(self) -> str:
@@ -732,7 +732,7 @@ class SystemSnapshotService(QObject):
                     return "Enabled (ufw)"
                 elif "status: inactive" in output:
                     return "Disabled (ufw)"
-        except:
+        except Exception:
             pass
         
         try:
@@ -746,7 +746,7 @@ class SystemSnapshotService(QObject):
             
             if result.returncode == 0 and "running" in result.stdout.lower():
                 return "Enabled (firewalld)"
-        except:
+        except Exception:
             pass
         
         return "Unknown"
@@ -764,7 +764,7 @@ class SystemSnapshotService(QObject):
             if result.returncode == 0 and result.stdout.strip():
                 return "ClamAV Installed"
             return "None Detected"
-        except:
+        except Exception:
             return "None Detected"
     
     def _check_apparmor(self) -> str:
@@ -780,13 +780,13 @@ class SystemSnapshotService(QObject):
             if result.returncode == 0:
                 return "Enabled"
             return "Disabled"
-        except:
+        except Exception:
             # Check via /sys
             try:
                 with open('/sys/module/apparmor/parameters/enabled', 'r') as f:
                     if f.read().strip() == 'Y':
                         return "Enabled"
-            except:
+            except Exception:
                 pass
             return "N/A"
     
@@ -804,7 +804,7 @@ class SystemSnapshotService(QObject):
                 status = result.stdout.strip()
                 return status if status else "Disabled"
             return "N/A"
-        except:
+        except Exception:
             return "N/A"
     
     @Slot()
