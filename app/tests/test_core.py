@@ -1,8 +1,6 @@
 """Unit tests for core configuration and privilege checks."""
 
 import os
-import tempfile
-from pathlib import Path
 
 import pytest
 

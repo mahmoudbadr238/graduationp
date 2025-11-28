@@ -8,7 +8,6 @@ import logging
 import logging.handlers
 import os
 import sys
-from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMessageBox

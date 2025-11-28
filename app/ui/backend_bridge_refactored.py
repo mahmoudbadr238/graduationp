@@ -46,7 +46,7 @@ from ..core.interfaces import (
 )
 from ..core.result_cache import get_scan_cache
 from ..core.types import ScanRecord, ScanType
-from ..core.workers import CancellableWorker, WorkerWatchdog, get_watchdog
+from ..core.workers import CancellableWorker, get_watchdog
 
 logger = logging.getLogger(__name__)
 

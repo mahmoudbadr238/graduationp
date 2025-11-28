@@ -22,14 +22,14 @@ except ImportError:
     HAS_NVIDIA = False
 
 try:
-    import GPUtil
+    import GPUtil  # noqa: F401
 
     HAS_GPUTIL = True
 except ImportError:
     HAS_GPUTIL = False
 
 try:
-    import wmi
+    import wmi  # noqa: F401
 
     HAS_WMI = True
 except ImportError:

@@ -28,7 +28,6 @@ def temp_repo():
     # Cleanup - Windows requires explicit connection closure before file deletion
     # Force garbage collection to close any lingering SQLite connections
     import gc
-    import sqlite3
 
     repo = None  # Release reference to repo object
     gc.collect()  # Force garbage collection

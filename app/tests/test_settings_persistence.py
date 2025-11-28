@@ -2,7 +2,6 @@
 """Test script to verify Settings persistence"""
 
 import sys
-import json
 from pathlib import Path
 
 # Add app to path
