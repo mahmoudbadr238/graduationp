@@ -1,5 +1,7 @@
+HomePage 1.0 HomePage.qml
 EventViewer 1.0 EventViewer.qml
 SystemSnapshot 1.0 SystemSnapshot.qml
+GPUMonitor 1.0 GPUMonitor.qml
 ScanHistory 1.0 ScanHistory.qml
 NetworkScan 1.0 NetworkScan.qml
 ScanTool 1.0 ScanTool.qml

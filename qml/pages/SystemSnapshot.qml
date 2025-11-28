@@ -371,160 +371,506 @@ Item {
                         }
                     }
 
-                    // ===== TAB 1: GPU =====
-                    Flickable {
-                        id: gpuFlickable
-                        clip: true
-                        contentWidth: gpuColumn.implicitWidth
-                        contentHeight: gpuColumn.implicitHeight
-                        ScrollBar.vertical: ScrollBar { }
-
-                        ColumnLayout {
-                            id: gpuColumn
-                            width: gpuFlickable.width
-                            anchors.margins: 24
-                            spacing: 24
-
-                            Text {
-                                text: "GPU Devices"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
-                                font.pixelSize: 16
-                                font.bold: true
+                    // ===== TAB 1: GPU MONITOR (Full MSI Afterburner-style) =====
+                    Item {
+                        id: gpuMonitorTab
+                        
+                        // Currently selected GPU index
+                        property int selectedGpuIndex: 0
+                        
+                        // Check if GPUService is available
+                        property bool gpuServiceAvailable: typeof GPUService !== 'undefined' && GPUService !== null
+                        
+                        // Get current GPU data
+                        property var currentGpu: gpuServiceAvailable && GPUService.metrics && GPUService.metrics.length > selectedGpuIndex ? 
+                                                 GPUService.metrics[selectedGpuIndex] : null
+                        
+                        // History data
+                        property var usageHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "usage") : []
+                        property var tempHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "temperature") : []
+                        property var powerHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "power") : []
+                        property var memHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "memUsage") : []
+                        property var clockCoreHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "clockCore") : []
+                        property var clockMemHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "clockMem") : []
+                        property var fanHistory: gpuServiceAvailable ? GPUService.getHistory(selectedGpuIndex, "fanSpeed") : []
+                        
+                        // Refresh history when metrics update
+                        Connections {
+                            target: gpuMonitorTab.gpuServiceAvailable ? GPUService : null
+                            enabled: gpuMonitorTab.gpuServiceAvailable
+                            function onMetricsChanged() {
+                                if (gpuMonitorTab.gpuServiceAvailable) {
+                                    gpuMonitorTab.usageHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "usage")
+                                    gpuMonitorTab.tempHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "temperature")
+                                    gpuMonitorTab.powerHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "power")
+                                    gpuMonitorTab.memHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "memUsage")
+                                    gpuMonitorTab.clockCoreHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "clockCore")
+                                    gpuMonitorTab.clockMemHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "clockMem")
+                                    gpuMonitorTab.fanHistory = GPUService.getHistory(gpuMonitorTab.selectedGpuIndex, "fanSpeed")
+                                }
                             }
-
+                        }
+                        
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 0
+                            
+                            // GPU Header with selector
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: gpuRepeater.count > 0 ? gpuRepeater.height : 80
+                                Layout.preferredHeight: 60
                                 color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                radius: 12
                                 border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
-                                border.width: 1
-
-                                ColumnLayout {
-                                    width: parent.width
-                                    anchors.margins: 14
-                                    spacing: 12
-
-                                    Repeater {
-                                        id: gpuRepeater
-                                        model: GPUService ? GPUService.metrics.length : 0
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: 120
-                                            color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
-                                            radius: 6
-                                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
-                                            border.width: 1
-
-                                            ColumnLayout {
-                                                anchors.fill: parent
-                                                anchors.margins: 14
-                                                spacing: 8
-
-                                                RowLayout {
-                                                    Layout.fillWidth: true
-                                                    spacing: 12
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: 2
-
-                                                        Text {
-                                                            text: GPUService && index < GPUService.metrics.length ? 
-                                                                  (GPUService.metrics[index].name || "GPU Device " + index) : "N/A"
-                                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
-                                                            font.pixelSize: 13
-                                                            font.bold: true
-                                                        }
-
-                                                        Text {
-                                                            text: "Active"
-                                                            color: ThemeManager.success
-                                                            font.pixelSize: 11
-                                                        }
+                                
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 16
+                                    spacing: 16
+                                    
+                                    Column {
+                                        spacing: 2
+                                        Text {
+                                            text: "GPU Monitor"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            font.pixelSize: 16
+                                            font.bold: true
+                                        }
+                                        Text {
+                                            text: "Real-time GPU monitoring"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                        }
+                                    }
+                                    
+                                    Item { Layout.fillWidth: true }
+                                    
+                                    // GPU selector
+                                    Rectangle {
+                                        width: 280
+                                        height: 32
+                                        radius: 6
+                                        color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
+                                        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                        visible: gpuMonitorTab.gpuServiceAvailable && GPUService.gpuCount > 0
+                                        
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 10
+                                            spacing: 6
+                                            
+                                            Text {
+                                                text: "GPU:"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                font.pixelSize: 11
+                                            }
+                                            
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.name : "No GPU"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                                elide: Text.ElideRight
+                                            }
+                                            
+                                            Row {
+                                                spacing: 4
+                                                visible: gpuMonitorTab.gpuServiceAvailable && GPUService.gpuCount > 1
+                                                
+                                                Rectangle {
+                                                    width: 22
+                                                    height: 22
+                                                    radius: 4
+                                                    color: gpuMonitorTab.selectedGpuIndex > 0 ? ThemeManager.accent : (ThemeManager.isDark() ? "#374151" : "#D1D5DB")
+                                                    
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "◀"
+                                                        color: gpuMonitorTab.selectedGpuIndex > 0 ? "#050814" : (ThemeManager.isDark() ? "#6B7280" : "#9CA3AF")
+                                                        font.pixelSize: 10
                                                     }
-
-                                                    Rectangle {
-                                                        width: 10
-                                                        height: 10
-                                                        radius: 5
-                                                        color: ThemeManager.success
+                                                    
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: if (gpuMonitorTab.selectedGpuIndex > 0) gpuMonitorTab.selectedGpuIndex--
                                                     }
                                                 }
-
-                                                GridLayout {
-                                                    Layout.fillWidth: true
-                                                    columns: 3
-                                                    columnSpacing: 12
-                                                    rowSpacing: 4
-
-                                                    Column {
-                                                        Text {
-                                                            text: "Usage"
-                                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
-                                                            font.pixelSize: 10
-                                                        }
-                                                        Text {
-                                                            text: GPUService && index < GPUService.metrics.length ? 
-                                                                  Math.round(GPUService.metrics[index].usage || 0) + "%" : "N/A"
-                                                            color: ThemeManager.accent
-                                                            font.pixelSize: 13
-                                                            font.bold: true
-                                                        }
+                                                
+                                                Rectangle {
+                                                    width: 22
+                                                    height: 22
+                                                    radius: 4
+                                                    color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? ThemeManager.accent : (ThemeManager.isDark() ? "#374151" : "#D1D5DB")
+                                                    
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "▶"
+                                                        color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? "#050814" : (ThemeManager.isDark() ? "#6B7280" : "#9CA3AF")
+                                                        font.pixelSize: 10
                                                     }
-
-                                                    Column {
-                                                        Text {
-                                                            text: "VRAM"
-                                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
-                                                            font.pixelSize: 10
-                                                        }
-                                                        Text {
-                                                            text: GPUService && index < GPUService.metrics.length ? 
-                                                                  ((GPUService.metrics[index].memUsedMB || 0) / 1024).toFixed(1) + " GB" : "N/A"
-                                                            color: ThemeManager.accent
-                                                            font.pixelSize: 13
-                                                            font.bold: true
-                                                        }
-                                                    }
-
-                                                    Column {
-                                                        Text {
-                                                            text: "Temp"
-                                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
-                                                            font.pixelSize: 10
-                                                        }
-                                                        Text {
-                                                            text: GPUService && index < GPUService.metrics.length ? 
-                                                                  (GPUService.metrics[index].tempC || 0) + "°C" : "N/A"
-                                                            color: GPUService && GPUService.metrics[index] && 
-                                                                   GPUService.metrics[index].tempC > 80 ? ThemeManager.danger :
-                                                                   GPUService && GPUService.metrics[index] && 
-                                                                   GPUService.metrics[index].tempC > 60 ? ThemeManager.warning :
-                                                                   ThemeManager.success
-                                                            font.pixelSize: 13
-                                                            font.bold: true
-                                                        }
+                                                    
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: if (gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1) gpuMonitorTab.selectedGpuIndex++
                                                     }
                                                 }
                                             }
                                         }
                                     }
-
-                                    Text {
-                                        visible: gpuRepeater.count === 0
-                                        text: "No GPU devices detected"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
-                                        font.pixelSize: 12
-                                        Layout.alignment: Qt.AlignCenter
-                                        Layout.topMargin: 20
-                                        Layout.bottomMargin: 20
+                                    
+                                    // Status indicator
+                                    Row {
+                                        spacing: 6
+                                        Rectangle {
+                                            width: 8
+                                            height: 8
+                                            radius: 4
+                                            color: gpuMonitorTab.gpuServiceAvailable && GPUService.status === "running" ? ThemeManager.success : ThemeManager.warning
+                                        }
+                                        Text {
+                                            text: gpuMonitorTab.gpuServiceAvailable ? GPUService.status : "N/A"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                        }
                                     }
                                 }
                             }
-
-                            Item { Layout.fillHeight: true; Layout.preferredHeight: 24 }
+                            
+                            // Scrollable content
+                            Flickable {
+                                id: gpuMonitorFlickable
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                contentWidth: gpuContentColumn.implicitWidth
+                                contentHeight: gpuContentColumn.implicitHeight
+                                ScrollBar.vertical: ScrollBar { }
+                                
+                                ColumnLayout {
+                                    id: gpuContentColumn
+                                    width: gpuMonitorFlickable.width
+                                    spacing: 16
+                                    
+                                    Item { Layout.preferredHeight: 8 }
+                                    
+                                    // GPU Info Card
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 70
+                                        radius: 10
+                                        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                        
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 14
+                                            spacing: 20
+                                            
+                                            Column {
+                                                spacing: 2
+                                                Text {
+                                                    text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.name : "No GPU detected"
+                                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                    font.pixelSize: 14
+                                                    font.bold: true
+                                                }
+                                                Text {
+                                                    text: gpuMonitorTab.currentGpu ? "Driver: " + (gpuMonitorTab.currentGpu.driverVersion || "N/A") : ""
+                                                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                    font.pixelSize: 10
+                                                }
+                                            }
+                                            
+                                            Item { Layout.fillWidth: true }
+                                            
+                                            Row {
+                                                spacing: 24
+                                                
+                                                Column {
+                                                    Text { text: "Usage"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.usage.toFixed(1) + "%" : "N/A"; color: ThemeManager.accent; font.pixelSize: 16; font.bold: true }
+                                                }
+                                                Column {
+                                                    Text { text: "Temp"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 0 ? gpuMonitorTab.currentGpu.tempC + "°C" : "N/A"; color: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 75 ? ThemeManager.danger : ThemeManager.warning; font.pixelSize: 16; font.bold: true }
+                                                }
+                                                Column {
+                                                    Text { text: "Power"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"; color: "#EF4444"; font.pixelSize: 16; font.bold: true }
+                                                }
+                                                Column {
+                                                    Text { text: "VRAM"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(1) + " GB" : "N/A"; color: "#10B981"; font.pixelSize: 16; font.bold: true }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Metrics Section Header
+                                    Text {
+                                        text: "Real-Time Metrics"
+                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        Layout.leftMargin: 16
+                                    }
+                                    
+                                    // Metrics Grid - Row 1: Core Metrics
+                                    Row {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        spacing: 10
+                                        
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "GPU Usage"
+                                            value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.usage.toFixed(1) + "%" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.usage / 100 : 0
+                                            accentColor: ThemeManager.accent
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Core Clock"
+                                            value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.clockMHz + " MHz" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.maxClockMHz > 0 ? gpuMonitorTab.currentGpu.clockMHz / gpuMonitorTab.currentGpu.maxClockMHz : 0
+                                            accentColor: "#F59E0B"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Memory Clock"
+                                            value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.clockMemMHz || 0) + " MHz" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.maxClockMemMHz > 0 ? (gpuMonitorTab.currentGpu.clockMemMHz || 0) / gpuMonitorTab.currentGpu.maxClockMemMHz : 0
+                                            accentColor: "#22C55E"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "SM Clock"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.clockSMMHz > 0 ? gpuMonitorTab.currentGpu.clockSMMHz + " MHz" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.maxClockMHz > 0 ? (gpuMonitorTab.currentGpu.clockSMMHz || 0) / gpuMonitorTab.currentGpu.maxClockMHz : 0
+                                            accentColor: "#A855F7"
+                                        }
+                                    }
+                                    
+                                    // Row 2: Temperature
+                                    Row {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        spacing: 10
+                                        
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "GPU Temp"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 0 ? gpuMonitorTab.currentGpu.tempC + "°C" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.tempC / 100 : 0
+                                            accentColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 80 ? ThemeManager.danger :
+                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 60 ? ThemeManager.warning : ThemeManager.success
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Memory Temp"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempMemC > 0 ? gpuMonitorTab.currentGpu.tempMemC + "°C" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempMemC > 0 ? gpuMonitorTab.currentGpu.tempMemC / 100 : 0
+                                            accentColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempMemC > 95 ? ThemeManager.danger :
+                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempMemC > 80 ? ThemeManager.warning : ThemeManager.success
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Hotspot"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempHotspot > 0 ? gpuMonitorTab.currentGpu.tempHotspot + "°C" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempHotspot > 0 ? gpuMonitorTab.currentGpu.tempHotspot / 100 : 0
+                                            accentColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempHotspot > 90 ? ThemeManager.danger :
+                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempHotspot > 70 ? ThemeManager.warning : ThemeManager.success
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Voltage"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.voltageMV > 0 ? (gpuMonitorTab.currentGpu.voltageMV / 1000).toFixed(3) + " V" : "N/A"
+                                            barValue: 0
+                                            showBar: false
+                                            accentColor: "#94A3B8"
+                                        }
+                                    }
+                                    
+                                    // Row 3: Power & Fan
+                                    Row {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        spacing: 10
+                                        
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Power Draw"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + " W" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerLimitW > 0 ? gpuMonitorTab.currentGpu.powerW / gpuMonitorTab.currentGpu.powerLimitW : 0
+                                            accentColor: "#EF4444"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "TDP %"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerPercent > 0 ? gpuMonitorTab.currentGpu.powerPercent.toFixed(0) + "%" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerPercent > 0 ? gpuMonitorTab.currentGpu.powerPercent / 120 : 0
+                                            accentColor: "#F87171"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Fan Speed"
+                                            value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.fanPercent + "%" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.fanPercent / 100 : 0
+                                            accentColor: "#06B6D4"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "Fan RPM"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.fanRPM > 0 ? gpuMonitorTab.currentGpu.fanRPM + " RPM" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.fanRPM > 0 ? gpuMonitorTab.currentGpu.fanRPM / 4000 : 0
+                                            accentColor: "#22D3EE"
+                                        }
+                                    }
+                                    
+                                    // Row 4: Memory & PCIe
+                                    Row {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        spacing: 10
+                                        
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "VRAM Used"
+                                            value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(2) + " GB" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memTotalMB > 0 ? gpuMonitorTab.currentGpu.memUsedMB / gpuMonitorTab.currentGpu.memTotalMB : 0
+                                            accentColor: "#10B981"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "VRAM Total"
+                                            value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memTotalMB / 1024).toFixed(0) + " GB" : "N/A"
+                                            barValue: 1
+                                            accentColor: "#34D399"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "VRAM %"
+                                            value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent.toFixed(1) + "%" : "N/A"
+                                            barValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent / 100 : 0
+                                            accentColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memPercent > 90 ? ThemeManager.danger :
+                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memPercent > 70 ? ThemeManager.warning : "#10B981"
+                                        }
+                                        GPUMetricTile { 
+                                            width: (parent.width - 30) / 4
+                                            title: "PCIe"
+                                            value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.pcieGen > 0 ? "Gen" + gpuMonitorTab.currentGpu.pcieGen + " x" + gpuMonitorTab.currentGpu.pcieWidth : "N/A"
+                                            barValue: 0
+                                            showBar: false
+                                            accentColor: "#94A3B8"
+                                        }
+                                    }
+                                    
+                                    // Charts Section Header
+                                    Text {
+                                        text: "Real-Time Charts"
+                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        Layout.leftMargin: 16
+                                        Layout.topMargin: 8
+                                    }
+                                    
+                                    // GPU Usage Chart
+                                    GPUChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 160
+                                        title: "GPU Usage"
+                                        currentValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.usage.toFixed(1) + "%" : "N/A"
+                                        historyData: gpuMonitorTab.usageHistory
+                                        maxValue: 100
+                                        lineColor: ThemeManager.accent
+                                    }
+                                    
+                                    // Temperature Chart
+                                    GPUChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 160
+                                        title: "Temperature"
+                                        currentValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 0 ? gpuMonitorTab.currentGpu.tempC + "°C" : "N/A"
+                                        historyData: gpuMonitorTab.tempHistory
+                                        maxValue: 100
+                                        lineColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 75 ? ThemeManager.danger : ThemeManager.warning
+                                    }
+                                    
+                                    // Power Chart
+                                    GPUChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 160
+                                        title: "Power Draw"
+                                        currentValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"
+                                        historyData: gpuMonitorTab.powerHistory
+                                        maxValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerLimitW > 0 ? gpuMonitorTab.currentGpu.powerLimitW : 350
+                                        lineColor: "#EF4444"
+                                    }
+                                    
+                                    // Clock Speeds Chart (Dual)
+                                    GPUDualChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 180
+                                        title: "Clock Speeds"
+                                        label1: "Core"
+                                        label2: "Memory"
+                                        value1: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.clockMHz + " MHz" : "N/A"
+                                        value2: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.clockMemMHz || 0) + " MHz" : "N/A"
+                                        historyData1: gpuMonitorTab.clockCoreHistory
+                                        historyData2: gpuMonitorTab.clockMemHistory
+                                        maxValue: Math.max(3000, gpuMonitorTab.currentGpu ? Math.max(gpuMonitorTab.currentGpu.maxClockMHz || 0, gpuMonitorTab.currentGpu.maxClockMemMHz || 0) : 3000)
+                                        lineColor1: "#F59E0B"
+                                        lineColor2: "#22C55E"
+                                    }
+                                    
+                                    // VRAM Usage Chart
+                                    GPUChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 160
+                                        title: "VRAM Usage"
+                                        currentValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent.toFixed(1) + "%" : "N/A"
+                                        historyData: gpuMonitorTab.memHistory
+                                        maxValue: 100
+                                        lineColor: "#10B981"
+                                    }
+                                    
+                                    // Fan Speed Chart
+                                    GPUChartCard {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16
+                                        Layout.rightMargin: 16
+                                        Layout.preferredHeight: 160
+                                        title: "Fan Speed"
+                                        currentValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.fanPercent + "%" : "N/A"
+                                        historyData: gpuMonitorTab.fanHistory
+                                        maxValue: 100
+                                        lineColor: "#06B6D4"
+                                    }
+                                    
+                                    Item { Layout.preferredHeight: 20 }
+                                }
+                            }
                         }
                     }
 
@@ -708,6 +1054,298 @@ Item {
             }
         }
     }
+    
+    // ===== GPU METRIC TILE COMPONENT =====
+    component GPUMetricTile: Rectangle {
+        id: tile
+        height: 65
+        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        radius: 8
+        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        
+        property string title: ""
+        property string value: ""
+        property real barValue: 0
+        property color accentColor: ThemeManager.accent
+        property bool showBar: true
+        
+        Column {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 4
+            
+            Text {
+                text: tile.title
+                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                font.pixelSize: 9
+            }
+            
+            Text {
+                text: tile.value
+                color: tile.accentColor
+                font.pixelSize: 14
+                font.bold: true
+            }
+            
+            Rectangle {
+                width: parent.width
+                height: 3
+                radius: 1.5
+                color: ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                visible: tile.showBar
+                
+                Rectangle {
+                    width: parent.width * Math.min(1, Math.max(0, tile.barValue))
+                    height: parent.height
+                    radius: 1.5
+                    color: tile.accentColor
+                    
+                    Behavior on width { NumberAnimation { duration: 200 } }
+                }
+            }
+        }
+    }
+    
+    // ===== GPU CHART CARD COMPONENT =====
+    component GPUChartCard: Rectangle {
+        id: chart
+        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        radius: 10
+        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        
+        property string title: ""
+        property string currentValue: ""
+        property var historyData: []
+        property real maxValue: 100
+        property color lineColor: ThemeManager.accent
+        
+        Column {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 6
+            
+            Row {
+                width: parent.width
+                
+                Text {
+                    text: chart.title
+                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+                
+                Item { width: parent.width - parent.children[0].width - parent.children[2].width; height: 1 }
+                
+                Text {
+                    text: chart.currentValue
+                    color: chart.lineColor
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+            }
+            
+            Canvas {
+                id: chartCanvas
+                width: parent.width
+                height: parent.height - 24
+                
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    
+                    var data = chart.historyData
+                    if (!data || data.length < 2) {
+                        ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                        ctx.lineWidth = 1
+                        for (var g = 0; g <= 4; g++) {
+                            var gy = (height / 4) * g
+                            ctx.beginPath()
+                            ctx.moveTo(0, gy)
+                            ctx.lineTo(width, gy)
+                            ctx.stroke()
+                        }
+                        return
+                    }
+                    
+                    // Draw grid
+                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.lineWidth = 1
+                    for (var i = 0; i <= 4; i++) {
+                        var y = (height / 4) * i
+                        ctx.beginPath()
+                        ctx.moveTo(0, y)
+                        ctx.lineTo(width, y)
+                        ctx.stroke()
+                    }
+                    
+                    // Draw gradient fill
+                    var gradient = ctx.createLinearGradient(0, 0, 0, height)
+                    gradient.addColorStop(0, Qt.rgba(chart.lineColor.r, chart.lineColor.g, chart.lineColor.b, 0.3))
+                    gradient.addColorStop(1, Qt.rgba(chart.lineColor.r, chart.lineColor.g, chart.lineColor.b, 0.0))
+                    
+                    ctx.fillStyle = gradient
+                    ctx.beginPath()
+                    ctx.moveTo(0, height)
+                    
+                    for (var j = 0; j < data.length; j++) {
+                        var x = (width / Math.max(1, data.length - 1)) * j
+                        var val = Math.min(data[j] || 0, chart.maxValue)
+                        var yPos = height - (val / chart.maxValue) * height
+                        ctx.lineTo(x, yPos)
+                    }
+                    ctx.lineTo(width, height)
+                    ctx.closePath()
+                    ctx.fill()
+                    
+                    // Draw line
+                    ctx.strokeStyle = String(chart.lineColor)
+                    ctx.lineWidth = 2
+                    ctx.lineJoin = "round"
+                    ctx.lineCap = "round"
+                    ctx.beginPath()
+                    
+                    for (var k = 0; k < data.length; k++) {
+                        var xk = (width / Math.max(1, data.length - 1)) * k
+                        var valk = Math.min(data[k] || 0, chart.maxValue)
+                        var yPosk = height - (valk / chart.maxValue) * height
+                        
+                        if (k === 0) ctx.moveTo(xk, yPosk)
+                        else ctx.lineTo(xk, yPosk)
+                    }
+                    ctx.stroke()
+                }
+            }
+        }
+        
+        Connections {
+            target: chart
+            function onHistoryDataChanged() { chartCanvas.requestPaint() }
+        }
+        
+        Timer {
+            interval: 500
+            running: true
+            repeat: true
+            onTriggered: chartCanvas.requestPaint()
+        }
+    }
+    
+    // ===== GPU DUAL CHART CARD COMPONENT =====
+    component GPUDualChartCard: Rectangle {
+        id: dualChart
+        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        radius: 10
+        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        
+        property string title: ""
+        property string label1: ""
+        property string label2: ""
+        property string value1: ""
+        property string value2: ""
+        property var historyData1: []
+        property var historyData2: []
+        property real maxValue: 100
+        property color lineColor1: "#F59E0B"
+        property color lineColor2: "#22C55E"
+        
+        Column {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 6
+            
+            Row {
+                width: parent.width
+                spacing: 16
+                
+                Text {
+                    text: dualChart.title
+                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+                
+                Item { width: 8; height: 1 }
+                
+                Row {
+                    spacing: 4
+                    Rectangle { width: 10; height: 2; radius: 1; color: dualChart.lineColor1; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: dualChart.label1 + ": " + dualChart.value1; color: dualChart.lineColor1; font.pixelSize: 9 }
+                }
+                
+                Row {
+                    spacing: 4
+                    Rectangle { width: 10; height: 2; radius: 1; color: dualChart.lineColor2; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: dualChart.label2 + ": " + dualChart.value2; color: dualChart.lineColor2; font.pixelSize: 9 }
+                }
+            }
+            
+            Canvas {
+                id: dualChartCanvas
+                width: parent.width
+                height: parent.height - 24
+                
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    
+                    // Draw grid
+                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.lineWidth = 1
+                    for (var i = 0; i <= 4; i++) {
+                        var y = (height / 4) * i
+                        ctx.beginPath()
+                        ctx.moveTo(0, y)
+                        ctx.lineTo(width, y)
+                        ctx.stroke()
+                    }
+                    
+                    // Draw line 1
+                    var data1 = dualChart.historyData1
+                    if (data1 && data1.length >= 2) {
+                        ctx.strokeStyle = String(dualChart.lineColor1)
+                        ctx.lineWidth = 2
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        for (var j = 0; j < data1.length; j++) {
+                            var x1 = (width / Math.max(1, data1.length - 1)) * j
+                            var val1 = Math.min(data1[j] || 0, dualChart.maxValue)
+                            var y1 = height - (val1 / dualChart.maxValue) * height
+                            if (j === 0) ctx.moveTo(x1, y1)
+                            else ctx.lineTo(x1, y1)
+                        }
+                        ctx.stroke()
+                    }
+                    
+                    // Draw line 2
+                    var data2 = dualChart.historyData2
+                    if (data2 && data2.length >= 2) {
+                        ctx.strokeStyle = String(dualChart.lineColor2)
+                        ctx.lineWidth = 2
+                        ctx.beginPath()
+                        for (var k = 0; k < data2.length; k++) {
+                            var x2 = (width / Math.max(1, data2.length - 1)) * k
+                            var val2 = Math.min(data2[k] || 0, dualChart.maxValue)
+                            var y2 = height - (val2 / dualChart.maxValue) * height
+                            if (k === 0) ctx.moveTo(x2, y2)
+                            else ctx.lineTo(x2, y2)
+                        }
+                        ctx.stroke()
+                    }
+                }
+            }
+        }
+        
+        Connections {
+            target: dualChart
+            function onHistoryData1Changed() { dualChartCanvas.requestPaint() }
+            function onHistoryData2Changed() { dualChartCanvas.requestPaint() }
+        }
+        
+        Timer {
+            interval: 500
+            running: true
+            repeat: true
+            onTriggered: dualChartCanvas.requestPaint()
+        }
+    }
 }
-
-

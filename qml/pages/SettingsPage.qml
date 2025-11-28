@@ -264,11 +264,23 @@ Item {
                             }
 
                             Switch {
+                                id: liveMonitoringSwitch
                                 checked: true
+                                
+                                Component.onCompleted: {
+                                    // Get initial state from Backend if available
+                                    if (typeof Backend !== 'undefined' && Backend && Backend.live !== undefined) {
+                                        checked = Backend.live
+                                    }
+                                }
+                                
                                 onCheckedChanged: {
-                                    if (Backend) {
-                                        if (checked) Backend.startLive()
-                                        else Backend.stopLive()
+                                    if (typeof Backend !== 'undefined' && Backend) {
+                                        if (checked) {
+                                            Backend.startLive()
+                                        } else {
+                                            Backend.stopLive()
+                                        }
                                     }
                                 }
                             }
@@ -293,11 +305,17 @@ Item {
                                 to: 60
                                 value: 2
                                 Layout.preferredWidth: 120
+                                
                                 Component.onCompleted: {
-                                    value = SettingsService ? SettingsService.updateIntervalMs / 1000 : 2
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        value = SettingsService.updateIntervalMs / 1000
+                                    }
                                 }
+                                
                                 onValueChanged: {
-                                    if (SettingsService) SettingsService.updateIntervalMs = value * 1000
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.updateIntervalMs = value * 1000
+                                    }
                                 }
                             }
                             
@@ -317,11 +335,19 @@ Item {
 
                             Switch {
                                 id: gpuSwitch
+                                
                                 Component.onCompleted: {
-                                    checked = SettingsService ? SettingsService.enableGpuMonitoring : true
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        checked = SettingsService.enableGpuMonitoring
+                                    } else {
+                                        checked = true
+                                    }
                                 }
+                                
                                 onCheckedChanged: {
-                                    if (SettingsService) SettingsService.enableGpuMonitoring = checked
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.enableGpuMonitoring = checked
+                                    }
                                 }
                             }
                             
@@ -365,11 +391,19 @@ Item {
 
                             Switch {
                                 id: startupSwitch
+                                
                                 Component.onCompleted: {
-                                    checked = SettingsService ? SettingsService.startWithSystem : false
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        checked = SettingsService.startWithSystem
+                                    } else {
+                                        checked = false
+                                    }
                                 }
+                                
                                 onCheckedChanged: {
-                                    if (SettingsService) SettingsService.startWithSystem = checked
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.startWithSystem = checked
+                                    }
                                 }
                             }
                             
@@ -387,7 +421,23 @@ Item {
                                 Layout.preferredWidth: 200
                             }
 
-                            Switch { checked: true }
+                            Switch {
+                                id: minimizeToTraySwitch
+                                
+                                Component.onCompleted: {
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        checked = SettingsService.startMinimized
+                                    } else {
+                                        checked = true
+                                    }
+                                }
+                                
+                                onCheckedChanged: {
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.startMinimized = checked
+                                    }
+                                }
+                            }
                             
                             Item { Layout.fillWidth: true }
                         }
@@ -429,11 +479,19 @@ Item {
 
                             Switch {
                                 id: telemetrySwitch
+                                
                                 Component.onCompleted: {
-                                    checked = SettingsService ? SettingsService.sendErrorReports : false
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        checked = SettingsService.sendErrorReports
+                                    } else {
+                                        checked = false
+                                    }
                                 }
+                                
                                 onCheckedChanged: {
-                                    if (SettingsService) SettingsService.sendErrorReports = checked
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.sendErrorReports = checked
+                                    }
                                 }
                             }
                             

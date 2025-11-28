@@ -1,17 +1,22 @@
 """
 GPU Service Bridge - QProcess-based GPU telemetry manager
 Spawns subprocess worker, handles heartbeat watchdog, circuit breaker
+Enhanced with history tracking for charts (MSI Afterburner style)
 """
 
 import json
 import logging
 import sys
 import time
+from collections import deque
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
 
 logger = logging.getLogger(__name__)
+
+# History configuration
+HISTORY_MAX_POINTS = 60  # 60 data points for charts (1 minute at 1s interval)
 
 
 class GPUServiceBridge(QObject):
@@ -23,6 +28,7 @@ class GPUServiceBridge(QObject):
     - Heartbeat watchdog (6s timeout)
     - Circuit breaker (3 fails in 60s = disabled)
     - On-demand start/stop
+    - History tracking for real-time charts
     """
 
     # Signals
@@ -31,6 +37,7 @@ class GPUServiceBridge(QObject):
     updateIntervalChanged = Signal(int)
     gpuCountChanged = Signal(int)
     metricsChanged = Signal()  # Emitted when GPU metrics are updated
+    historyUpdated = Signal()  # Emitted when history data is updated
     error = Signal(str, str)  # title, message
 
     def __init__(self, parent=None):
@@ -60,8 +67,46 @@ class GPUServiceBridge(QObject):
         self._interval = 2000  # Default 2s
         self._gpu_count = 0
         self._metrics_cache: list[dict[str, Any]] = []
+        
+        # History tracking for charts (per GPU)
+        # Each GPU has history for: usage, temp, memory, power, clockCore, clockMem
+        self._history: dict[int, dict[str, deque]] = {}
 
         logger.info("GPU Service Bridge initialized")
+    
+    def _init_gpu_history(self, gpu_id: int):
+        """Initialize history tracking for a GPU"""
+        if gpu_id not in self._history:
+            self._history[gpu_id] = {
+                "usage": deque(maxlen=HISTORY_MAX_POINTS),
+                "memUsage": deque(maxlen=HISTORY_MAX_POINTS),
+                "temperature": deque(maxlen=HISTORY_MAX_POINTS),
+                "power": deque(maxlen=HISTORY_MAX_POINTS),
+                "powerPercent": deque(maxlen=HISTORY_MAX_POINTS),
+                "clockCore": deque(maxlen=HISTORY_MAX_POINTS),
+                "clockMem": deque(maxlen=HISTORY_MAX_POINTS),
+                "fanSpeed": deque(maxlen=HISTORY_MAX_POINTS),
+                "memController": deque(maxlen=HISTORY_MAX_POINTS),
+            }
+    
+    def _update_history(self, metrics: list[dict[str, Any]]):
+        """Update history from current metrics"""
+        for gpu in metrics:
+            gpu_id = gpu.get("id", 0)
+            self._init_gpu_history(gpu_id)
+            
+            hist = self._history[gpu_id]
+            hist["usage"].append(gpu.get("usage", 0))
+            hist["memUsage"].append(gpu.get("memPercent", 0))
+            hist["temperature"].append(gpu.get("tempC", 0))
+            hist["power"].append(gpu.get("powerW", 0))
+            hist["powerPercent"].append(gpu.get("powerPercent", 0))
+            hist["clockCore"].append(gpu.get("clockMHz", 0))
+            hist["clockMem"].append(gpu.get("clockMemMHz", 0))
+            hist["fanSpeed"].append(gpu.get("fanPercent", 0))
+            hist["memController"].append(gpu.get("memControllerUtil", 0))
+        
+        self.historyUpdated.emit()
 
     # Properties
     @Property(str, notify=statusChanged)
@@ -170,6 +215,44 @@ class GPUServiceBridge(QObject):
         """Get all GPU metrics"""
         return self._metrics_cache.copy()
 
+    @Slot(int, str, result=list)
+    def getHistory(self, gpu_id: int, metric_type: str) -> list[float]:
+        """
+        Get history data for a specific GPU and metric type.
+        
+        Args:
+            gpu_id: GPU index
+            metric_type: One of 'usage', 'memUsage', 'temperature', 'power', 
+                        'powerPercent', 'clockCore', 'clockMem', 'fanSpeed', 'memController'
+        
+        Returns:
+            List of historical values
+        """
+        if gpu_id in self._history and metric_type in self._history[gpu_id]:
+            return list(self._history[gpu_id][metric_type])
+        return []
+    
+    @Slot(int, result="QVariantMap")
+    def getAllHistory(self, gpu_id: int) -> dict[str, list]:
+        """
+        Get all history data for a specific GPU.
+        
+        Args:
+            gpu_id: GPU index
+        
+        Returns:
+            Dictionary with all metric histories
+        """
+        if gpu_id in self._history:
+            return {key: list(val) for key, val in self._history[gpu_id].items()}
+        return {}
+    
+    @Slot()
+    def clearHistory(self):
+        """Clear all history data"""
+        self._history.clear()
+        self.historyUpdated.emit()
+
     # Internal handlers
     def _set_status(self, status: str):
         """Update status and emit signal"""
@@ -206,6 +289,9 @@ class GPUServiceBridge(QObject):
                         if new_count != self._gpu_count:
                             self._gpu_count = new_count
                             self.gpuCountChanged.emit(new_count)
+
+                        # Update history for charts
+                        self._update_history(gpus)
 
                         self.metricsUpdated.emit()
                         self.metricsChanged.emit()
@@ -275,6 +361,7 @@ class GPUServiceBridge(QObject):
     def cleanup(self):
         """Cleanup resources"""
         logger.info("Cleaning up GPU service")
+        self._history.clear()
         self.stop()
 
 

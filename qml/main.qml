@@ -48,7 +48,7 @@ ApplicationWindow {
     }
 
     // ===== NAVIGATION STATE =====
-    property string currentRoute: "snapshot"
+    property string currentRoute: "home"
 
     function loadRoute(routeId) {
         console.log("[NAV] Loading route:", routeId)
@@ -74,14 +74,50 @@ ApplicationWindow {
                 anchors.margins: 16
                 spacing: 8
 
-                // Logo
-                Text {
-                    text: "SENTINEL"
-                    color: ThemeManager.accent
-                    font.pixelSize: ThemeManager.fontSize_h3()
-                    font.bold: true
+                // Logo - clickable to go home
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 44
+                    color: "transparent"
                     Layout.topMargin: 8
-                    Layout.bottomMargin: 24
+                    Layout.bottomMargin: 16
+                    
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "SENTINEL"
+                        color: ThemeManager.accent
+                        font.pixelSize: ThemeManager.fontSize_h3()
+                        font.bold: true
+                    }
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: loadRoute("home")
+                    }
+                }
+                
+                // Home Navigation Item
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 44
+                    radius: 8
+                    color: currentRoute === "home" ? ThemeManager.elevated() : "transparent"
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: loadRoute("home")
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        text: "🏠  Home"
+                        color: currentRoute === "home" ? ThemeManager.accent : ThemeManager.muted()
+                        font.pixelSize: ThemeManager.fontSize_body()
+                        font.weight: currentRoute === "home" ? Font.Bold : Font.Normal
+                    }
                 }
 
                 // Navigation Items
@@ -250,6 +286,11 @@ ApplicationWindow {
             color: ThemeManager.background()
 
             // Simple page switching - show/hide based on currentRoute
+            HomePage {
+                anchors.fill: parent
+                visible: currentRoute === "home"
+            }
+            
             EventViewer {
                 anchors.fill: parent
                 visible: currentRoute === "events"

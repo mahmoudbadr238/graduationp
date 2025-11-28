@@ -35,4 +35,5 @@ StatCard 1.0 StatCard.qml
 StorageCard 1.0 StorageCard.qml
 NetworkAdapterCard 1.0 NetworkAdapterCard.qml
 SecurityCard 1.0 SecurityCard.qml
+SecurityTriangle 1.0 SecurityTriangle.qml
 
