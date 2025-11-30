@@ -4,6 +4,7 @@ SystemSnapshot 1.0 SystemSnapshot.qml
 GPUMonitor 1.0 GPUMonitor.qml
 ScanHistory 1.0 ScanHistory.qml
 NetworkScan 1.0 NetworkScan.qml
+NmapScanResultPage 1.0 NmapScanResultPage.qml
 ScanTool 1.0 ScanTool.qml
 DataLossPrevention 1.0 DataLossPrevention.qml
 SettingsPage 1.0 SettingsPage.qml

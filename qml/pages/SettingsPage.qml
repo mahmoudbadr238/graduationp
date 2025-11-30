@@ -75,26 +75,32 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: 300
                                 
-                                property int previousIndex: -1
+                                property bool isInitializing: true
                                 
-                                Component.onCompleted: reloadThemeMode()
+                                Component.onCompleted: {
+                                    reloadThemeMode()
+                                    isInitializing = false
+                                }
                                 
                                 onCurrentIndexChanged: {
-                                    if (currentIndex !== previousIndex) {
-                                        previousIndex = currentIndex
-                                        var modes = ["light", "dark", "system"]
-                                        if (SettingsService) {
-                                            SettingsService.themeMode = modes[currentIndex]
-                                        }
+                                    // Don't save during initial load
+                                    if (isInitializing) return
+                                    
+                                    var modes = ["light", "dark", "system"]
+                                    if (SettingsService && currentIndex >= 0 && currentIndex < modes.length) {
+                                        console.log("[SettingsPage] Theme changed to:", modes[currentIndex])
+                                        SettingsService.themeMode = modes[currentIndex]
                                     }
                                 }
                                 
                                 function reloadThemeMode() {
                                     var modes = ["light", "dark", "system"]
                                     var savedMode = SettingsService ? SettingsService.themeMode : "dark"
+                                    console.log("[SettingsPage] Loading theme mode:", savedMode)
                                     var newIndex = modes.indexOf(savedMode)
-                                    previousIndex = newIndex
-                                    currentIndex = newIndex
+                                    if (newIndex >= 0) {
+                                        currentIndex = newIndex
+                                    }
                                 }
                                 
                                 background: Rectangle {
@@ -160,14 +166,20 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: 300
                                 
-                                property int previousIndex: -1
+                                property bool isInitializing: true
                                 
-                                Component.onCompleted: reloadFontSize()
+                                Component.onCompleted: {
+                                    reloadFontSize()
+                                    isInitializing = false
+                                }
                                 
                                 onCurrentIndexChanged: {
-                                    if (currentIndex !== previousIndex) {
-                                        previousIndex = currentIndex
-                                        var sizes = ["small", "medium", "large"]
+                                    // Don't save during initial load
+                                    if (isInitializing) return
+                                    
+                                    var sizes = ["small", "medium", "large"]
+                                    if (currentIndex >= 0 && currentIndex < sizes.length) {
+                                        console.log("[SettingsPage] Font size changed to:", sizes[currentIndex])
                                         if (SettingsService) {
                                             SettingsService.fontSize = sizes[currentIndex]
                                         }
@@ -178,9 +190,11 @@ Item {
                                 function reloadFontSize() {
                                     var sizes = ["small", "medium", "large"]
                                     var savedSize = SettingsService ? SettingsService.fontSize : "medium"
+                                    console.log("[SettingsPage] Loading font size:", savedSize)
                                     var newIndex = sizes.indexOf(savedSize)
-                                    previousIndex = newIndex
-                                    currentIndex = newIndex
+                                    if (newIndex >= 0) {
+                                        currentIndex = newIndex
+                                    }
                                 }
                                 
                                 background: Rectangle {

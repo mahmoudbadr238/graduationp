@@ -3,6 +3,7 @@
 import platform
 import socket
 import subprocess
+import sys
 import time
 from typing import Dict, List, Optional
 
@@ -10,6 +11,10 @@ import psutil
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
 
 from app.utils.security_info import SecurityInfo
+
+# Subprocess flags - CREATE_NO_WINDOW only works on Windows
+_IS_WINDOWS = platform.system() == "Windows"
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 
 class SystemSnapshotService(QObject):
@@ -739,7 +744,7 @@ class SystemSnapshotService(QObject):
                 capture_output=True,
                 text=True,
                 timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=_SUBPROCESS_FLAGS
             )
             
             if result.returncode == 0 and result.stdout.strip():
@@ -760,7 +765,7 @@ class SystemSnapshotService(QObject):
                 capture_output=True,
                 text=True,
                 timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=_SUBPROCESS_FLAGS
             )
             
             if result.returncode == 0:
@@ -782,7 +787,7 @@ class SystemSnapshotService(QObject):
                 capture_output=True,
                 text=True,
                 timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=_SUBPROCESS_FLAGS
             )
             
             if result.returncode == 0:

@@ -1,12 +1,20 @@
 """Windows Security Status Information."""
 
+import platform
 import subprocess
+import sys
 import logging
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Platform detection
+_IS_WINDOWS = platform.system() == "Windows"
+
+# Subprocess flags - CREATE_NO_WINDOW only works on Windows
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 
 class SecurityInfo:
@@ -154,13 +162,15 @@ class SecurityInfo:
     @staticmethod
     def _run_powershell(cmd: str, timeout: int = 10) -> Optional[str]:
         """Helper to run PowerShell commands safely."""
+        if not _IS_WINDOWS:
+            return None
         try:
             result = subprocess.run(
                 ["powershell", "-NoProfile", "-Command", cmd],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=_SUBPROCESS_FLAGS
             )
             if result.returncode == 0:
                 return result.stdout.strip()

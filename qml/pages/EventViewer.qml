@@ -145,6 +145,7 @@ Item {
                     border.width: 1
 
                     TextField {
+                        id: searchField
                         anchors.fill: parent
                         anchors.margins: 8
                         color: ThemeManager.foreground()
@@ -152,7 +153,16 @@ Item {
                         placeholderTextColor: ThemeManager.muted()
                         background: Rectangle { color: "transparent" }
                         onTextChanged: {
-                            searchText = text
+                            searchDebounceTimer.restart()
+                        }
+                    }
+                    
+                    // Debounce timer to avoid filtering on every keystroke
+                    Timer {
+                        id: searchDebounceTimer
+                        interval: 200
+                        onTriggered: {
+                            searchText = searchField.text
                             root.applyFilters()
                         }
                     }

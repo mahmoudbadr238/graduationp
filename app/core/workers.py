@@ -107,20 +107,31 @@ class WorkerWatchdog(QObject):
 
     workerStalled = Signal(str)  # worker_id
 
+    # Default threshold (can be overridden per-worker)
+    DEFAULT_STALE_THRESHOLD_SEC = 15
+    
+    # Extended threshold for long-running operations (network scans, etc.)
+    EXTENDED_STALE_THRESHOLD_SEC = 120
+
     def __init__(self, check_interval_ms: int = 5000, parent=None):
         super().__init__(parent)
         self._workers: dict[str, datetime] = {}
+        self._worker_thresholds: dict[str, float] = {}  # Per-worker thresholds
         self._mutex = QMutex()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._check_workers)
         self._timer.start(check_interval_ms)
-        self._stale_threshold_sec = 15  # No heartbeat for 15s = stalled
 
-    def register_worker(self, worker_id: str):
-        """Register a worker for monitoring"""
+    def register_worker(self, worker_id: str, stale_threshold_sec: float | None = None):
+        """Register a worker for monitoring with optional custom threshold"""
         with QMutexLocker(self._mutex):
             self._workers[worker_id] = datetime.now()
-            logger.debug(f"Watchdog: registered '{worker_id}'")
+            # Use provided threshold, or default
+            self._worker_thresholds[worker_id] = (
+                stale_threshold_sec if stale_threshold_sec is not None 
+                else self.DEFAULT_STALE_THRESHOLD_SEC
+            )
+            logger.debug(f"Watchdog: registered '{worker_id}' with {self._worker_thresholds[worker_id]}s threshold")
 
     def heartbeat(self, worker_id: str):
         """Worker sends heartbeat to indicate it's alive"""
@@ -133,7 +144,9 @@ class WorkerWatchdog(QObject):
         with QMutexLocker(self._mutex):
             if worker_id in self._workers:
                 del self._workers[worker_id]
-                logger.debug(f"Watchdog: unregistered '{worker_id}'")
+            if worker_id in self._worker_thresholds:
+                del self._worker_thresholds[worker_id]
+            logger.debug(f"Watchdog: unregistered '{worker_id}'")
 
     def _check_workers(self):
         """Check for stalled workers"""
@@ -142,10 +155,13 @@ class WorkerWatchdog(QObject):
             stalled = []
             for worker_id, last_heartbeat in list(self._workers.items()):
                 elapsed = (now - last_heartbeat).total_seconds()
-                if elapsed > self._stale_threshold_sec:
+                threshold = self._worker_thresholds.get(
+                    worker_id, self.DEFAULT_STALE_THRESHOLD_SEC
+                )
+                if elapsed > threshold:
                     stalled.append(worker_id)
                     logger.warning(
-                        f"Watchdog: '{worker_id}' stalled ({elapsed:.1f}s since last heartbeat)"
+                        f"Watchdog: '{worker_id}' stalled ({elapsed:.1f}s since last heartbeat, threshold={threshold}s)"
                     )
 
             # Emit signals outside lock
@@ -154,6 +170,8 @@ class WorkerWatchdog(QObject):
                 # Auto-unregister stalled workers after notification
                 if worker_id in self._workers:
                     del self._workers[worker_id]
+                if worker_id in self._worker_thresholds:
+                    del self._worker_thresholds[worker_id]
 
 
 class ThrottledWorker(QObject):

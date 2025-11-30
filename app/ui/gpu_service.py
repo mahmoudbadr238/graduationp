@@ -61,6 +61,8 @@ class GPUServiceBridge(QObject):
         # Circuit breaker (track failures)
         self._failures: list[float] = []
         self._breaker_open = False
+        self._last_restart_time = 0.0  # Track last restart to prevent tight loops
+        self._min_restart_cooldown = 5.0  # Minimum seconds between restarts
 
         # State
         self._status = "stopped"
@@ -353,10 +355,25 @@ class GPUServiceBridge(QObject):
                 "GPU monitoring failed multiple times and has been disabled. Restart the application to re-enable.",
             )
         else:
-            # Auto-restart
-            logger.info(f"Restarting worker (failure {len(self._failures)}/3)")
+            # Check cooldown to prevent tight restart loops
+            time_since_last_restart = time.time() - self._last_restart_time
+            if time_since_last_restart < self._min_restart_cooldown:
+                # Immediate failure - likely a fundamental issue, open circuit breaker
+                logger.error("GPU worker failed immediately after restart - disabling")
+                self._breaker_open = True
+                self._set_status("breaker-open")
+                self.error.emit(
+                    "GPU Telemetry Disabled",
+                    "GPU monitoring is unavailable on this system.",
+                )
+                return
+            
+            # Auto-restart with cooldown
+            restart_delay = max(1000, int(self._min_restart_cooldown * 1000))
+            logger.info(f"Restarting worker in {restart_delay}ms (failure {len(self._failures)}/3)")
             self._set_status("restarting")
-            QTimer.singleShot(1000, lambda: self.start(self._interval))
+            self._last_restart_time = time.time()
+            QTimer.singleShot(restart_delay, lambda: self.start(self._interval))
 
     def cleanup(self):
         """Cleanup resources"""

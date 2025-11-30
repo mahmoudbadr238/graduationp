@@ -200,10 +200,11 @@ Item {
                         // Security Facts Card
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 480
+                            Layout.preferredHeight: 520
                             radius: 16
                             color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
                             border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            clip: true
                             
                             ColumnLayout {
                                 anchors.fill: parent
@@ -240,44 +241,48 @@ Item {
                                     Layout.alignment: Qt.AlignHCenter
                                 }
                                 
-                                // Facts list
-                                ColumnLayout {
+                                // Facts list - with fixed height to prevent overflow
+                                Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    spacing: 10
+                                    Layout.minimumHeight: 180
                                     
-                                    Repeater {
-                                        model: currentFact.facts
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        spacing: 8
                                         
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 12
+                                        Repeater {
+                                            model: currentFact.facts
                                             
-                                            Text {
-                                                text: (index + 1) + "."
-                                                color: ThemeManager.accent
-                                                font.pixelSize: 13
-                                                font.bold: true
-                                                Layout.preferredWidth: 24
-                                                horizontalAlignment: Text.AlignRight
-                                            }
-                                            
-                                            Text {
-                                                text: modelData
-                                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
-                                                font.pixelSize: 13
+                                            RowLayout {
                                                 Layout.fillWidth: true
-                                                wrapMode: Text.WordWrap
+                                                spacing: 12
+                                                
+                                                Text {
+                                                    text: (index + 1) + "."
+                                                    color: ThemeManager.accent
+                                                    font.pixelSize: 13
+                                                    font.bold: true
+                                                    Layout.preferredWidth: 24
+                                                    horizontalAlignment: Text.AlignRight
+                                                }
+                                                
+                                                Text {
+                                                    text: modelData
+                                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                    font.pixelSize: 13
+                                                    Layout.fillWidth: true
+                                                    wrapMode: Text.WordWrap
+                                                }
                                             }
                                         }
                                     }
                                 }
                                 
-                                Item { Layout.fillHeight: true }
-                                
-                                // Navigation buttons
+                                // Navigation buttons - always at bottom
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.topMargin: 8
                                     spacing: 12
                                     
                                     Rectangle {

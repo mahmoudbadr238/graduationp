@@ -311,6 +311,12 @@ ApplicationWindow {
                 visible: currentRoute === "net-scan"
             }
             
+            NmapScanResultPage {
+                id: nmapResultPage
+                anchors.fill: parent
+                visible: currentRoute === "nmap-result"
+            }
+            
             ScanTool {
                 anchors.fill: parent
                 visible: currentRoute === "scan-tool"

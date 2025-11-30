@@ -12,6 +12,18 @@ Item {
     // Track current tab index
     property int currentTabIndex: 0
     
+    // Helper function to create a transparent version of a color
+    function transparentColor(baseColor, alpha) {
+        return Qt.rgba(baseColor.r, baseColor.g, baseColor.b, alpha)
+    }
+    
+    // Status color helper - returns appropriate themed color based on status
+    function statusColor(isGood, isWarning) {
+        if (isGood) return ThemeManager.success
+        if (isWarning) return ThemeManager.warning
+        return ThemeManager.danger
+    }
+    
     // Helper function to format network speed with BPS/KBPS/MBPS/GBPS scaling
     function formatNetworkSpeed(bps) {
         if (!bps || bps === 0) return "0 BPS"
@@ -602,11 +614,11 @@ Item {
                                                 }
                                                 Column {
                                                     Text { text: "Power"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
-                                                    Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"; color: "#EF4444"; font.pixelSize: 16; font.bold: true }
+                                                    Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"; color: ThemeManager.danger; font.pixelSize: 16; font.bold: true }
                                                 }
                                                 Column {
                                                     Text { text: "VRAM"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
-                                                    Text { text: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(1) + " GB" : "N/A"; color: "#10B981"; font.pixelSize: 16; font.bold: true }
+                                                    Text { text: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(1) + " GB" : "N/A"; color: ThemeManager.success; font.pixelSize: 16; font.bold: true }
                                                 }
                                             }
                                         }
@@ -640,14 +652,14 @@ Item {
                                             title: "Core Clock"
                                             value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.clockMHz + " MHz" : "N/A"
                                             barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.maxClockMHz > 0 ? gpuMonitorTab.currentGpu.clockMHz / gpuMonitorTab.currentGpu.maxClockMHz : 0
-                                            accentColor: "#F59E0B"
+                                            accentColor: ThemeManager.warning
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
                                             title: "Memory Clock"
                                             value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.clockMemMHz || 0) + " MHz" : "N/A"
                                             barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.maxClockMemMHz > 0 ? (gpuMonitorTab.currentGpu.clockMemMHz || 0) / gpuMonitorTab.currentGpu.maxClockMemMHz : 0
-                                            accentColor: "#22C55E"
+                                            accentColor: ThemeManager.success
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
@@ -711,7 +723,7 @@ Item {
                                             title: "Power Draw"
                                             value: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + " W" : "N/A"
                                             barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerLimitW > 0 ? gpuMonitorTab.currentGpu.powerW / gpuMonitorTab.currentGpu.powerLimitW : 0
-                                            accentColor: "#EF4444"
+                                            accentColor: ThemeManager.danger
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
@@ -748,14 +760,14 @@ Item {
                                             title: "VRAM Used"
                                             value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(2) + " GB" : "N/A"
                                             barValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memTotalMB > 0 ? gpuMonitorTab.currentGpu.memUsedMB / gpuMonitorTab.currentGpu.memTotalMB : 0
-                                            accentColor: "#10B981"
+                                            accentColor: ThemeManager.success
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
                                             title: "VRAM Total"
                                             value: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memTotalMB / 1024).toFixed(0) + " GB" : "N/A"
                                             barValue: 1
-                                            accentColor: "#34D399"
+                                            accentColor: ThemeManager.success
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
@@ -763,7 +775,7 @@ Item {
                                             value: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent.toFixed(1) + "%" : "N/A"
                                             barValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent / 100 : 0
                                             accentColor: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memPercent > 90 ? ThemeManager.danger :
-                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memPercent > 70 ? ThemeManager.warning : "#10B981"
+                                                        gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.memPercent > 70 ? ThemeManager.warning : ThemeManager.success
                                         }
                                         GPUMetricTile { 
                                             width: (parent.width - 30) / 4
@@ -821,7 +833,7 @@ Item {
                                         currentValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"
                                         historyData: gpuMonitorTab.powerHistory
                                         maxValue: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerLimitW > 0 ? gpuMonitorTab.currentGpu.powerLimitW : 350
-                                        lineColor: "#EF4444"
+                                        lineColor: ThemeManager.danger
                                     }
                                     
                                     // Clock Speeds Chart (Dual)
@@ -838,8 +850,8 @@ Item {
                                         historyData1: gpuMonitorTab.clockCoreHistory
                                         historyData2: gpuMonitorTab.clockMemHistory
                                         maxValue: Math.max(3000, gpuMonitorTab.currentGpu ? Math.max(gpuMonitorTab.currentGpu.maxClockMHz || 0, gpuMonitorTab.currentGpu.maxClockMemMHz || 0) : 3000)
-                                        lineColor1: "#F59E0B"
-                                        lineColor2: "#22C55E"
+                                        lineColor1: ThemeManager.warning
+                                        lineColor2: ThemeManager.success
                                     }
                                     
                                     // VRAM Usage Chart
@@ -852,7 +864,7 @@ Item {
                                         currentValue: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.memPercent.toFixed(1) + "%" : "N/A"
                                         historyData: gpuMonitorTab.memHistory
                                         maxValue: 100
-                                        lineColor: "#10B981"
+                                        lineColor: ThemeManager.success
                                     }
                                     
                                     // Fan Speed Chart
@@ -1015,16 +1027,8 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 100
                                 radius: 16
-                                color: {
-                                    if (securityColumn.overall.isGood) return "#10B98120"
-                                    if (securityColumn.overall.isWarning) return "#F59E0B20"
-                                    return "#EF444420"
-                                }
-                                border.color: {
-                                    if (securityColumn.overall.isGood) return "#10B981"
-                                    if (securityColumn.overall.isWarning) return "#F59E0B"
-                                    return "#EF4444"
-                                }
+                                color: root.transparentColor(root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning), 0.13)
+                                border.color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
                                 border.width: 2
 
                                 MouseArea {
@@ -1046,11 +1050,7 @@ Item {
                                         height: 56
                                         radius: 28
                                         anchors.verticalCenter: parent.verticalCenter
-                                        color: {
-                                            if (securityColumn.overall.isGood) return "#10B981"
-                                            if (securityColumn.overall.isWarning) return "#F59E0B"
-                                            return "#EF4444"
-                                        }
+                                        color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
 
                                         Text {
                                             anchors.centerIn: parent
@@ -1077,11 +1077,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.overall.status || "Checking..."
-                                            color: {
-                                                if (securityColumn.overall.isGood) return "#10B981"
-                                                if (securityColumn.overall.isWarning) return "#F59E0B"
-                                                return "#EF4444"
-                                            }
+                                            color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
                                             font.pixelSize: 24
                                             font.bold: true
                                         }
@@ -1162,11 +1158,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.internet.status || "Checking"
-                                            color: {
-                                                if (securityColumn.internet.isGood) return "#10B981"
-                                                if (securityColumn.internet.isWarning) return "#F59E0B"
-                                                return "#EF4444"
-                                            }
+                                            color: root.statusColor(securityColumn.internet.isGood, securityColumn.internet.isWarning)
                                             font.pixelSize: 20
                                             font.bold: true
                                         }
@@ -1186,11 +1178,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.right: parent.right
                                         anchors.margins: 12
-                                        color: {
-                                            if (securityColumn.internet.isGood) return "#10B981"
-                                            if (securityColumn.internet.isWarning) return "#F59E0B"
-                                            return "#EF4444"
-                                        }
+                                        color: root.statusColor(securityColumn.internet.isGood, securityColumn.internet.isWarning)
                                     }
                                 }
 
@@ -1223,11 +1211,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.updates.status || "Checking"
-                                            color: {
-                                                if (securityColumn.updates.isGood) return "#10B981"
-                                                if (securityColumn.updates.isWarning) return "#F59E0B"
-                                                return "#EF4444"
-                                            }
+                                            color: root.statusColor(securityColumn.updates.isGood, securityColumn.updates.isWarning)
                                             font.pixelSize: 20
                                             font.bold: true
                                         }
@@ -1246,11 +1230,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.right: parent.right
                                         anchors.margins: 12
-                                        color: {
-                                            if (securityColumn.updates.isGood) return "#10B981"
-                                            if (securityColumn.updates.isWarning) return "#F59E0B"
-                                            return "#EF4444"
-                                        }
+                                        color: root.statusColor(securityColumn.updates.isGood, securityColumn.updates.isWarning)
                                     }
                                 }
 
@@ -1283,11 +1263,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.device.status || "Checking"
-                                            color: {
-                                                if (securityColumn.device.isGood) return "#10B981"
-                                                if (securityColumn.device.isWarning) return "#F59E0B"
-                                                return "#EF4444"
-                                            }
+                                            color: root.statusColor(securityColumn.device.isGood, securityColumn.device.isWarning)
                                             font.pixelSize: 20
                                             font.bold: true
                                         }
@@ -1306,11 +1282,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.right: parent.right
                                         anchors.margins: 12
-                                        color: {
-                                            if (securityColumn.device.isGood) return "#10B981"
-                                            if (securityColumn.device.isWarning) return "#F59E0B"
-                                            return "#EF4444"
-                                        }
+                                        color: root.statusColor(securityColumn.device.isGood, securityColumn.device.isWarning)
                                     }
                                 }
 
@@ -1343,11 +1315,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.remote.status || "Checking"
-                                            color: {
-                                                if (securityColumn.remote.isGood) return "#10B981"
-                                                if (securityColumn.remote.isWarning) return "#F59E0B"
-                                                return "#EF4444"
-                                            }
+                                            color: root.statusColor(securityColumn.remote.isGood, securityColumn.remote.isWarning)
                                             font.pixelSize: 20
                                             font.bold: true
                                         }
@@ -1366,11 +1334,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.right: parent.right
                                         anchors.margins: 12
-                                        color: {
-                                            if (securityColumn.remote.isGood) return "#10B981"
-                                            if (securityColumn.remote.isWarning) return "#F59E0B"
-                                            return "#EF4444"
-                                        }
+                                        color: root.statusColor(securityColumn.remote.isGood, securityColumn.remote.isWarning)
                                     }
                                 }
                             }
@@ -1777,8 +1741,8 @@ Item {
         property var historyData1: []
         property var historyData2: []
         property real maxValue: 100
-        property color lineColor1: "#F59E0B"
-        property color lineColor2: "#22C55E"
+        property color lineColor1: ThemeManager.warning
+        property color lineColor2: ThemeManager.success
         
         Column {
             anchors.fill: parent

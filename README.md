@@ -105,9 +105,18 @@ python main.py
 **Setup**: [API Integration Guide](docs/api/API_INTEGRATION_GUIDE.md#virustotal-integration)
 
 #### 🌐 Network Scanner
-- Device discovery on local network
-- Port scanning (Quick: top 100, Full: all 65K)
-- Service version detection
+- **8 Specialized Scan Types**:
+  - Host Discovery - Find live devices on your network
+  - Network Mapping - Map network topology with traceroute
+  - Port Scanning - Detect open/closed/filtered ports
+  - OS Detection - Identify operating systems
+  - Service Detection - Find running services and versions
+  - Firewall Detection - Detect firewall rules
+  - Vulnerability Scan - Check for known vulnerabilities
+  - Protocol Analysis - Analyze IP protocols
+- Real-time streaming output with console view
+- Auto-detect local subnet for network-wide scans
+- Reports auto-saved to `~/.sentinel/nmap_reports/`
 
 **Setup**: [Nmap Installation Guide](docs/api/API_INTEGRATION_GUIDE.md#nmap-integration)
 
@@ -274,11 +283,14 @@ Comprehensive documentation is organized in the [`docs/`](docs/) directory:
 ## 🗺️ Roadmap
 
 ### v1.0.0-beta (Current) ✅
-- Real-time system monitoring
-- Windows event viewer with translations
+- Real-time system monitoring (CPU, RAM, GPU, Disk, Network)
+- Windows event viewer with plain English translations
 - Scan history with CSV export
-- Theme support (dark/light/system)
+- Theme support (dark/light/system) with persistence
 - Optional VirusTotal & Nmap integration
+- **NEW: 8 specialized Nmap scan types with streaming output**
+- **NEW: Settings persistence across app restarts**
+- **NEW: Security tips carousel on Home page**
 
 ### v1.1.0 (Next 2-4 weeks)
 - VirusTotal file upload + analysis polling

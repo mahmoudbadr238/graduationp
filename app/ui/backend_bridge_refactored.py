@@ -149,10 +149,20 @@ class BackendBridge(QObject):
 
     # Progress updates
     scanProgress = Signal(str, int)  # task_id, percent (0-100)
+    
+    # Nmap scan signals (streaming output)
+    nmapScanStarted = Signal(str, str, str)  # scanId, scanType, targetHost
+    nmapScanOutput = Signal(str, str)  # scanId, outputText
+    nmapScanFinished = Signal(str, bool, int, str)  # scanId, success, exitCode, reportPath
 
     def __init__(self):
         """Initialize backend bridge and resolve dependencies."""
         super().__init__()
+        
+        # Check nmap availability on init
+        from ..infra.nmap_cli import check_nmap_installed
+        self._nmap_available, self._nmap_path = check_nmap_installed()
+        logger.info(f"Nmap available: {self._nmap_available}, path: {self._nmap_path}")
 
         # Resolve required services from DI container
         self.sys_monitor = DI.resolve(ISystemMonitor)
@@ -182,6 +192,8 @@ class BackendBridge(QObject):
 
         # Thread pool and watchdog
         self._thread_pool = QThreadPool.globalInstance()
+        # Increase thread pool size for better concurrency with multiple scanners
+        self._thread_pool.setMaxThreadCount(max(8, self._thread_pool.maxThreadCount()))
         self._watchdog = get_watchdog()
         self._watchdog.workerStalled.connect(self._on_worker_stalled)
 
@@ -449,7 +461,9 @@ class BackendBridge(QObject):
         worker.signals.error.connect(on_error)
 
         self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
+        # Use extended threshold for network scans (nmap can take time)
+        from app.core.workers import WorkerWatchdog
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=WorkerWatchdog.EXTENDED_STALE_THRESHOLD_SEC)
         self._thread_pool.start(worker)
 
         logger.info(f"Network scan started for {target}")
@@ -640,12 +654,228 @@ class BackendBridge(QObject):
 
         logger.info(f"URL scan started for {url}")
 
+    # ============ Nmap Scan (Streaming) ============
+
+    @Slot(str, str)
+    def runNmapScan(self, scan_type: str, target_host: str) -> None:
+        """
+        Run Nmap scan with streaming output.
+        
+        Args:
+            scan_type: One of the scan profile types (host_discovery, port_scan, etc.)
+            target_host: Target IP/hostname (empty string for network-wide scans)
+        """
+        # Check nmap availability first (double-check, UI should also check)
+        if not self._nmap_available:
+            self.toast.emit("error", "Nmap is not installed. Please install from https://nmap.org")
+            self.nmapScanFinished.emit("", False, 1, "")
+            return
+        
+        # Generate scan ID
+        from datetime import datetime
+        scan_id = f"{scan_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        target = target_host.strip() if target_host else ""
+        
+        # Emit started signal
+        self.nmapScanStarted.emit(scan_id, scan_type, target)
+        
+        worker_id = f"nmap-{scan_id}"
+        
+        # Accumulated output for this scan
+        accumulated_output = []
+        
+        def scan_task(worker: CancellableWorker):
+            """Background task: run nmap scan with streaming."""
+            worker.emit_heartbeat()
+            
+            from ..infra.nmap_cli import NmapCli, SCAN_PROFILES, get_local_subnet, get_reports_dir
+            import subprocess
+            import sys
+            
+            # Get scan profile
+            profile = SCAN_PROFILES.get(scan_type)
+            if not profile:
+                return {"success": False, "exit_code": 1, "report_path": "", "error": f"Unknown scan type: {scan_type}"}
+            
+            # Determine target
+            if profile["requires_host"]:
+                if not target:
+                    return {"success": False, "exit_code": 1, "report_path": "", "error": "Target host required"}
+                
+                # Validate target
+                is_valid, error_msg = NmapCli.validate_target(target)
+                if not is_valid:
+                    return {"success": False, "exit_code": 1, "report_path": "", "error": error_msg}
+                
+                scan_target = target
+            else:
+                # Network-wide scan
+                scan_target = get_local_subnet()
+                self.nmapScanOutput.emit(scan_id, f"[INFO] Auto-detected local subnet: {scan_target}\n")
+            
+            worker.emit_heartbeat()
+            
+            # Build command
+            cmd = [self._nmap_path] + profile["args"] + [scan_target]
+            timeout = profile.get("timeout", 1800)
+            
+            # Emit command info
+            self.nmapScanOutput.emit(scan_id, f"[INFO] Starting: {profile['description']}\n")
+            self.nmapScanOutput.emit(scan_id, f"[INFO] Target: {scan_target}\n")
+            self.nmapScanOutput.emit(scan_id, f"[INFO] Command: {' '.join(cmd)}\n")
+            self.nmapScanOutput.emit(scan_id, "-" * 60 + "\n\n")
+            
+            # Platform-specific flags
+            _IS_WINDOWS = sys.platform == 'win32'
+            flags = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
+            
+            try:
+                # Start process
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    creationflags=flags,
+                )
+                
+                # Stream output
+                from datetime import datetime as dt
+                start_time = dt.now()
+                
+                for line in iter(process.stdout.readline, ''):
+                    if not line:
+                        break
+                    
+                    accumulated_output.append(line)
+                    self.nmapScanOutput.emit(scan_id, line)
+                    worker.emit_heartbeat()
+                    
+                    # Check timeout
+                    elapsed = (dt.now() - start_time).total_seconds()
+                    if elapsed > timeout:
+                        process.kill()
+                        self.nmapScanOutput.emit(scan_id, f"\n[ERROR] Scan timed out after {timeout}s\n")
+                        return {"success": False, "exit_code": -1, "report_path": ""}
+                    
+                    # Check cancellation
+                    if worker.is_cancelled():
+                        process.kill()
+                        self.nmapScanOutput.emit(scan_id, "\n[CANCELLED] Scan was cancelled\n")
+                        return {"success": False, "exit_code": -2, "report_path": ""}
+                
+                process.stdout.close()
+                exit_code = process.wait()
+                
+                # Save report
+                report_path = get_reports_dir() / f"nmap_{scan_id}.txt"
+                with open(report_path, 'w', encoding='utf-8') as f:
+                    f.write(f"Nmap Scan Report\n")
+                    f.write(f"================\n")
+                    f.write(f"Scan Type: {profile['description']}\n")
+                    f.write(f"Target: {scan_target}\n")
+                    f.write(f"Date: {dt.now().isoformat()}\n")
+                    f.write(f"Command: {' '.join(cmd)}\n")
+                    f.write("-" * 60 + "\n\n")
+                    f.writelines(accumulated_output)
+                
+                success = exit_code == 0
+                return {"success": success, "exit_code": exit_code, "report_path": str(report_path)}
+                
+            except FileNotFoundError:
+                return {"success": False, "exit_code": 1, "report_path": "", "error": "Nmap not found"}
+            except Exception as e:
+                return {"success": False, "exit_code": 1, "report_path": "", "error": str(e)}
+        
+        def on_success(wid: str, result: dict) -> None:
+            """Scan completed."""
+            success = result.get("success", False)
+            exit_code = result.get("exit_code", 1)
+            report_path = result.get("report_path", "")
+            
+            if success:
+                self.nmapScanOutput.emit(scan_id, f"\n[SUCCESS] Scan completed\n")
+                self.nmapScanOutput.emit(scan_id, f"[INFO] Report saved: {report_path}\n")
+                self.toast.emit("success", "Nmap scan completed")
+            else:
+                error = result.get("error", "Unknown error")
+                self.nmapScanOutput.emit(scan_id, f"\n[ERROR] {error}\n")
+                self.toast.emit("error", f"Scan failed: {error}")
+            
+            self.nmapScanFinished.emit(scan_id, success, exit_code, report_path)
+            
+            self._watchdog.unregister_worker(worker_id)
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+        
+        def on_error(wid: str, error_msg: str) -> None:
+            """Scan failed."""
+            self.nmapScanOutput.emit(scan_id, f"\n[ERROR] {error_msg}\n")
+            self.toast.emit("error", f"Scan error: {error_msg}")
+            self.nmapScanFinished.emit(scan_id, False, 1, "")
+            
+            self._watchdog.unregister_worker(worker_id)
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+        
+        # Create and start worker
+        worker = CancellableWorker(
+            worker_id,
+            scan_task,
+            timeout_ms=3600000,  # 1 hour max for vuln scans
+        )
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+        
+        self._active_workers[worker_id] = worker
+        from app.core.workers import WorkerWatchdog
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=WorkerWatchdog.EXTENDED_STALE_THRESHOLD_SEC)
+        self._thread_pool.start(worker)
+        
+        logger.info(f"Nmap scan started: {scan_type} -> {target or 'local network'}")
+
+    @Slot(str)
+    def exportNmapScanReport(self, scan_id: str) -> None:
+        """Request export of scan report (re-save if needed)."""
+        # For now, reports are auto-saved. This could open file dialog in future.
+        self.toast.emit("info", "Report was auto-saved during scan")
+
+    @Slot(str)
+    def openNmapReport(self, report_path: str) -> None:
+        """Open a saved report file."""
+        import os
+        import sys
+        
+        if not os.path.exists(report_path):
+            self.toast.emit("error", "Report file not found")
+            return
+        
+        try:
+            if sys.platform == 'win32':
+                os.startfile(report_path)
+            elif sys.platform == 'darwin':
+                import subprocess
+                subprocess.run(['open', report_path], check=False)
+            else:
+                import subprocess
+                subprocess.run(['xdg-open', report_path], check=False)
+            
+            self.toast.emit("success", "Opening report...")
+        except Exception as e:
+            self.toast.emit("error", f"Could not open report: {e}")
+
     # ============ Status Query Methods ============
 
     @Slot(result=bool)
     def nmapAvailable(self) -> bool:
-        """Check if Nmap/network scanning is available."""
-        return self.net_scanner is not None
+        """Check if Nmap is installed and available."""
+        return self._nmap_available
+
+    @Slot(result=str)
+    def nmapPath(self) -> str:
+        """Get the path to nmap executable."""
+        return self._nmap_path or ""
 
     @Slot(result=bool)
     def virusTotalEnabled(self) -> bool:

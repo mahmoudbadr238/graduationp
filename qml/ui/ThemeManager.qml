@@ -8,6 +8,15 @@ QtObject {
     property string fontSize: "medium"  // "small", "medium", "large"
     property int fontSizeUpdateTrigger: 0  // Trigger for UI updates
     property bool _initialized: false
+    property int _retryCount: 0
+    property int _maxRetries: 10
+    
+    // Timer for retrying initialization
+    property Timer _initTimer: Timer {
+        interval: 100
+        repeat: false
+        onTriggered: themeManager.initializeTheme()
+    }
     
     // Connect to SettingsService on startup with retry logic
     function initializeTheme() {
@@ -15,24 +24,33 @@ QtObject {
         
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             // Load from settings
-            themeMode = SettingsService.themeMode
-            fontSize = SettingsService.fontSize
+            var loadedTheme = SettingsService.themeMode
+            var loadedFontSize = SettingsService.fontSize
+            
+            console.log("[ThemeManager] Loaded themeMode:", loadedTheme)
+            console.log("[ThemeManager] Loaded fontSize:", loadedFontSize)
+            
+            themeMode = loadedTheme
+            fontSize = loadedFontSize
             _initialized = true
             
             // Connect for changes
             try {
                 SettingsService.themeModeChanged.connect(onThemeModeChanged)
                 SettingsService.fontSizeChanged.connect(onFontSizeChanged)
+                console.log("[ThemeManager] Connected to SettingsService signals")
             } catch(e) {
-                console.warn("Could not connect to SettingsService signals:", e)
+                console.warn("[ThemeManager] Could not connect to SettingsService signals:", e)
             }
         } else {
             // SettingsService not ready yet, retry after a short delay
-            Qt.callLater(function() {
-                if (!_initialized) {
-                    initializeTheme()
-                }
-            })
+            _retryCount++
+            if (_retryCount < _maxRetries) {
+                console.log("[ThemeManager] SettingsService not ready, retry", _retryCount)
+                _initTimer.start()
+            } else {
+                console.warn("[ThemeManager] Failed to connect to SettingsService after", _maxRetries, "retries")
+            }
         }
     }
     

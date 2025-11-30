@@ -1,16 +1,29 @@
 """Windows event log reader implementation."""
 
+import platform
+import sys
 from collections.abc import Iterable
 from datetime import datetime
 import logging
-
-import win32con
-import win32evtlog
 
 from ..core.interfaces import IEventReader
 from ..core.types import EventItem
 
 logger = logging.getLogger(__name__)
+
+# Only import win32 modules on Windows
+_IS_WINDOWS = platform.system() == "Windows"
+
+if _IS_WINDOWS:
+    try:
+        import win32con
+        import win32evtlog
+        _WIN32_AVAILABLE = True
+    except ImportError:
+        _WIN32_AVAILABLE = False
+        logger.warning("win32 modules not available - event viewer disabled")
+else:
+    _WIN32_AVAILABLE = False
 
 
 class WindowsEventReader(IEventReader):
@@ -24,20 +37,30 @@ class WindowsEventReader(IEventReader):
     SAFE_ICON_ERROR = "[!]"
     SAFE_ICON_WARNING = "[*]"
 
-    # Map Windows event types to severity levels
-    EVENT_TYPE_MAP = {
-        win32con.EVENTLOG_ERROR_TYPE: "ERROR",
-        win32con.EVENTLOG_WARNING_TYPE: "WARNING",
-        win32con.EVENTLOG_INFORMATION_TYPE: "INFO",
-        win32con.EVENTLOG_AUDIT_SUCCESS: "SUCCESS",
-        win32con.EVENTLOG_AUDIT_FAILURE: "FAILURE",
-    }
+    # Map Windows event types to severity levels (only set if win32 available)
+    EVENT_TYPE_MAP = {}
+    
+    def __init__(self):
+        """Initialize the event reader."""
+        if _WIN32_AVAILABLE:
+            self.EVENT_TYPE_MAP = {
+                win32con.EVENTLOG_ERROR_TYPE: "ERROR",
+                win32con.EVENTLOG_WARNING_TYPE: "WARNING",
+                win32con.EVENTLOG_INFORMATION_TYPE: "INFO",
+                win32con.EVENTLOG_AUDIT_SUCCESS: "SUCCESS",
+                win32con.EVENTLOG_AUDIT_FAILURE: "FAILURE",
+            }
 
     def tail(self, limit: int = 100) -> Iterable[EventItem]:
         """Return recent Windows event log entries.
         
         Returns gracefully with available events if some sources are inaccessible.
         """
+        # Return empty on non-Windows or if win32 modules unavailable
+        if not _WIN32_AVAILABLE:
+            logger.info("Event viewer not available on this platform")
+            return []
+        
         events = []
         per_source_limit = limit // 2
 

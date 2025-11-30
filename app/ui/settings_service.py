@@ -27,6 +27,7 @@ class SettingsService(QObject):
     startWithSystemChanged = Signal()
     sendErrorReportsChanged = Signal()
     networkUnitChanged = Signal()
+    saveError = Signal(str)  # Emitted when settings cannot be saved
     
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -108,7 +109,9 @@ class SettingsService(QObject):
                 
             print(f"[Settings] Saved to {self._settings_path}")
         except IOError as e:
-            print(f"[Settings] Could not save settings: {e}")
+            error_msg = f"Could not save settings: {e}"
+            print(f"[Settings] {error_msg}")
+            self.saveError.emit(error_msg)
     
     # Properties
     @Property(str, notify=themeModeChanged)
