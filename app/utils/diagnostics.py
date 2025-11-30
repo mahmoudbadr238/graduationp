@@ -99,7 +99,9 @@ def collect_diagnostics() -> dict[str, Any]:
         pynvml.nvmlShutdown()
     except ImportError:
         diagnostics["gpu"]["status"] = "not_available"
-    except (OSError, RuntimeError) as e:
+    except Exception as e:
+        # Catch all pynvml errors (NVMLError_LibraryNotFound, etc.)
+        diagnostics["gpu"]["status"] = "not_available"
         diagnostics["gpu"]["error"] = str(e)
 
     # QML paths
