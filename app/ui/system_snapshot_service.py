@@ -101,10 +101,20 @@ class SystemSnapshotService(QObject):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_metrics)
         
+        # Notification service reference (set by application.py)
+        self._notification_service = None
+        
         # Initial update
         self._update_metrics()
         self._update_security_info()  # Security info updated once at startup
         print("[SnapshotService] Initial metrics updated")
+    
+    def set_notification_service(self, service):
+        """Set the notification service for security alerts."""
+        self._notification_service = service
+        # Re-check security and push notifications if service was set after startup
+        if self._security_info and self._security_info.get("simplified"):
+            self._push_security_notifications()
         
     def start(self, interval_ms: int = 2000):
         """Start monitoring with specified interval."""
@@ -693,6 +703,61 @@ class SystemSnapshotService(QObject):
         
         self._security_info = info
         self.securityInfoChanged.emit()
+        
+        # Push notifications for security issues
+        self._push_security_notifications()
+    
+    def _push_security_notifications(self):
+        """Push notifications for any security issues detected."""
+        if not self._notification_service:
+            return
+            
+        simplified = self._security_info.get("simplified", {})
+        if not simplified:
+            return
+        
+        overall = simplified.get("overall", {})
+        
+        # Only push notification if there are security concerns
+        if overall.get("isGood"):
+            # All good - no notification needed
+            return
+        
+        # Determine notification type and message
+        if overall.get("isWarning"):
+            notif_type = "warning"
+            title = "Security Attention Needed"
+        else:
+            notif_type = "error"
+            title = "Security Alert"
+        
+        # Build detailed message from individual status checks
+        issues = []
+        
+        internet = simplified.get("internetProtection", {})
+        if not internet.get("isGood"):
+            issues.append(f"Internet Protection: {internet.get('status', 'Issue detected')}")
+        
+        updates = simplified.get("updates", {})
+        if not updates.get("isGood"):
+            issues.append(f"Updates: {updates.get('status', 'Issue detected')}")
+        
+        device = simplified.get("deviceProtection", {})
+        if not device.get("isGood"):
+            issues.append(f"Device Protection: {device.get('status', 'Issue detected')}")
+        
+        remote = simplified.get("remoteAndApps", {})
+        if not remote.get("isGood"):
+            issues.append(f"Remote & Apps: {remote.get('status', 'Issue detected')}")
+        
+        message = overall.get("detail", "Some security settings need review")
+        if issues:
+            message = " | ".join(issues[:2])  # Show up to 2 issues
+            if len(issues) > 2:
+                message += f" (+{len(issues) - 2} more)"
+        
+        self._notification_service.push(title, message, notif_type)
+        print(f"[SnapshotService] Security notification pushed: {title}")
     
     def _get_system_uptime(self) -> str:
         """Get system uptime as a formatted string."""

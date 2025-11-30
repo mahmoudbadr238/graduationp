@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "pages"
 import "ui"
+import "components"
 
 ApplicationWindow {
     id: window
@@ -26,25 +27,23 @@ ApplicationWindow {
         }
     }
 
-    // ===== TOAST NOTIFICATION SYSTEM =====
-    property string toastMessage: ""
-    property string toastType: "info"
-    
+    // ===== TOAST → NOTIFICATION CENTER =====
+    // All toast messages are now redirected to the notification center
     Connections {
         target: Backend || null
         enabled: target !== null
         function onToast(message, type) {
-            toastMessage = message
-            toastType = type || "info"
-            toastTimer.restart()
-            toastNotification.visible = true
+            // Redirect toast to notification center
+            if (NotificationService) {
+                var title = "Notification"
+                if (type === "success") title = "Success"
+                else if (type === "error") title = "Error"
+                else if (type === "warning") title = "Warning"
+                else if (type === "info") title = "Info"
+                
+                NotificationService.push(title, message, type || "info")
+            }
         }
-    }
-    
-    Timer {
-        id: toastTimer
-        interval: 3000
-        onTriggered: toastNotification.visible = false
     }
 
     // ===== NAVIGATION STATE =====
@@ -56,23 +55,47 @@ ApplicationWindow {
         console.log("[NAV] Route loaded:", routeId)
     }
 
+    // ===== MAIN LAYOUT =====
     RowLayout {
         anchors.fill: parent
         spacing: 0
 
-        // ===== SIDEBAR =====
+        // ===== COLLAPSIBLE SIDEBAR =====
         Rectangle {
-            Layout.preferredWidth: 240
+            id: sidebar
+            Layout.preferredWidth: sidebarExpanded ? 230 : 70
             Layout.fillHeight: true
             color: ThemeManager.panel()
+            
+            property bool sidebarExpanded: false
+            
+            // Smooth width animation
+            Behavior on Layout.preferredWidth {
+                NumberAnimation { 
+                    duration: 200
+                    easing.type: Easing.InOutQuad 
+                }
+            }
+            
+            // Hover detection using HoverHandler (doesn't block child events)
+            HoverHandler {
+                id: sidebarHover
+                onHoveredChanged: {
+                    sidebar.sidebarExpanded = hovered
+                }
+            }
             
             // Update when font size changes
             property int fontTrigger: ThemeManager.fontSizeUpdateTrigger
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: sidebar.sidebarExpanded ? 16 : 8
                 spacing: 8
+                
+                Behavior on anchors.margins {
+                    NumberAnimation { duration: 200 }
+                }
 
                 // Logo - clickable to go home
                 Rectangle {
@@ -82,12 +105,29 @@ ApplicationWindow {
                     Layout.topMargin: 8
                     Layout.bottomMargin: 16
                     
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "SENTINEL"
-                        color: ThemeManager.accent
-                        font.pixelSize: ThemeManager.fontSize_h3()
-                        font.bold: true
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 8
+                        
+                        Text {
+                            text: "🛡️"
+                            font.pixelSize: 22
+                            Layout.alignment: sidebar.sidebarExpanded ? Qt.AlignLeft : Qt.AlignHCenter
+                            Layout.fillWidth: !sidebar.sidebarExpanded
+                        }
+                        
+                        Text {
+                            text: "SENTINEL"
+                            color: ThemeManager.accent
+                            font.pixelSize: ThemeManager.fontSize_h3()
+                            font.bold: true
+                            visible: sidebar.sidebarExpanded
+                            opacity: sidebar.sidebarExpanded ? 1 : 0
+                            
+                            Behavior on opacity {
+                                NumberAnimation { duration: 150 }
+                            }
+                        }
                     }
                     
                     MouseArea {
@@ -97,182 +137,77 @@ ApplicationWindow {
                     }
                 }
                 
-                // Home Navigation Item
-                Rectangle {
+                // Navigation Items using SidebarItem
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "home" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("home")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "🏠  Home"
-                        color: currentRoute === "home" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "home" ? Font.Bold : Font.Normal
-                    }
+                    icon: "🏠"
+                    label: "Home"
+                    isActive: currentRoute === "home"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("home")
                 }
-
-                // Navigation Items
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "events" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("events")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Event Viewer"
-                        color: currentRoute === "events" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "events" ? Font.Bold : Font.Normal
-                    }
+                    icon: "📋"
+                    label: "Event Viewer"
+                    isActive: currentRoute === "events"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("events")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "snapshot" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("snapshot")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "System Snapshot"
-                        color: currentRoute === "snapshot" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "snapshot" ? Font.Bold : Font.Normal
-                    }
+                    icon: "📊"
+                    label: "System Snapshot"
+                    isActive: currentRoute === "snapshot"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("snapshot")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "history" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("history")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Scan History"
-                        color: currentRoute === "history" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "history" ? Font.Bold : Font.Normal
-                    }
+                    icon: "📜"
+                    label: "Scan History"
+                    isActive: currentRoute === "history"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("history")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "net-scan" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("net-scan")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Network Scan"
-                        color: currentRoute === "net-scan" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "net-scan" ? Font.Bold : Font.Normal
-                    }
+                    icon: "🌐"
+                    label: "Network Scan"
+                    isActive: currentRoute === "net-scan" || currentRoute === "nmap-result"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("net-scan")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "scan-tool" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("scan-tool")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Scan Tool"
-                        color: currentRoute === "scan-tool" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "scan-tool" ? Font.Bold : Font.Normal
-                    }
+                    icon: "🔍"
+                    label: "Scan Tool"
+                    isActive: currentRoute === "scan-tool"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("scan-tool")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "dlp" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("dlp")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Data Loss Prevention"
-                        color: currentRoute === "dlp" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "dlp" ? Font.Bold : Font.Normal
-                    }
+                    icon: "🛡️"
+                    label: "Data Loss Prevention"
+                    isActive: currentRoute === "dlp"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("dlp")
                 }
-
-                Rectangle {
+                
+                SidebarItem {
                     Layout.fillWidth: true
-                    height: 44
-                    radius: 8
-                    color: currentRoute === "settings" ? ThemeManager.elevated() : "transparent"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: loadRoute("settings")
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        text: "Settings"
-                        color: currentRoute === "settings" ? ThemeManager.accent : ThemeManager.muted()
-                        font.pixelSize: ThemeManager.fontSize_body()
-                        font.weight: currentRoute === "settings" ? Font.Bold : Font.Normal
-                    }
+                    icon: "⚙️"
+                    label: "Settings"
+                    isActive: currentRoute === "settings"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("settings")
                 }
 
                 Item { Layout.fillHeight: true }
@@ -284,103 +219,131 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: ThemeManager.background()
-
-            // Simple page switching - show/hide based on currentRoute
-            HomePage {
-                anchors.fill: parent
-                visible: currentRoute === "home"
-            }
             
-            EventViewer {
-                anchors.fill: parent
-                visible: currentRoute === "events"
-            }
-            
-            SystemSnapshot {
-                anchors.fill: parent
-                visible: currentRoute === "snapshot"
-            }
-            
-            ScanHistory {
-                anchors.fill: parent
-                visible: currentRoute === "history"
-            }
-            
-            NetworkScan {
-                anchors.fill: parent
-                visible: currentRoute === "net-scan"
-            }
-            
-            NmapScanResultPage {
-                id: nmapResultPage
-                anchors.fill: parent
-                visible: currentRoute === "nmap-result"
-            }
-            
-            ScanTool {
-                anchors.fill: parent
-                visible: currentRoute === "scan-tool"
-            }
-            
-            DataLossPrevention {
-                anchors.fill: parent
-                visible: currentRoute === "dlp"
-            }
-            
-            SettingsPage {
-                anchors.fill: parent
-                visible: currentRoute === "settings"
-            }
-            
-            // Toast Notification Overlay
+            // Top bar with notification bell
             Rectangle {
-                id: toastNotification
-                visible: false
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottomMargin: 20
-                width: Math.min(400, parent.width - 40)
-                height: 60
-                radius: 8
-                z: 100
-                color: {
-                    if (toastType === "success") return "#10B981"
-                    else if (toastType === "error") return "#EF4444"
-                    else return "#3B82F6"
-                }
-                
-                Behavior on opacity {
-                    NumberAnimation { duration: 200 }
-                }
+                id: topBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 50
+                color: ThemeManager.panel()
+                z: 10
                 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
                     spacing: 12
                     
-                    Text {
-                        text: {
-                            if (toastType === "success") return "✓"
-                            else if (toastType === "error") return "✕"
-                            else return "ℹ"
-                        }
-                        color: "white"
-                        font.pixelSize: 18
-                        font.bold: true
-                    }
-                    
-                    Text {
-                        text: toastMessage
-                        color: "white"
-                        font.pixelSize: 14
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                    }
-                    
                     Item { Layout.fillWidth: true }
+                    
+                    // Notification bell
+                    Rectangle {
+                        width: 40
+                        height: 40
+                        radius: 8
+                        color: bellMouse.containsMouse ? ThemeManager.elevated() : "transparent"
+                        
+                        Text {
+                            anchors.centerIn: parent
+                            text: "🔔"
+                            font.pixelSize: 18
+                        }
+                        
+                        // Unread badge
+                        Rectangle {
+                            visible: NotificationService ? NotificationService.unreadCount > 0 : false
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: 4
+                            anchors.rightMargin: 4
+                            width: 18
+                            height: 18
+                            radius: 9
+                            color: "#EF4444"
+                            
+                            Text {
+                                anchors.centerIn: parent
+                                text: NotificationService ? Math.min(NotificationService.unreadCount, 99) : ""
+                                color: "white"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                        }
+                        
+                        MouseArea {
+                            id: bellMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: notificationCenter.toggle()
+                        }
+                    }
+                }
+            }
+
+            // Page content area (below top bar)
+            Item {
+                anchors.top: topBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+
+                // Simple page switching - show/hide based on currentRoute
+                HomePage {
+                    anchors.fill: parent
+                    visible: currentRoute === "home"
+                }
+                
+                EventViewer {
+                    anchors.fill: parent
+                    visible: currentRoute === "events"
+                }
+                
+                SystemSnapshot {
+                    anchors.fill: parent
+                    visible: currentRoute === "snapshot"
+                }
+                
+                ScanHistory {
+                    anchors.fill: parent
+                    visible: currentRoute === "history"
+                }
+                
+                NetworkScan {
+                    anchors.fill: parent
+                    visible: currentRoute === "net-scan"
+                }
+                
+                NmapScanResultPage {
+                    id: nmapResultPage
+                    anchors.fill: parent
+                    visible: currentRoute === "nmap-result"
+                }
+                
+                ScanTool {
+                    anchors.fill: parent
+                    visible: currentRoute === "scan-tool"
+                }
+                
+                DataLossPrevention {
+                    anchors.fill: parent
+                    visible: currentRoute === "dlp"
+                }
+                
+                SettingsPage {
+                    anchors.fill: parent
+                    visible: currentRoute === "settings"
                 }
             }
         }
     }
+    
+    // ===== NOTIFICATION CENTER (overlay on top of everything) =====
+    NotificationCenter {
+        id: notificationCenter
+        anchors.fill: parent
+        z: 1000
+    }
 }
-

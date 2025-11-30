@@ -1022,14 +1022,31 @@ Item {
                             property var tpmData: (simplified && simplified.tpm) ? simplified.tpm : {}
 
                             // ===== A. OVERALL SECURITY STATUS CARD =====
+                            // Only show prominent banner for errors, subtle for warnings/good
                             Rectangle {
                                 id: overallCard
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 100
+                                Layout.preferredHeight: securityColumn.overall.isGood ? 70 : 100
                                 radius: 16
-                                color: root.transparentColor(root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning), 0.13)
-                                border.color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
-                                border.width: 2
+                                // More subtle appearance - no colored background for warnings (notification center handles alerts)
+                                color: {
+                                    if (!securityColumn.overall.isGood && !securityColumn.overall.isWarning) {
+                                        // Error state - keep prominent red
+                                        return root.transparentColor(root.statusColor(false, false), 0.13)
+                                    }
+                                    // Good or Warning - subtle panel color (notifications handle warnings)
+                                    return ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                }
+                                border.color: {
+                                    if (!securityColumn.overall.isGood && !securityColumn.overall.isWarning) {
+                                        return root.statusColor(false, false)  // Red for errors
+                                    }
+                                    if (securityColumn.overall.isGood) {
+                                        return root.statusColor(true, false)  // Green for good
+                                    }
+                                    return ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                }
+                                border.width: securityColumn.overall.isGood ? 1 : 2
 
                                 MouseArea {
                                     anchors.fill: parent

@@ -17,6 +17,7 @@ from .ui.backend_bridge import BackendBridge
 from .ui.gpu_service import get_gpu_service
 from .ui.system_snapshot_service import SystemSnapshotService
 from .ui.settings_service import SettingsService
+from .ui.notification_service import NotificationService
 
 
 class DesktopSecurityApplication:
@@ -66,6 +67,7 @@ class DesktopSecurityApplication:
         self.gpu_service = None
         self.snapshot_service = None
         self.settings_service = None
+        self.notification_service = None
         self._setup_backend()
 
     def _setup_paths(self):
@@ -175,7 +177,21 @@ class DesktopSecurityApplication:
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] Settings service failed: {e}")
                 self.settings_service = None
-
+            
+            # IMMEDIATE: Notification Service (cross-platform)
+            try:
+                self.notification_service = NotificationService()
+                self.engine.rootContext().setContextProperty("NotificationService", self.notification_service)
+                print("[OK] Notification service initialized and exposed to QML")
+                
+                # Connect Snapshot service to notification service for security alerts
+                if self.snapshot_service:
+                    self.snapshot_service.set_notification_service(self.notification_service)
+                    print("[OK] Security notifications connected")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] Notification service failed: {e}")
+                self.notification_service = None
+                
         except (ImportError, RuntimeError, UnicodeEncodeError) as e:
             print(f"[ERROR] Critical backend setup failed: {e}")
             print("Application will continue with limited functionality")
