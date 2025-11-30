@@ -327,8 +327,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **⭐ Star us on GitHub if you find Sentinel useful! ⭐**
 
-Made with ❤️ by [Mahmoud Badr](https://github.com/mahmoudbadr238)
-
 [Report Bug](https://github.com/mahmoudbadr238/graduationp/issues) • [Request Feature](https://github.com/mahmoudbadr238/graduationp/issues) • [Documentation](docs/)
 
 </div>
