@@ -53,9 +53,9 @@ class GPUServiceBridge(QObject):
         self._proc.finished.connect(self._on_finished)
         self._proc.errorOccurred.connect(self._on_error)
 
-        # Heartbeat watchdog (20s timeout - GPU metrics can be slow)
+        # Heartbeat watchdog (30s timeout - GPU metrics can be slow, especially on first poll)
         self._hb_timer = QTimer(self)
-        self._hb_timer.setInterval(20000)
+        self._hb_timer.setInterval(30000)
         self._hb_timer.timeout.connect(self._on_missed_heartbeat)
 
         # Circuit breaker (track failures)

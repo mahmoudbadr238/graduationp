@@ -571,13 +571,35 @@ class SystemSnapshotService(QObject):
         info = {
             "firewallStatus": "Unknown",
             "antivirus": "Unknown",
+            "antivirusEnabled": False,
             "secureBoot": "N/A",
             "tpmPresent": "N/A",
+            "tpmEnabled": False,
+            "tpmVersion": "Unknown",
             "appArmorEnabled": "N/A",
             "selinuxEnabled": "N/A",
             "osName": platform.system() + " " + platform.release(),
             "kernel": platform.version(),
-            "uptime": self._get_system_uptime()
+            "uptime": self._get_system_uptime(),
+            # Extended security metrics (Windows only)
+            "diskEncryption": "Unknown",
+            "diskEncryptionDetail": "",
+            "windowsUpdateStatus": "Unknown",
+            "windowsUpdateLastInstall": "",
+            "windowsUpdateDetail": "",
+            "remoteDesktopEnabled": False,
+            "remoteDesktopNla": True,
+            "remoteDesktopDetail": "",
+            "adminAccountCount": 0,
+            "adminAccountDetail": "",
+            "uacLevel": "Unknown",
+            "uacDetail": "",
+            "smartScreenEnabled": True,
+            "smartScreenDetail": "",
+            "memoryIntegrityEnabled": False,
+            "memoryIntegrityDetail": "",
+            # Simplified security status for user-friendly UI
+            "simplified": None,
         }
         
         try:
@@ -589,14 +611,72 @@ class SystemSnapshotService(QObject):
                 fw_status = security_status.get("firewall", {})
                 info["firewallStatus"] = "Enabled" if fw_status.get("enabled") else "Disabled"
                 
-                av_status = security_status.get("antivirus", {})
+                av_status = security_status.get("antivirus", {}) if "antivirus" in security_status else security_status.get("defender", {})
+                info["antivirusEnabled"] = av_status.get("enabled", False)
                 if av_status.get("enabled"):
-                    info["antivirus"] = f"Windows Defender (Real-time: {av_status.get('realtime_protection', 'Unknown')})"
+                    realtime = av_status.get("realtime_protection", False)
+                    info["antivirus"] = f"Windows Defender (Real-time: {'On' if realtime else 'Off'})"
                 else:
                     info["antivirus"] = "Windows Defender (Disabled)"
                 
                 info["secureBoot"] = self._check_secure_boot()
-                info["tpmPresent"] = self._check_tpm()
+                
+                # Get proper TPM status
+                tpm_status = SecurityInfo.get_tpm_status()
+                info["tpmPresent"] = "Present" if tpm_status.get("present") else "Not Present"
+                info["tpmEnabled"] = tpm_status.get("enabled", False)
+                info["tpmVersion"] = tpm_status.get("version", "Unknown")
+                
+                # Get extended security metrics
+                try:
+                    extended = SecurityInfo.get_extended_security_status()
+                    
+                    # Disk Encryption
+                    disk_enc = extended.get("diskEncryption", {})
+                    info["diskEncryption"] = disk_enc.get("status", "Unknown")
+                    info["diskEncryptionDetail"] = disk_enc.get("detail", "")
+                    
+                    # Windows Update
+                    win_update = extended.get("windowsUpdate", {})
+                    info["windowsUpdateStatus"] = win_update.get("status", "Unknown")
+                    info["windowsUpdateLastInstall"] = win_update.get("lastInstallDate", "")
+                    info["windowsUpdateDetail"] = win_update.get("detail", "")
+                    
+                    # Remote Desktop
+                    rdp = extended.get("remoteDesktop", {})
+                    info["remoteDesktopEnabled"] = rdp.get("enabled", False)
+                    info["remoteDesktopNla"] = rdp.get("nlaEnabled", True)
+                    info["remoteDesktopDetail"] = rdp.get("detail", "")
+                    
+                    # Admin Accounts
+                    admin = extended.get("adminAccounts", {})
+                    info["adminAccountCount"] = admin.get("count", 0)
+                    info["adminAccountDetail"] = admin.get("detail", "")
+                    
+                    # UAC Level
+                    uac = extended.get("uacLevel", {})
+                    info["uacLevel"] = uac.get("level", "Unknown")
+                    info["uacDetail"] = uac.get("detail", "")
+                    
+                    # SmartScreen
+                    smartscreen = extended.get("smartScreen", {})
+                    info["smartScreenEnabled"] = smartscreen.get("enabled", True)
+                    info["smartScreenDetail"] = smartscreen.get("detail", "")
+                    
+                    # Memory Integrity
+                    mem_int = extended.get("memoryIntegrity", {})
+                    info["memoryIntegrityEnabled"] = mem_int.get("enabled", False)
+                    info["memoryIntegrityDetail"] = mem_int.get("detail", "")
+                    
+                except Exception as e:
+                    print(f"[SystemSnapshot] Error gathering extended security info: {e}")
+                
+                # Get simplified security status for user-friendly UI
+                try:
+                    info["simplified"] = SecurityInfo.get_simplified_security_status()
+                except Exception as e:
+                    print(f"[SystemSnapshot] Error gathering simplified security info: {e}")
+                    
             elif self._is_linux:
                 # Check Linux Firewall (ufw/firewalld)
                 info["firewallStatus"] = self._check_linux_firewall()

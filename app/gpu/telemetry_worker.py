@@ -834,11 +834,26 @@ def main():
         start = time.time()
 
         try:
-            # Collect from all vendors
+            # Collect from all vendors with individual error handling
             all_gpus = []
-            all_gpus.extend(collect_nvidia_metrics(nvml_enabled))
-            all_gpus.extend(collect_amd_metrics(amd_adl_enabled, amd_wmi_enabled))
-            all_gpus.extend(collect_intel_metrics(intel_enabled))
+            
+            # NVIDIA - most reliable
+            try:
+                all_gpus.extend(collect_nvidia_metrics(nvml_enabled))
+            except Exception as e:
+                emit({"type": "vendor_error", "vendor": "nvidia", "msg": str(e), "ts": time.time()})
+            
+            # AMD - can be slow with WMI
+            try:
+                all_gpus.extend(collect_amd_metrics(amd_adl_enabled, amd_wmi_enabled))
+            except Exception as e:
+                emit({"type": "vendor_error", "vendor": "amd", "msg": str(e), "ts": time.time()})
+            
+            # Intel - WMI can hang on some systems
+            try:
+                all_gpus.extend(collect_intel_metrics(intel_enabled))
+            except Exception as e:
+                emit({"type": "vendor_error", "vendor": "intel", "msg": str(e), "ts": time.time()})
 
             # Re-assign IDs
             for idx, gpu in enumerate(all_gpus):
@@ -853,7 +868,7 @@ def main():
                     "gpus": all_gpus,
                 }
             )
-        except (RuntimeError, ValueError, OSError) as e:
+        except Exception as e:
             emit(
                 {
                     "type": "error",
@@ -878,6 +893,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         emit({"type": "shutdown", "ts": time.time()})
         sys.exit(0)
-    except (RuntimeError, ValueError, OSError) as e:
-        emit({"type": "fatal", "msg": str(e), "ts": time.time()})
+    except Exception as e:
+        emit({"type": "fatal", "msg": str(e), "trace": traceback.format_exc()[:500], "ts": time.time()})
         sys.exit(1)

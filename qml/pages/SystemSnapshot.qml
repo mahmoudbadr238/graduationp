@@ -984,7 +984,7 @@ Item {
                         }
                     }
 
-                    // ===== TAB 3: SECURITY =====
+                    // ===== TAB 3: SECURITY (Simplified User-Friendly Design) =====
                     Flickable {
                         id: securityFlickable
                         clip: true
@@ -996,54 +996,586 @@ Item {
                             id: securityColumn
                             width: securityFlickable.width
                             anchors.margins: 24
-                            spacing: 24
+                            spacing: 20
 
-                            Text {
-                                text: "Security Overview"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
-                                font.pixelSize: 16
-                                font.bold: true
+                            // Helper properties for security info access
+                            property var secInfo: SnapshotService && SnapshotService.securityInfo ? SnapshotService.securityInfo : ({})
+                            property var simplified: secInfo.simplified || ({})
+                            property var overall: simplified.overall || ({})
+                            property var internet: simplified.internetProtection || ({})
+                            property var updates: simplified.updates || ({})
+                            property var device: simplified.deviceProtection || ({})
+                            property var remote: simplified.remoteAndApps || ({})
+                            property var raw: simplified.raw || ({})
+                            property var tpmData: simplified.tpm || ({})
+
+                            // ===== A. OVERALL SECURITY STATUS CARD =====
+                            Rectangle {
+                                id: overallCard
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 100
+                                radius: 16
+                                color: {
+                                    if (securityColumn.overall.isGood) return "#10B98120"
+                                    if (securityColumn.overall.isWarning) return "#F59E0B20"
+                                    return "#EF444420"
+                                }
+                                border.color: {
+                                    if (securityColumn.overall.isGood) return "#10B981"
+                                    if (securityColumn.overall.isWarning) return "#F59E0B"
+                                    return "#EF4444"
+                                }
+                                border.width: 2
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        advancedSection.expanded = !advancedSection.expanded
+                                    }
+                                }
+
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.margins: 20
+                                    spacing: 16
+
+                                    // Status icon
+                                    Rectangle {
+                                        width: 56
+                                        height: 56
+                                        radius: 28
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: {
+                                            if (securityColumn.overall.isGood) return "#10B981"
+                                            if (securityColumn.overall.isWarning) return "#F59E0B"
+                                            return "#EF4444"
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: {
+                                                if (securityColumn.overall.isGood) return "✓"
+                                                if (securityColumn.overall.isWarning) return "!"
+                                                return "✕"
+                                            }
+                                            color: "white"
+                                            font.pixelSize: 28
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 4
+
+                                        Text {
+                                            text: "Security status"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 12
+                                        }
+
+                                        Text {
+                                            text: securityColumn.overall.status || "Checking..."
+                                            color: {
+                                                if (securityColumn.overall.isGood) return "#10B981"
+                                                if (securityColumn.overall.isWarning) return "#F59E0B"
+                                                return "#EF4444"
+                                            }
+                                            font.pixelSize: 24
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: securityColumn.overall.detail || "Analyzing your security..."
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 12
+                                        }
+                                    }
+
+                                    Item { width: 1; Layout.fillWidth: true }
+
+                                    // Expand hint
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: advancedSection.expanded ? "▲" : "▼"
+                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                        font.pixelSize: 16
+                                    }
+                                }
                             }
 
-                            GridLayout {
+                            // ===== B. FOUR MAIN PROTECTION CARDS =====
+                            Text {
+                                text: "Protection overview"
+                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                font.pixelSize: 14
+                                font.bold: true
+                                Layout.topMargin: 8
+                            }
+
+                            // Responsive grid for 4 cards
+                            Flow {
+                                id: mainCardsFlow
                                 Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 12
+                                spacing: 12
 
-                                SecurityCard {
-                                    Layout.fillWidth: true
-                                    title: "Firewall Status"
-                                    value: SnapshotService && SnapshotService.securityInfo ? 
-                                           SnapshotService.securityInfo.firewallStatus || "Unknown" : "Unknown"
-                                    isGood: SnapshotService && SnapshotService.securityInfo && 
-                                           SnapshotService.securityInfo.firewallStatus === "Enabled"
+                                property real cardWidth: {
+                                    var availableWidth = securityColumn.width - 24
+                                    var minWidth = 160
+                                    var maxWidth = 200
+                                    // Try to fit 4, then 2, then 1
+                                    if (availableWidth >= (minWidth * 4 + spacing * 3)) {
+                                        return (availableWidth - spacing * 3) / 4
+                                    } else if (availableWidth >= (minWidth * 2 + spacing)) {
+                                        return (availableWidth - spacing) / 2
+                                    }
+                                    return availableWidth
                                 }
 
-                                SecurityCard {
-                                    Layout.fillWidth: true
-                                    title: "Antivirus Status"
-                                    value: SnapshotService && SnapshotService.securityInfo ? 
-                                           SnapshotService.securityInfo.antivirus || "Unknown" : "Unknown"
-                                    isGood: true
+                                // Card 1: Internet Protection
+                                Rectangle {
+                                    width: mainCardsFlow.cardWidth
+                                    height: 110
+                                    radius: 12
+                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 6
+
+                                        Row {
+                                            spacing: 8
+                                            Text {
+                                                text: "🛡️"
+                                                font.pixelSize: 16
+                                            }
+                                            Text {
+                                                text: "Internet protection"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                font.pixelSize: 11
+                                                font.weight: Font.Medium
+                                            }
+                                        }
+
+                                        Text {
+                                            text: securityColumn.internet.status || "Checking"
+                                            color: {
+                                                if (securityColumn.internet.isGood) return "#10B981"
+                                                if (securityColumn.internet.isWarning) return "#F59E0B"
+                                                return "#EF4444"
+                                            }
+                                            font.pixelSize: 20
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: securityColumn.internet.detail || ""
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                            wrapMode: Text.WordWrap
+                                            width: parent.width
+                                        }
+                                    }
+
+                                    // Status dot
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 4
+                                        anchors.top: parent.top
+                                        anchors.right: parent.right
+                                        anchors.margins: 12
+                                        color: {
+                                            if (securityColumn.internet.isGood) return "#10B981"
+                                            if (securityColumn.internet.isWarning) return "#F59E0B"
+                                            return "#EF4444"
+                                        }
+                                    }
                                 }
 
-                                SecurityCard {
-                                    Layout.fillWidth: true
-                                    title: "Secure Boot"
-                                    value: SnapshotService && SnapshotService.securityInfo ? 
-                                           SnapshotService.securityInfo.secureBoot || "Unknown" : "Unknown"
-                                    isGood: SnapshotService && SnapshotService.securityInfo && 
-                                           SnapshotService.securityInfo.secureBoot === "Enabled"
+                                // Card 2: Updates
+                                Rectangle {
+                                    width: mainCardsFlow.cardWidth
+                                    height: 110
+                                    radius: 12
+                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 6
+
+                                        Row {
+                                            spacing: 8
+                                            Text {
+                                                text: "🔄"
+                                                font.pixelSize: 16
+                                            }
+                                            Text {
+                                                text: "Updates"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                font.pixelSize: 11
+                                                font.weight: Font.Medium
+                                            }
+                                        }
+
+                                        Text {
+                                            text: securityColumn.updates.status || "Checking"
+                                            color: {
+                                                if (securityColumn.updates.isGood) return "#10B981"
+                                                if (securityColumn.updates.isWarning) return "#F59E0B"
+                                                return "#EF4444"
+                                            }
+                                            font.pixelSize: 20
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: securityColumn.updates.detail || ""
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                            wrapMode: Text.WordWrap
+                                            width: parent.width
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 4
+                                        anchors.top: parent.top
+                                        anchors.right: parent.right
+                                        anchors.margins: 12
+                                        color: {
+                                            if (securityColumn.updates.isGood) return "#10B981"
+                                            if (securityColumn.updates.isWarning) return "#F59E0B"
+                                            return "#EF4444"
+                                        }
+                                    }
                                 }
 
-                                SecurityCard {
-                                    Layout.fillWidth: true
-                                    title: "TPM Status"
-                                    value: SnapshotService && SnapshotService.securityInfo ? 
-                                           SnapshotService.securityInfo.tpmPresent || "Unknown" : "Unknown"
-                                    isGood: SnapshotService && SnapshotService.securityInfo && 
-                                           SnapshotService.securityInfo.tpmPresent === "Present"
+                                // Card 3: Device Protection
+                                Rectangle {
+                                    width: mainCardsFlow.cardWidth
+                                    height: 110
+                                    radius: 12
+                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 6
+
+                                        Row {
+                                            spacing: 8
+                                            Text {
+                                                text: "💻"
+                                                font.pixelSize: 16
+                                            }
+                                            Text {
+                                                text: "Device protection"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                font.pixelSize: 11
+                                                font.weight: Font.Medium
+                                            }
+                                        }
+
+                                        Text {
+                                            text: securityColumn.device.status || "Checking"
+                                            color: {
+                                                if (securityColumn.device.isGood) return "#10B981"
+                                                if (securityColumn.device.isWarning) return "#F59E0B"
+                                                return "#EF4444"
+                                            }
+                                            font.pixelSize: 20
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: securityColumn.device.detail || ""
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                            wrapMode: Text.WordWrap
+                                            width: parent.width
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 4
+                                        anchors.top: parent.top
+                                        anchors.right: parent.right
+                                        anchors.margins: 12
+                                        color: {
+                                            if (securityColumn.device.isGood) return "#10B981"
+                                            if (securityColumn.device.isWarning) return "#F59E0B"
+                                            return "#EF4444"
+                                        }
+                                    }
+                                }
+
+                                // Card 4: Remote & Apps
+                                Rectangle {
+                                    width: mainCardsFlow.cardWidth
+                                    height: 110
+                                    radius: 12
+                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 6
+
+                                        Row {
+                                            spacing: 8
+                                            Text {
+                                                text: "🔒"
+                                                font.pixelSize: 16
+                                            }
+                                            Text {
+                                                text: "Remote & apps"
+                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                font.pixelSize: 11
+                                                font.weight: Font.Medium
+                                            }
+                                        }
+
+                                        Text {
+                                            text: securityColumn.remote.status || "Checking"
+                                            color: {
+                                                if (securityColumn.remote.isGood) return "#10B981"
+                                                if (securityColumn.remote.isWarning) return "#F59E0B"
+                                                return "#EF4444"
+                                            }
+                                            font.pixelSize: 20
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: securityColumn.remote.detail || ""
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 10
+                                            wrapMode: Text.WordWrap
+                                            width: parent.width
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 4
+                                        anchors.top: parent.top
+                                        anchors.right: parent.right
+                                        anchors.margins: 12
+                                        color: {
+                                            if (securityColumn.remote.isGood) return "#10B981"
+                                            if (securityColumn.remote.isWarning) return "#F59E0B"
+                                            return "#EF4444"
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ===== C. ADVANCED DETAILS (Collapsible) =====
+                            Column {
+                                id: advancedSection
+                                Layout.fillWidth: true
+                                spacing: 12
+                                property bool expanded: false
+
+                                // Header / Toggle
+                                Rectangle {
+                                    width: parent.width
+                                    height: 44
+                                    radius: 8
+                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: advancedSection.expanded = !advancedSection.expanded
+                                    }
+
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 16
+                                        anchors.rightMargin: 16
+                                        spacing: 8
+
+                                        Text {
+                                            text: advancedSection.expanded ? "▼" : "▶"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 12
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        Text {
+                                            text: "Advanced details"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            font.pixelSize: 13
+                                            font.weight: Font.Medium
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        Item { width: 1; Layout.fillWidth: true }
+
+                                        Text {
+                                            text: "For power users"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 11
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+
+                                // Expandable content
+                                Flow {
+                                    id: advancedCardsFlow
+                                    width: parent.width
+                                    spacing: 12
+                                    visible: advancedSection.expanded
+                                    opacity: advancedSection.expanded ? 1 : 0
+
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                                    property real cardWidth: {
+                                        var availableWidth = parent.width
+                                        var minCardWidth = 170
+                                        var maxCardWidth = 200
+                                        var cardsPerRow = Math.max(1, Math.floor(availableWidth / (minCardWidth + spacing)))
+                                        var calculatedWidth = (availableWidth - (cardsPerRow - 1) * spacing) / cardsPerRow
+                                        return Math.min(maxCardWidth, Math.max(minCardWidth, calculatedWidth))
+                                    }
+
+                                    // Firewall
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Firewall"
+                                        value: securityColumn.raw.firewallEnabled ? "On" : "Off"
+                                        isGood: securityColumn.raw.firewallEnabled === true
+                                    }
+
+                                    // Antivirus
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Antivirus"
+                                        value: securityColumn.raw.antivirusEnabled ? "On" : "Off"
+                                        subtitle: securityColumn.raw.antivirusRealtime ? "Real-time active" : "Real-time off"
+                                        isGood: securityColumn.raw.antivirusEnabled === true
+                                        isWarning: securityColumn.raw.antivirusEnabled && !securityColumn.raw.antivirusRealtime
+                                    }
+
+                                    // Secure Boot
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Secure Boot"
+                                        value: securityColumn.raw.secureBoot || "N/A"
+                                        isGood: securityColumn.raw.secureBoot === "Enabled"
+                                        isNeutral: securityColumn.raw.secureBoot === "N/A"
+                                    }
+
+                                    // TPM - Fixed with proper detection
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "TPM"
+                                        value: {
+                                            if (securityColumn.tpmData.present) {
+                                                var ver = securityColumn.tpmData.version || ""
+                                                if (securityColumn.tpmData.enabled) {
+                                                    return "Present" + (ver && ver !== "Unknown" ? " (" + ver + ")" : "")
+                                                } else {
+                                                    return "Disabled"
+                                                }
+                                            }
+                                            return "Not found"
+                                        }
+                                        subtitle: securityColumn.tpmData.detail || ""
+                                        isGood: securityColumn.tpmData.present && securityColumn.tpmData.enabled
+                                        isWarning: securityColumn.tpmData.present && !securityColumn.tpmData.enabled
+                                    }
+
+                                    // Disk Encryption
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Disk Encryption"
+                                        value: securityColumn.raw.diskEncryption || "Unknown"
+                                        subtitle: securityColumn.raw.diskEncryptionDetail || ""
+                                        isGood: securityColumn.raw.diskEncryption === "Enabled"
+                                        isNeutral: securityColumn.raw.diskEncryption === "NotAvailable"
+                                    }
+
+                                    // Windows Update
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Windows Update"
+                                        value: {
+                                            var status = securityColumn.raw.windowsUpdateStatus || "Unknown"
+                                            if (status === "UpToDate") return "Up to date"
+                                            if (status === "PendingUpdates") return "Pending"
+                                            if (status === "RestartRequired") return "Restart needed"
+                                            return status
+                                        }
+                                        subtitle: {
+                                            var lastInstall = securityColumn.raw.windowsUpdateLastInstall || ""
+                                            if (lastInstall) {
+                                                try {
+                                                    var date = new Date(lastInstall)
+                                                    return "Last: " + date.toLocaleDateString()
+                                                } catch(e) {
+                                                    return ""
+                                                }
+                                            }
+                                            return ""
+                                        }
+                                        isGood: securityColumn.raw.windowsUpdateStatus === "UpToDate"
+                                        isWarning: securityColumn.raw.windowsUpdateStatus === "PendingUpdates" || 
+                                                   securityColumn.raw.windowsUpdateStatus === "RestartRequired"
+                                    }
+
+                                    // Remote Desktop
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Remote Desktop"
+                                        value: securityColumn.raw.remoteDesktopEnabled ? "On" : "Off"
+                                        subtitle: securityColumn.raw.remoteDesktopEnabled ? 
+                                                  (securityColumn.raw.remoteDesktopNla ? "NLA enabled" : "NLA off") : ""
+                                        isGood: !securityColumn.raw.remoteDesktopEnabled
+                                        isWarning: securityColumn.raw.remoteDesktopEnabled && securityColumn.raw.remoteDesktopNla
+                                    }
+
+                                    // Local Admins
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Local Admins"
+                                        value: (securityColumn.raw.adminAccountCount || 0) + " accounts"
+                                        isGood: (securityColumn.raw.adminAccountCount || 0) <= 2
+                                        isWarning: securityColumn.raw.adminAccountCount === 3
+                                    }
+
+                                    // UAC
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "UAC Level"
+                                        value: securityColumn.raw.uacLevel || "Unknown"
+                                        isGood: securityColumn.raw.uacLevel === "High" || securityColumn.raw.uacLevel === "Medium"
+                                        isWarning: securityColumn.raw.uacLevel === "Low"
+                                    }
+
+                                    // SmartScreen
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "SmartScreen"
+                                        value: securityColumn.raw.smartScreenEnabled ? "On" : "Off"
+                                        isGood: securityColumn.raw.smartScreenEnabled === true
+                                    }
+
+                                    // Memory Integrity
+                                    SecurityCard {
+                                        width: advancedCardsFlow.cardWidth
+                                        title: "Memory Integrity"
+                                        value: securityColumn.raw.memoryIntegrityEnabled ? "On" : "Off"
+                                        isGood: securityColumn.raw.memoryIntegrityEnabled === true
+                                    }
                                 }
                             }
 
