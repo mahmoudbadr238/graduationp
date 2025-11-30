@@ -71,14 +71,26 @@ Item {
                             id: targetInput
                             Layout.fillWidth: true
                             placeholderText: "192.168.1.0/24"
+                            maximumLength: 256
                             color: ThemeManager.foreground()
                             placeholderTextColor: ThemeManager.muted()
+                            validator: RegularExpressionValidator {
+                                // Allow IP, hostname, CIDR notation - no shell metacharacters
+                                regularExpression: /^[a-zA-Z0-9.\-\/]+$/
+                            }
                             background: Rectangle {
                                 color: ThemeManager.surface()
                                 radius: 6
-                                border.color: ThemeManager.border()
+                                border.color: targetInput.acceptableInput || targetInput.text.length === 0 ? ThemeManager.border() : ThemeManager.danger
                                 border.width: 1
                             }
+                        }
+
+                        Text {
+                            text: "Invalid characters in target"
+                            color: ThemeManager.danger
+                            font.pixelSize: 10
+                            visible: targetInput.text.length > 0 && !targetInput.acceptableInput
                         }
                     }
 
@@ -86,10 +98,10 @@ Item {
                         id: scanButton
                         text: isScanning ? "Scanning..." : "Start Scan"
                         Layout.preferredWidth: 140
-                        enabled: !isScanning && targetInput.text.length > 0
+                        enabled: !isScanning && targetInput.text.length > 0 && targetInput.acceptableInput
                         
                         onClicked: {
-                            if (Backend && targetInput.text.length > 0) {
+                            if (Backend && targetInput.text.length > 0 && targetInput.acceptableInput) {
                                 isScanning = true
                                 scanButton.enabled = false
                                 scanResults = []
@@ -98,7 +110,7 @@ Item {
                         }
                         
                         background: Rectangle {
-                            color: parent.enabled ? "#7C3AED" : "#4B5563"
+                            color: parent.enabled ? ThemeManager.accent : ThemeManager.muted()
                             radius: 6
                         }
 
@@ -174,7 +186,7 @@ Item {
 
                                     Text {
                                         text: (scanResults[index] && scanResults[index].status) ? scanResults[index].status : "up"
-                                        color: (scanResults[index] && scanResults[index].status === "up") ? "#10B981" : "#EF4444"
+                                        color: (scanResults[index] && scanResults[index].status === "up") ? ThemeManager.success : ThemeManager.danger
                                         font.pixelSize: 10
                                         font.bold: true
                                     }
@@ -198,7 +210,7 @@ Item {
                         Text {
                             visible: isScanning
                             text: "Scanning..."
-                            color: "#7C3AED"
+                            color: ThemeManager.accent
                             font.pixelSize: 14
                             Layout.alignment: Qt.AlignCenter
                             Layout.topMargin: 50

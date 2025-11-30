@@ -998,16 +998,16 @@ Item {
                             anchors.margins: 24
                             spacing: 20
 
-                            // Helper properties for security info access
-                            property var secInfo: SnapshotService && SnapshotService.securityInfo ? SnapshotService.securityInfo : ({})
-                            property var simplified: secInfo.simplified || ({})
-                            property var overall: simplified.overall || ({})
-                            property var internet: simplified.internetProtection || ({})
-                            property var updates: simplified.updates || ({})
-                            property var device: simplified.deviceProtection || ({})
-                            property var remote: simplified.remoteAndApps || ({})
-                            property var raw: simplified.raw || ({})
-                            property var tpmData: simplified.tpm || ({})
+                            // Helper properties for security info access with null-safe chaining
+                            property var secInfo: (SnapshotService && SnapshotService.securityInfo) ? SnapshotService.securityInfo : {}
+                            property var simplified: (secInfo && secInfo.simplified) ? secInfo.simplified : {}
+                            property var overall: (simplified && simplified.overall) ? simplified.overall : {status: "Loading...", detail: "Analyzing security...", isGood: false, isWarning: true}
+                            property var internet: (simplified && simplified.internetProtection) ? simplified.internetProtection : {status: "Checking", isGood: false, isWarning: true}
+                            property var updates: (simplified && simplified.updates) ? simplified.updates : {status: "Checking", isGood: false, isWarning: true}
+                            property var device: (simplified && simplified.deviceProtection) ? simplified.deviceProtection : {status: "Checking", isGood: false, isWarning: true}
+                            property var remote: (simplified && simplified.remoteAndApps) ? simplified.remoteAndApps : {status: "Checking", isGood: false, isWarning: true}
+                            property var raw: (simplified && simplified.raw) ? simplified.raw : {}
+                            property var tpmData: (simplified && simplified.tpm) ? simplified.tpm : {}
 
                             // ===== A. OVERALL SECURITY STATUS CARD =====
                             Rectangle {

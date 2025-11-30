@@ -7,13 +7,17 @@ QtObject {
     property string themeMode: "system"  // "dark", "light", "system"
     property string fontSize: "medium"  // "small", "medium", "large"
     property int fontSizeUpdateTrigger: 0  // Trigger for UI updates
+    property bool _initialized: false
     
-    // Connect to SettingsService on startup
+    // Connect to SettingsService on startup with retry logic
     function initializeTheme() {
+        if (_initialized) return
+        
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             // Load from settings
             themeMode = SettingsService.themeMode
             fontSize = SettingsService.fontSize
+            _initialized = true
             
             // Connect for changes
             try {
@@ -22,6 +26,13 @@ QtObject {
             } catch(e) {
                 console.warn("Could not connect to SettingsService signals:", e)
             }
+        } else {
+            // SettingsService not ready yet, retry after a short delay
+            Qt.callLater(function() {
+                if (!_initialized) {
+                    initializeTheme()
+                }
+            })
         }
     }
     

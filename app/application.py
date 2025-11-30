@@ -141,9 +141,12 @@ class DesktopSecurityApplication:
                     self.gpu_service = get_gpu_service()
                     root_context = self.engine.rootContext()
                     root_context.setContextProperty("GPUService", self.gpu_service)
-                    # Auto-start GPU service with 2s interval for dashboard display
-                    self.gpu_service.start(2000)
-                    print("[OK] GPU service initialized, started, and exposed to QML")
+                    # Use interval from settings if available, otherwise default to 2s
+                    gpu_interval = 2000
+                    if self.settings_service:
+                        gpu_interval = self.settings_service.updateIntervalMs
+                    self.gpu_service.start(gpu_interval)
+                    print(f"[OK] GPU service initialized, started with {gpu_interval}ms interval")
                 except (ImportError, RuntimeError, OSError) as e:
                     print(f"[WARNING] GPU service initialization failed: {e}")
                     self.gpu_service = None
@@ -197,6 +200,22 @@ class DesktopSecurityApplication:
         # Stop live monitoring if active
         if self.backend:
             self.backend.stopLive()
+
+        # Stop GPU service and cleanup subprocess
+        if self.gpu_service:
+            try:
+                self.gpu_service.cleanup()
+                print("[OK] GPU service stopped")
+            except Exception as e:
+                print(f"[WARNING] GPU cleanup failed: {e}")
+
+        # Stop snapshot service timer
+        if self.snapshot_service:
+            try:
+                self.snapshot_service.stop()
+                print("[OK] Snapshot service stopped")
+            except Exception as e:
+                print(f"[WARNING] Snapshot service cleanup failed: {e}")
 
     def run(self):
         """Run the application."""

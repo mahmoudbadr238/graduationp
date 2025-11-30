@@ -205,6 +205,10 @@ class BackendBridge(QObject):
 
         def on_success(wid, result):
             """Scan completed"""
+            # Guard against callbacks after worker removal (race condition fix)
+            if worker_id not in self._active_workers:
+                logger.debug(f"Worker {worker_id} already removed, ignoring success callback")
+                return
             try:
                 # Create scan record
                 scan_rec = ScanRecord(
@@ -232,13 +236,21 @@ class BackendBridge(QObject):
                 )
 
             finally:
+                if worker_id in self._active_workers:
+                    del self._active_workers[worker_id]
                 self._watchdog.unregister_worker(worker_id)
 
         def on_error(wid, error_msg):
             """Scan failed"""
+            # Guard against callbacks after worker removal (race condition fix)
+            if worker_id not in self._active_workers:
+                logger.debug(f"Worker {worker_id} already removed, ignoring error callback")
+                return
             logger.error(f"Network scan failed: {error_msg}")
             self.toast.emit("error", f"Network scan failed: {error_msg}")
             self.scanFinished.emit("network", {"error": error_msg})
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
             self._watchdog.unregister_worker(worker_id)
 
         # Create and start worker
@@ -259,10 +271,18 @@ class BackendBridge(QObject):
         logger.warning(f"Worker stalled: {worker_id}")
         self.toast.emit("warning", f"Task '{worker_id}' appears to be stalled")
 
-        # Attempt to cancel
+        # Attempt to cancel - mark as removed first to prevent callback race
         if worker_id in self._active_workers:
-            self._active_workers[worker_id].cancel()
-            del self._active_workers[worker_id]
+            worker = self._active_workers.pop(worker_id)  # Remove first
+            try:
+                worker.cancel()
+            except Exception as e:
+                logger.debug(f"Worker cancel failed (may already be done): {e}")
+            # Unregister from watchdog after removal
+            try:
+                self._watchdog.unregister_worker(worker_id)
+            except Exception as e:
+                logger.debug(f"Watchdog unregister failed: {e}")
 
     @Slot(result=bool)
     def nmapAvailable(self):
@@ -360,7 +380,7 @@ class BackendBridge(QObject):
     @Slot(str)
     def scanFile(self, path: str):
         """
-        Scan a file for threats.
+        Scan a file for threats (async - does not block UI).
 
         Args:
             path: Absolute path to file
@@ -375,56 +395,97 @@ class BackendBridge(QObject):
             self.toast.emit("error", "File path cannot be empty")
             return
 
+        # Validate path length to prevent issues
+        if len(path) > 2048:
+            self.toast.emit("error", "File path too long")
+            return
+
+        worker_id = f"file-scan-{hash(path) % 10000}"
+        
+        # Prevent duplicate scans
+        if worker_id in self._active_workers:
+            self.toast.emit("warning", "File scan already in progress")
+            return
+
         self.toast.emit("info", f"Scanning file: {path}")
+        scan_start_time = datetime.now()
 
-        try:
-            # Run scan (blocking - in production use threading)
-            result = self.file_scanner.scan_file(path)
+        def scan_task(worker):
+            """Background file scan task"""
+            worker.signals.heartbeat.emit(worker_id)
+            return self.file_scanner.scan_file(path)
 
-            if "error" in result:
-                self.toast.emit("error", result["error"])
-                self.scanFinished.emit("file", result)
+        def on_success(wid, result):
+            """File scan completed"""
+            if worker_id not in self._active_workers:
                 return
+            try:
+                if "error" in result:
+                    self.toast.emit("error", result["error"])
+                    self.scanFinished.emit("file", result)
+                    return
 
-            # Create scan record
-            scan_rec = ScanRecord(
-                id=None,
-                started_at=datetime.now(),
-                finished_at=datetime.now(),
-                type=ScanType.FILE,
-                target=path,
-                status="completed",
-                findings=result,
-                meta={},
-            )
-
-            # Save to database
-            scan_id = self.scan_repo.add(scan_rec)
-            result["scan_id"] = scan_id
-
-            self.scanFinished.emit("file", result)
-
-            # Check VT results if available
-            if result.get("vt_check") and result.get("vt_result", {}).get("found"):
-                vt = result["vt_result"]
-                malicious = vt.get("malicious", 0)
-                if malicious > 0:
-                    self.toast.emit("warning", f"File flagged by {malicious} engines")
-                else:
-                    self.toast.emit("success", "File appears clean")
-            else:
-                self.toast.emit(
-                    "success", f"File scanned: {result.get('sha256', '')[:16]}..."
+                # Create scan record
+                scan_rec = ScanRecord(
+                    id=None,
+                    started_at=scan_start_time,
+                    finished_at=datetime.now(),
+                    type=ScanType.FILE,
+                    target=path,
+                    status="completed",
+                    findings=result,
+                    meta={},
                 )
 
-        except (OSError, ValueError, RuntimeError) as e:
-            self.toast.emit("error", f"File scan failed: {e!s}")
-            self.scanFinished.emit("file", {"error": str(e)})
+                # Save to database
+                scan_id = self.scan_repo.add(scan_rec)
+                result["scan_id"] = scan_id
+
+                self.scanFinished.emit("file", result)
+
+                # Check VT results if available
+                if result.get("vt_check") and result.get("vt_result", {}).get("found"):
+                    vt = result["vt_result"]
+                    malicious = vt.get("malicious", 0)
+                    if malicious > 0:
+                        self.toast.emit("warning", f"File flagged by {malicious} engines")
+                    else:
+                        self.toast.emit("success", "File appears clean")
+                else:
+                    self.toast.emit(
+                        "success", f"File scanned: {result.get('sha256', '')[:16]}..."
+                    )
+            finally:
+                if worker_id in self._active_workers:
+                    del self._active_workers[worker_id]
+                self._watchdog.unregister_worker(worker_id)
+
+        def on_error(wid, error_msg):
+            """File scan failed"""
+            if worker_id not in self._active_workers:
+                return
+            logger.error(f"File scan failed: {error_msg}")
+            self.toast.emit("error", f"File scan failed: {error_msg}")
+            self.scanFinished.emit("file", {"error": error_msg})
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+            self._watchdog.unregister_worker(worker_id)
+
+        # Create and start worker with 120s timeout for large files
+        worker = CancellableWorker(worker_id, scan_task, timeout_ms=120000)
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+
+        self._active_workers[worker_id] = worker
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+
+        logger.info(f"File scan started for {path}")
 
     @Slot(str)
     def scanUrl(self, url: str):
         """
-        Scan a URL for threats.
+        Scan a URL for threats (async - does not block UI).
 
         Args:
             url: URL to scan
@@ -440,49 +501,89 @@ class BackendBridge(QObject):
             self.toast.emit("error", "URL cannot be empty")
             return
 
+        # Basic URL validation
+        if len(url) > 2048:
+            self.toast.emit("error", "URL too long")
+            return
+
+        worker_id = f"url-scan-{hash(url) % 10000}"
+        
+        # Prevent duplicate scans
+        if worker_id in self._active_workers:
+            self.toast.emit("warning", "URL scan already in progress")
+            return
+
         self.toast.emit("info", f"Scanning URL: {url}")
+        scan_start_time = datetime.now()
 
-        try:
-            # Run scan (blocking - in production use threading)
-            result = self.url_scanner.scan_url(url)
+        def scan_task(worker):
+            """Background URL scan task"""
+            worker.signals.heartbeat.emit(worker_id)
+            return self.url_scanner.scan_url(url)
 
-            if "error" in result:
-                self.toast.emit("error", result["error"])
-                self.scanFinished.emit("url", result)
+        def on_success(wid, result):
+            """URL scan completed"""
+            if worker_id not in self._active_workers:
                 return
+            try:
+                if "error" in result:
+                    self.toast.emit("error", result["error"])
+                    self.scanFinished.emit("url", result)
+                    return
 
-            # Create scan record
-            scan_rec = ScanRecord(
-                id=None,
-                started_at=datetime.now(),
-                finished_at=datetime.now(),
-                type=ScanType.URL,
-                target=url,
-                status=result.get("status", "completed"),
-                findings=result,
-                meta={},
-            )
+                # Create scan record
+                scan_rec = ScanRecord(
+                    id=None,
+                    started_at=scan_start_time,
+                    finished_at=datetime.now(),
+                    type=ScanType.URL,
+                    target=url,
+                    status=result.get("status", "completed"),
+                    findings=result,
+                    meta={},
+                )
 
-            # Save to database
-            scan_id = self.scan_repo.add(scan_rec)
-            result["scan_id"] = scan_id
+                # Save to database
+                scan_id = self.scan_repo.add(scan_rec)
+                result["scan_id"] = scan_id
 
-            self.scanFinished.emit("url", result)
+                self.scanFinished.emit("url", result)
 
-            # Check results
-            if result.get("status") == "submitted":
-                self.toast.emit("info", "URL submitted for analysis")
-            elif result.get("found"):
-                malicious = result.get("malicious", 0)
-                if malicious > 0:
-                    self.toast.emit("warning", f"URL flagged by {malicious} engines")
-                else:
-                    self.toast.emit("success", "URL appears clean")
+                # Check results
+                if result.get("status") == "submitted":
+                    self.toast.emit("info", "URL submitted for analysis")
+                elif result.get("found"):
+                    malicious = result.get("malicious", 0)
+                    if malicious > 0:
+                        self.toast.emit("warning", f"URL flagged by {malicious} engines")
+                    else:
+                        self.toast.emit("success", "URL appears clean")
+            finally:
+                if worker_id in self._active_workers:
+                    del self._active_workers[worker_id]
+                self._watchdog.unregister_worker(worker_id)
 
-        except (OSError, ValueError, RuntimeError) as e:
-            # URL scanner errors: network failure, invalid URL, API error
-            self.toast.emit("error", f"URL scan failed: {e!s}")
-            self.scanFinished.emit("url", {"error": str(e)})
+        def on_error(wid, error_msg):
+            """URL scan failed"""
+            if worker_id not in self._active_workers:
+                return
+            logger.error(f"URL scan failed: {error_msg}")
+            self.toast.emit("error", f"URL scan failed: {error_msg}")
+            self.scanFinished.emit("url", {"error": error_msg})
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+            self._watchdog.unregister_worker(worker_id)
+
+        # Create and start worker with 60s timeout for network operations
+        worker = CancellableWorker(worker_id, scan_task, timeout_ms=60000)
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+
+        self._active_workers[worker_id] = worker
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+
+        logger.info(f"URL scan started for {url}")
 
     @Slot(result=list)
     def getScanHistory(self) -> list:

@@ -13,9 +13,11 @@ Item {
     property bool fileScanningInProgress: false
     property bool urlScanningInProgress: false
     
-    FolderDialog {
+    FileDialog {
         id: fileDialog
-        onAccepted: filePathInput.text = selectedFolder
+        title: "Select file to scan"
+        nameFilters: ["All files (*)"]
+        onAccepted: filePathInput.text = selectedFile.toString().replace("file:///", "")
     }
     
     Connections {
@@ -76,6 +78,7 @@ Item {
                         id: filePathInput
                         Layout.fillWidth: true
                         placeholderText: "Enter file path..."
+                        maximumLength: 2048
                         color: ThemeManager.foreground()
                         placeholderTextColor: ThemeManager.muted()
                         background: Rectangle {
@@ -93,7 +96,7 @@ Item {
                         onClicked: fileDialog.open()
                         
                         background: Rectangle {
-                            color: "#7C3AED"
+                            color: ThemeManager.accent
                             radius: 6
                         }
 
@@ -123,7 +126,7 @@ Item {
                     }
                     
                     background: Rectangle {
-                        color: parent.enabled ? "#7C3AED" : "#4B5563"
+                        color: parent.enabled ? ThemeManager.accent : ThemeManager.muted()
                         radius: 6
                     }
 
@@ -147,7 +150,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: fileScanningInProgress ? "Scanning file..." : fileScanResult
-                        color: fileScanResult.indexOf("CLEAN") > -1 ? "#10B981" : "#EF4444"
+                        color: fileScanResult.indexOf("CLEAN") > -1 ? ThemeManager.success : ThemeManager.danger
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                     }
@@ -183,6 +186,7 @@ Item {
                         id: urlInput
                         Layout.fillWidth: true
                         placeholderText: "https://example.com"
+                        maximumLength: 2048
                         color: ThemeManager.foreground()
                         placeholderTextColor: ThemeManager.muted()
                         background: Rectangle {
@@ -209,7 +213,7 @@ Item {
                         }
                         
                         background: Rectangle {
-                            color: parent.enabled ? "#7C3AED" : "#4B5563"
+                            color: parent.enabled ? ThemeManager.accent : ThemeManager.muted()
                             radius: 6
                         }
 
@@ -234,7 +238,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: urlScanningInProgress ? "Scanning URL..." : urlScanResult
-                        color: urlScanResult.indexOf("SAFE") > -1 ? "#10B981" : "#EF4444"
+                        color: urlScanResult.indexOf("SAFE") > -1 ? ThemeManager.success : ThemeManager.danger
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                     }

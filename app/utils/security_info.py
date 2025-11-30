@@ -172,7 +172,7 @@ class SecurityInfo:
     def get_disk_encryption_status() -> Dict[str, Any]:
         """Get BitLocker/Device Encryption status for C: drive."""
         try:
-            # Query BitLocker status for C:
+            # Query BitLocker status for C: (requires admin)
             ps_cmd = (
                 "try { "
                 "$vol = Get-BitLockerVolume -MountPoint 'C:' -ErrorAction Stop; "
@@ -204,23 +204,77 @@ class SecurityInfo:
                         "method": "None",
                         "detail": "Not encrypted"
                     }
-                else:
+                elif status != "NotAvailable":
                     return {
                         "enabled": False,
-                        "status": "NotAvailable",
-                        "method": "None",
-                        "detail": "BitLocker not available"
+                        "status": status,
+                        "method": method,
+                        "detail": f"BitLocker: {status}"
                     }
         except json.JSONDecodeError:
             logger.debug("Failed to parse BitLocker JSON response")
         except Exception as e:
             logger.debug(f"Could not query BitLocker: {e}")
         
+        # Fallback: Check via WMI EncryptableVolume (works without admin on some systems)
+        try:
+            ps_wmi = (
+                "try { "
+                "$vol = Get-WmiObject -Namespace 'root\\CIMV2\\Security\\MicrosoftVolumeEncryption' "
+                "-Class Win32_EncryptableVolume -Filter \"DriveLetter='C:'\" -ErrorAction Stop; "
+                "if ($vol) { "
+                "  $protectionStatus = $vol.GetProtectionStatus().ProtectionStatus; "
+                "  @{Status=if($protectionStatus -eq 1){'On'}elseif($protectionStatus -eq 0){'Off'}else{'Unknown'}; Found=$true} | ConvertTo-Json "
+                "} else { @{Found=$false} | ConvertTo-Json } "
+                "} catch { @{Found=$false} | ConvertTo-Json }"
+            )
+            output = SecurityInfo._run_powershell(ps_wmi, timeout=10)
+            if output:
+                data = json.loads(output)
+                if data.get("Found", False):
+                    status = data.get("Status", "Unknown")
+                    if status == "On":
+                        return {
+                            "enabled": True,
+                            "status": "Enabled",
+                            "method": "BitLocker",
+                            "detail": "BitLocker active"
+                        }
+                    elif status == "Off":
+                        return {
+                            "enabled": False,
+                            "status": "Disabled", 
+                            "method": "None",
+                            "detail": "Not encrypted"
+                        }
+        except Exception as e:
+            logger.debug(f"WMI BitLocker fallback failed: {e}")
+        
+        # Final fallback: Check registry for Device Encryption
+        try:
+            ps_registry = (
+                "$de = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DeviceEncryption' -ErrorAction SilentlyContinue; "
+                "if ($de -and $de.BitLockerEnabled -eq 1) { @{Enabled=$true} | ConvertTo-Json } "
+                "else { @{Enabled=$false} | ConvertTo-Json }"
+            )
+            output = SecurityInfo._run_powershell(ps_registry, timeout=5)
+            if output:
+                data = json.loads(output)
+                if data.get("Enabled", False):
+                    return {
+                        "enabled": True,
+                        "status": "Enabled",
+                        "method": "Device Encryption",
+                        "detail": "Device Encryption active"
+                    }
+        except Exception as e:
+            logger.debug(f"Registry encryption check failed: {e}")
+        
         return {
             "enabled": False,
-            "status": "Unknown",
+            "status": "NotAvailable",
             "method": "None",
-            "detail": "Unable to determine"
+            "detail": "BitLocker not available (run as admin)"
         }
 
     @staticmethod
@@ -644,6 +698,38 @@ class SecurityInfo:
             logger.debug("Failed to parse WMI TPM JSON")
         except Exception as e:
             logger.debug(f"WMI TPM query failed: {e}")
+        
+        # Final fallback: Registry-based detection (works without admin)
+        if not result["present"]:
+            try:
+                ps_registry = (
+                    "if (Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\TPM') { "
+                    "  $svc = Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\TPM' -ErrorAction SilentlyContinue; "
+                    "  $devNode = Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\ROOT\\TPM\\0000' -ErrorAction SilentlyContinue; "
+                    "  @{Present=$true; ServiceStart=$svc.Start; DeviceDesc=$devNode.DeviceDesc} | ConvertTo-Json "
+                    "} else { @{Present=$false} | ConvertTo-Json }"
+                )
+                output = SecurityInfo._run_powershell(ps_registry, timeout=5)
+                if output:
+                    data = json.loads(output)
+                    if data.get("Present", False):
+                        result["present"] = True
+                        # Service Start=3 means manual start (TPM is present but we can't query enabled state)
+                        # Check if device description contains TPM info
+                        device_desc = data.get("DeviceDesc", "")
+                        if "2.0" in device_desc:
+                            result["version"] = "2.0"
+                        elif "1.2" in device_desc:
+                            result["version"] = "1.2"
+                        else:
+                            result["version"] = "2.0"  # Assume 2.0 on modern systems
+                        
+                        # We can't determine enabled state without admin, assume enabled if service exists
+                        result["enabled"] = True
+                        result["detail"] = f"TPM {result['version']} detected (run as admin for details)"
+                        
+            except Exception as e:
+                logger.debug(f"Registry TPM detection failed: {e}")
         
         return result
 
