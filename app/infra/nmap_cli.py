@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 # Regex pattern for valid nmap targets (IP, hostname, CIDR)
 # Prevents shell metacharacter injection
-TARGET_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.\-:\/]*$')
-DANGEROUS_CHARS = set(';|&$(){}[]<>`\\!@#%^*=+\'"\'\n\r\t')
+TARGET_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.\-:\/]*$")
+DANGEROUS_CHARS = set(";|&$(){}[]<>`\\!@#%^*=+'\"'\n\r\t")
 
 # Scan timeout configuration
 SCAN_TIMEOUT = 1800  # 30 minutes max
@@ -31,7 +31,7 @@ VULN_SCAN_TIMEOUT = 3600  # 1 hour for vulnerability scans
 RATE_LIMIT_DELAY = 1  # Delay between scans (seconds)
 
 # Platform detection
-_IS_WINDOWS = sys.platform == 'win32'
+_IS_WINDOWS = sys.platform == "win32"
 _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 # Scan type profiles - each maps to specific nmap arguments
@@ -90,7 +90,7 @@ SCAN_PROFILES: dict[str, dict[str, Any]] = {
 
 def check_nmap_installed() -> tuple[bool, str]:
     """Check if nmap is installed and return (available, path).
-    
+
     Returns:
         Tuple of (is_available, nmap_path_or_empty)
     """
@@ -98,7 +98,7 @@ def check_nmap_installed() -> tuple[bool, str]:
     nmap_path = shutil.which("nmap")
     if nmap_path:
         return True, nmap_path
-    
+
     # On Windows, check common install paths
     if _IS_WINDOWS:
         common_paths = [
@@ -110,7 +110,7 @@ def check_nmap_installed() -> tuple[bool, str]:
         for path in common_paths:
             if os.path.isfile(path):
                 return True, path
-    
+
     # On Linux/macOS check common paths
     else:
         common_paths = [
@@ -121,13 +121,13 @@ def check_nmap_installed() -> tuple[bool, str]:
         for path in common_paths:
             if os.path.isfile(path):
                 return True, path
-    
+
     return False, ""
 
 
 def get_local_subnet() -> str:
     """Auto-detect local subnet for network-wide scans.
-    
+
     Returns:
         CIDR notation like "192.168.1.0/24" or fallback
     """
@@ -140,14 +140,14 @@ def get_local_subnet() -> str:
             local_ip = s.getsockname()[0]
         finally:
             s.close()
-        
+
         # Convert to /24 subnet
         parts = local_ip.split(".")
         if len(parts) == 4:
             return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
     except Exception as e:
         logger.warning(f"Could not detect local subnet: {e}")
-    
+
     # Fallback to common private ranges
     return "192.168.1.0/24"
 
@@ -158,7 +158,7 @@ def get_reports_dir() -> Path:
         base = Path(os.environ.get("APPDATA", Path.home()))
     else:
         base = Path.home() / ".config"
-    
+
     reports_dir = base / "Sentinel" / "nmap_reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     return reports_dir
@@ -182,10 +182,10 @@ class NmapCli(INetworkScanner):
         # Progress callback and rate limiting
         self._progress_callback: Optional[Callable[[str], None]] = None
         self._last_scan_time = 0
-        
+
         # Active scan processes for streaming output
         self._active_scans: dict[str, subprocess.Popen] = {}
-        
+
         # Accumulated output per scan
         self._scan_outputs: dict[str, str] = {}
 
@@ -203,27 +203,27 @@ class NmapCli(INetworkScanner):
     @staticmethod
     def validate_target(target: str) -> tuple[bool, str]:
         """Validate nmap target for safety.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
         """
         if not target or not target.strip():
             return False, "Target cannot be empty"
-        
+
         target = target.strip()
-        
+
         # Check length
         if len(target) > 256:
             return False, "Target too long (max 256 characters)"
-        
+
         # Check for dangerous shell metacharacters
         if any(c in target for c in DANGEROUS_CHARS):
             return False, "Target contains invalid characters"
-        
+
         # Validate against pattern
         if not TARGET_PATTERN.match(target):
             return False, "Target format invalid (use IP, hostname, or CIDR)"
-        
+
         return True, ""
 
     async def scan_async(self, target: str, fast: bool = True) -> dict[str, Any]:
@@ -241,13 +241,19 @@ class NmapCli(INetworkScanner):
         is_valid, error_msg = self.validate_target(target)
         if not is_valid:
             logger.warning(f"Invalid scan target rejected: {target[:50]}")
-            return {"target": target, "status": "error", "error": error_msg, "hosts": []}
-        
+            return {
+                "target": target,
+                "status": "error",
+                "error": error_msg,
+                "hosts": [],
+            }
+
         target = target.strip()
-        
+
         try:
             # Rate limiting: wait if needed
             import time
+
             elapsed = time.time() - self._last_scan_time
             if elapsed < RATE_LIMIT_DELAY:
                 await asyncio.sleep(RATE_LIMIT_DELAY - elapsed)
@@ -273,7 +279,7 @@ class NmapCli(INetworkScanner):
             # Run nmap in executor to avoid blocking
             loop = asyncio.get_event_loop()
             self._report_progress(f"Executing nmap command: {' '.join(cmd)}")
-            
+
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
@@ -337,15 +343,21 @@ class NmapCli(INetworkScanner):
         is_valid, error_msg = self.validate_target(target)
         if not is_valid:
             logger.warning(f"Invalid scan target rejected: {target[:50]}")
-            return {"target": target, "status": "error", "error": error_msg, "hosts": []}
-        
+            return {
+                "target": target,
+                "status": "error",
+                "error": error_msg,
+                "hosts": [],
+            }
+
         target = target.strip()
-        
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # Already in async context, use run_in_executor instead
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(asyncio.run, self.scan_async(target, fast))
                     return future.result(timeout=SCAN_TIMEOUT + 60)
@@ -415,15 +427,15 @@ class NmapCli(INetworkScanner):
     ) -> Generator[str, None, tuple[bool, int, str]]:
         """
         Run a scan with streaming output.
-        
+
         Args:
             scan_type: One of the SCAN_PROFILES keys
             target_host: Target IP/hostname (None for network-wide scans)
             output_callback: Called with each line of output
-            
+
         Yields:
             Output lines as they arrive
-            
+
         Returns:
             Tuple of (success, exit_code, report_path)
         """
@@ -433,42 +445,42 @@ class NmapCli(INetworkScanner):
             error_msg = f"Unknown scan type: {scan_type}"
             output_callback(f"[ERROR] {error_msg}\n")
             return False, 1, ""
-        
+
         # Determine target
         if profile["requires_host"]:
             if not target_host:
                 error_msg = "This scan type requires a target host"
                 output_callback(f"[ERROR] {error_msg}\n")
                 return False, 1, ""
-            
+
             # Validate target
             is_valid, error_msg = self.validate_target(target_host)
             if not is_valid:
                 output_callback(f"[ERROR] Invalid target: {error_msg}\n")
                 return False, 1, ""
-            
+
             target = target_host.strip()
         else:
             # Network-wide scan - auto-detect subnet
             target = get_local_subnet()
             output_callback(f"[INFO] Auto-detected local subnet: {target}\n")
-        
+
         # Generate scan ID and report path
         scan_id = f"{scan_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         report_path = get_reports_dir() / f"nmap_{scan_id}.txt"
-        
+
         # Build command
         cmd = [self.nmap_path] + profile["args"] + [target]
         timeout = profile.get("timeout", SCAN_TIMEOUT)
-        
+
         output_callback(f"[INFO] Starting: {profile['description']}\n")
         output_callback(f"[INFO] Target: {target}\n")
         output_callback(f"[INFO] Command: {' '.join(cmd)}\n")
         output_callback("-" * 60 + "\n\n")
-        
+
         # Accumulate output for report
         full_output = []
-        
+
         try:
             # Start process with streaming
             process = subprocess.Popen(
@@ -479,27 +491,27 @@ class NmapCli(INetworkScanner):
                 bufsize=1,  # Line buffered
                 creationflags=_SUBPROCESS_FLAGS,
             )
-            
+
             # Stream output line by line
             start_time = datetime.now()
-            for line in iter(process.stdout.readline, ''):
+            for line in iter(process.stdout.readline, ""):
                 if not line:
                     break
                 full_output.append(line)
                 output_callback(line)
-                
+
                 # Check timeout
                 elapsed = (datetime.now() - start_time).total_seconds()
                 if elapsed > timeout:
                     process.kill()
                     output_callback(f"\n[ERROR] Scan timed out after {timeout}s\n")
                     return False, -1, ""
-            
+
             process.stdout.close()
             exit_code = process.wait()
-            
+
             # Write report
-            with open(report_path, 'w', encoding='utf-8') as f:
+            with open(report_path, "w", encoding="utf-8") as f:
                 f.write(f"Nmap Scan Report\n")
                 f.write(f"================\n")
                 f.write(f"Scan Type: {profile['description']}\n")
@@ -508,16 +520,18 @@ class NmapCli(INetworkScanner):
                 f.write(f"Command: {' '.join(cmd)}\n")
                 f.write("-" * 60 + "\n\n")
                 f.writelines(full_output)
-            
+
             success = exit_code == 0
             if success:
                 output_callback(f"\n[SUCCESS] Scan completed\n")
                 output_callback(f"[INFO] Report saved: {report_path}\n")
             else:
-                output_callback(f"\n[WARNING] Scan finished with exit code {exit_code}\n")
-            
+                output_callback(
+                    f"\n[WARNING] Scan finished with exit code {exit_code}\n"
+                )
+
             return success, exit_code, str(report_path)
-            
+
         except FileNotFoundError:
             output_callback("[ERROR] Nmap executable not found\n")
             return False, 1, ""
@@ -528,17 +542,17 @@ class NmapCli(INetworkScanner):
 
     def save_scan_output(self, scan_id: str, output: str) -> str:
         """Save accumulated scan output to a report file.
-        
+
         Returns:
             Path to saved report
         """
         report_path = get_reports_dir() / f"nmap_{scan_id}.txt"
-        
-        with open(report_path, 'w', encoding='utf-8') as f:
+
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(f"Nmap Scan Report - {scan_id}\n")
             f.write(f"Generated: {datetime.now().isoformat()}\n")
             f.write("=" * 60 + "\n\n")
             f.write(output)
-        
+
         logger.info(f"Scan report saved: {report_path}")
         return str(report_path)

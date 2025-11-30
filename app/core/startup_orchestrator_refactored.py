@@ -5,7 +5,7 @@ Architecture:
   - Critical tasks (logging, config): Immediate, on main thread
   - Important tasks (backend services): Deferred 100ms, main thread
   - Background tasks (GPU, scanners): Deferred 300ms+, thread pool
-  
+
 All tasks are logged with timestamps and execution time. Failures don't prevent
 subsequent initialization. A final summary is emitted when complete.
 
@@ -53,7 +53,7 @@ class StartupTaskInfo:
 class BackgroundTask(QRunnable):
     """
     QRunnable for thread pool execution with proper exception handling.
-    
+
     Thread-safe: All signals emitted from worker thread are queued to main thread
     via Qt's thread-safe signal mechanism.
     """
@@ -84,21 +84,27 @@ class BackgroundTask(QRunnable):
 
         try:
             self.signals.started.emit(task_name)
-            logger.debug(f"[{self.task_info.phase.value.upper()}] Task '{task_name}' started")
+            logger.debug(
+                f"[{self.task_info.phase.value.upper()}] Task '{task_name}' started"
+            )
 
             # Execute the task
             self.task_info.func(*self.task_info.args, **self.task_info.kwargs)
 
             elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(f"[{self.task_info.phase.value.upper()}] Task '{task_name}' "
-                       f"completed in {elapsed_ms:.0f}ms")
+            logger.info(
+                f"[{self.task_info.phase.value.upper()}] Task '{task_name}' "
+                f"completed in {elapsed_ms:.0f}ms"
+            )
             self.signals.completed.emit(task_name, elapsed_ms)
 
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
             error_msg = f"{type(e).__name__}: {e!s}"
-            logger.exception(f"[{self.task_info.phase.value.upper()}] Task '{task_name}' "
-                           f"failed after {elapsed_ms:.0f}ms: {error_msg}")
+            logger.exception(
+                f"[{self.task_info.phase.value.upper()}] Task '{task_name}' "
+                f"failed after {elapsed_ms:.0f}ms: {error_msg}"
+            )
             self.signals.failed.emit(task_name, error_msg)
 
 
@@ -112,16 +118,16 @@ class StartupOrchestrator(QObject):
       3. BACKGROUND: GPU, scanners (300ms+, nice to have)
 
     All phases overlap safely via QTimer scheduling.
-    
+
     Usage:
         orchestrator = StartupOrchestrator()
         orchestrator.taskFailed.connect(on_task_failed)
         orchestrator.startupComplete.connect(on_startup_done)
-        
+
         orchestrator.add_immediate("init_logging", setup_logging)
         orchestrator.add_deferred("init_backend", 100, setup_backend)
         orchestrator.add_background("init_gpu", 300, setup_gpu)
-        
+
         orchestrator.execute()
     """
 
@@ -168,7 +174,7 @@ class StartupOrchestrator(QObject):
         Add immediate task (runs on current thread, blocks if slow).
 
         Critical tasks: logging init, config loading, etc.
-        
+
         Args:
             name: Task name (for logging/signals)
             func: Callable to execute
@@ -199,7 +205,7 @@ class StartupOrchestrator(QObject):
 
         Important tasks: backend service init, etc.
         Prevents blocking the UI thread during startup.
-        
+
         Args:
             name: Task name
             delay_ms: Milliseconds to delay before execution
@@ -231,7 +237,7 @@ class StartupOrchestrator(QObject):
 
         Background tasks: GPU monitoring, network scanning, etc.
         Non-blocking; failures don't affect main app functionality.
-        
+
         Args:
             name: Task name
             delay_ms: Milliseconds to delay before execution
@@ -274,7 +280,9 @@ class StartupOrchestrator(QObject):
     def _execute_phase(self, phase: StartupPhase) -> None:
         """Execute all tasks in a phase."""
         phase_name = phase.value.upper()
-        logger.info(f"[{phase_name}] Starting phase with {len(self._tasks[phase])} tasks")
+        logger.info(
+            f"[{phase_name}] Starting phase with {len(self._tasks[phase])} tasks"
+        )
         self.phaseChanged.emit(phase.value)
 
         if not self._tasks[phase]:
@@ -321,7 +329,9 @@ class StartupOrchestrator(QObject):
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
             error_msg = f"{type(e).__name__}: {e!s}"
-            logger.exception(f"[CRITICAL] FAILED '{task_name}' failed after {elapsed_ms:.0f}ms")
+            logger.exception(
+                f"[CRITICAL] FAILED '{task_name}' failed after {elapsed_ms:.0f}ms"
+            )
             self.taskFailed.emit(task_name, error_msg, task_info.phase.value)
             self._tasks_failed += 1
             # Continue with next task even if this fails
@@ -377,7 +387,9 @@ class StartupOrchestrator(QObject):
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
             error_msg = f"{type(e).__name__}: {e!s}"
-            logger.exception(f"[IMPORTANT] FAILED '{task_name}' failed after {elapsed_ms:.0f}ms")
+            logger.exception(
+                f"[IMPORTANT] FAILED '{task_name}' failed after {elapsed_ms:.0f}ms"
+            )
             self.taskFailed.emit(task_name, error_msg, task_info.phase.value)
             self._tasks_failed += 1
 
@@ -395,7 +407,9 @@ class StartupOrchestrator(QObject):
             # Create background task
             bg_task = BackgroundTask(task_info)
             bg_task.signals.started.connect(
-                lambda name, phase=task_info.phase.value: self.taskStarted.emit(name, phase)
+                lambda name, phase=task_info.phase.value: self.taskStarted.emit(
+                    name, phase
+                )
             )
             bg_task.signals.completed.connect(
                 lambda name, elapsed, phase=task_info.phase.value: (
@@ -448,11 +462,15 @@ class StartupOrchestrator(QObject):
     def _finish_startup(self) -> None:
         """Finalize startup and emit completion signal."""
         logger.info("=" * 70)
-        logger.info(f"STARTUP COMPLETE: {self._tasks_completed} successful, "
-                   f"{self._tasks_failed} failed, {self._total_tasks} total")
+        logger.info(
+            f"STARTUP COMPLETE: {self._tasks_completed} successful, "
+            f"{self._tasks_failed} failed, {self._total_tasks} total"
+        )
         logger.info("=" * 70)
 
-        self.startupComplete.emit(self._tasks_completed, self._tasks_failed, self._total_tasks)
+        self.startupComplete.emit(
+            self._tasks_completed, self._tasks_failed, self._total_tasks
+        )
         self._is_running = False
 
     def wait_for_completion(self, timeout_ms: int = 30000) -> bool:

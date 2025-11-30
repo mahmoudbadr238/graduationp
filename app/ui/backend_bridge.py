@@ -40,17 +40,20 @@ class BackendBridge(QObject):
     scansLoaded = Signal(list)  # scan history
     toast = Signal(str, str)  # level, message
     scanFinished = Signal(str, dict)  # type, result
-    
+
     # Nmap scan signals (streaming output)
     nmapScanStarted = Signal(str, str, str)  # scanId, scanType, targetHost
     nmapScanOutput = Signal(str, str)  # scanId, outputText
-    nmapScanFinished = Signal(str, bool, int, str)  # scanId, success, exitCode, reportPath
+    nmapScanFinished = Signal(
+        str, bool, int, str
+    )  # scanId, success, exitCode, reportPath
 
     def __init__(self):
         super().__init__()
-        
+
         # Check nmap availability on init
         from ..infra.nmap_cli import check_nmap_installed
+
         self._nmap_available, self._nmap_path = check_nmap_installed()
         logger.info(f"Nmap available: {self._nmap_available}, path: {self._nmap_path}")
 
@@ -217,7 +220,9 @@ class BackendBridge(QObject):
             """Scan completed"""
             # Guard against callbacks after worker removal (race condition fix)
             if worker_id not in self._active_workers:
-                logger.debug(f"Worker {worker_id} already removed, ignoring success callback")
+                logger.debug(
+                    f"Worker {worker_id} already removed, ignoring success callback"
+                )
                 return
             try:
                 # Create scan record
@@ -254,7 +259,9 @@ class BackendBridge(QObject):
             """Scan failed"""
             # Guard against callbacks after worker removal (race condition fix)
             if worker_id not in self._active_workers:
-                logger.debug(f"Worker {worker_id} already removed, ignoring error callback")
+                logger.debug(
+                    f"Worker {worker_id} already removed, ignoring error callback"
+                )
                 return
             logger.error(f"Network scan failed: {error_msg}")
             self.toast.emit("error", f"Network scan failed: {error_msg}")
@@ -316,17 +323,19 @@ class BackendBridge(QObject):
                 scan_dicts.append(
                     {
                         "id": scan.id or 0,
-                        "type": scan.type.value
-                        if hasattr(scan.type, "value")
-                        else str(scan.type),
+                        "type": (
+                            scan.type.value
+                            if hasattr(scan.type, "value")
+                            else str(scan.type)
+                        ),
                         "target": scan.target or "",
                         "status": scan.status or "unknown",
-                        "started_at": scan.started_at.isoformat()
-                        if scan.started_at
-                        else "",
-                        "finished_at": scan.finished_at.isoformat()
-                        if scan.finished_at
-                        else "",
+                        "started_at": (
+                            scan.started_at.isoformat() if scan.started_at else ""
+                        ),
+                        "finished_at": (
+                            scan.finished_at.isoformat() if scan.finished_at else ""
+                        ),
                         "findings": scan.findings or {},
                     }
                 )
@@ -367,17 +376,19 @@ class BackendBridge(QObject):
                     writer.writerow(
                         {
                             "ID": scan.id or "",
-                            "Type": scan.type.value
-                            if hasattr(scan.type, "value")
-                            else str(scan.type),
+                            "Type": (
+                                scan.type.value
+                                if hasattr(scan.type, "value")
+                                else str(scan.type)
+                            ),
                             "Target": scan.target or "",
                             "Status": scan.status or "",
-                            "Started At": scan.started_at.isoformat()
-                            if scan.started_at
-                            else "",
-                            "Finished At": scan.finished_at.isoformat()
-                            if scan.finished_at
-                            else "",
+                            "Started At": (
+                                scan.started_at.isoformat() if scan.started_at else ""
+                            ),
+                            "Finished At": (
+                                scan.finished_at.isoformat() if scan.finished_at else ""
+                            ),
                             "Findings": str(scan.findings) if scan.findings else "",
                         }
                     )
@@ -411,7 +422,7 @@ class BackendBridge(QObject):
             return
 
         worker_id = f"file-scan-{hash(path) % 10000}"
-        
+
         # Prevent duplicate scans
         if worker_id in self._active_workers:
             self.toast.emit("warning", "File scan already in progress")
@@ -458,7 +469,9 @@ class BackendBridge(QObject):
                     vt = result["vt_result"]
                     malicious = vt.get("malicious", 0)
                     if malicious > 0:
-                        self.toast.emit("warning", f"File flagged by {malicious} engines")
+                        self.toast.emit(
+                            "warning", f"File flagged by {malicious} engines"
+                        )
                     else:
                         self.toast.emit("success", "File appears clean")
                 else:
@@ -517,7 +530,7 @@ class BackendBridge(QObject):
             return
 
         worker_id = f"url-scan-{hash(url) % 10000}"
-        
+
         # Prevent duplicate scans
         if worker_id in self._active_workers:
             self.toast.emit("warning", "URL scan already in progress")
@@ -565,7 +578,9 @@ class BackendBridge(QObject):
                 elif result.get("found"):
                     malicious = result.get("malicious", 0)
                     if malicious > 0:
-                        self.toast.emit("warning", f"URL flagged by {malicious} engines")
+                        self.toast.emit(
+                            "warning", f"URL flagged by {malicious} engines"
+                        )
                     else:
                         self.toast.emit("success", "URL appears clean")
             finally:
@@ -606,9 +621,9 @@ class BackendBridge(QObject):
                 {
                     "id": rec.id,
                     "started_at": rec.started_at.isoformat(),
-                    "finished_at": rec.finished_at.isoformat()
-                    if rec.finished_at
-                    else "",
+                    "finished_at": (
+                        rec.finished_at.isoformat() if rec.finished_at else ""
+                    ),
                     "type": rec.type.value,
                     "target": rec.target,
                     "status": rec.status,
@@ -636,77 +651,98 @@ class BackendBridge(QObject):
     def runNmapScan(self, scan_type: str, target_host: str) -> None:
         """
         Run Nmap scan with streaming output.
-        
+
         Args:
             scan_type: One of the scan profile types (host_discovery, port_scan, etc.)
             target_host: Target IP/hostname (empty string for network-wide scans)
         """
-        from ..infra.nmap_cli import SCAN_PROFILES, NmapCli, get_local_subnet, get_reports_dir
+        from ..infra.nmap_cli import (
+            SCAN_PROFILES,
+            NmapCli,
+            get_local_subnet,
+            get_reports_dir,
+        )
         from ..core.workers import WorkerWatchdog
         import subprocess
         import sys
-        
+
         # Check nmap availability first
         if not self._nmap_available:
-            self.toast.emit("error", "Nmap is not installed. Please install from https://nmap.org")
+            self.toast.emit(
+                "error", "Nmap is not installed. Please install from https://nmap.org"
+            )
             self.nmapScanFinished.emit("", False, 1, "")
             return
-        
+
         # Generate scan ID
         scan_id = f"{scan_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         target = target_host.strip() if target_host else ""
-        
+
         # Emit started signal
         self.nmapScanStarted.emit(scan_id, scan_type, target)
-        
+
         worker_id = f"nmap-{scan_id}"
-        
+
         # Accumulated output for this scan
         accumulated_output = []
-        
+
         # Get scan profile
         profile = SCAN_PROFILES.get(scan_type)
         if not profile:
             self.toast.emit("error", f"Unknown scan type: {scan_type}")
             self.nmapScanFinished.emit(scan_id, False, 1, "")
             return
-        
+
         def scan_task(worker: CancellableWorker):
             """Background task: run nmap scan with streaming."""
             worker.signals.heartbeat.emit(worker.worker_id)
-            
+
             # Determine target
             if profile["requires_host"]:
                 if not target:
-                    return {"success": False, "exit_code": 1, "report_path": "", "error": "Target host required"}
-                
+                    return {
+                        "success": False,
+                        "exit_code": 1,
+                        "report_path": "",
+                        "error": "Target host required",
+                    }
+
                 # Validate target
                 is_valid, error_msg = NmapCli.validate_target(target)
                 if not is_valid:
-                    return {"success": False, "exit_code": 1, "report_path": "", "error": error_msg}
-                
+                    return {
+                        "success": False,
+                        "exit_code": 1,
+                        "report_path": "",
+                        "error": error_msg,
+                    }
+
                 scan_target = target
             else:
                 # Network-wide scan
                 scan_target = get_local_subnet()
-                self.nmapScanOutput.emit(scan_id, f"[INFO] Auto-detected local subnet: {scan_target}\n")
-            
+                self.nmapScanOutput.emit(
+                    scan_id, f"[INFO] Auto-detected local subnet: {scan_target}\n"
+                )
+
             worker.signals.heartbeat.emit(worker.worker_id)
-            
+
             # Build command
             cmd = [self._nmap_path] + profile["args"] + [scan_target]
             timeout = profile.get("timeout", 1800)
-            
+
             # Emit command info
-            self.nmapScanOutput.emit(scan_id, f"[INFO] Starting: {profile['description']}\n")
+            self.nmapScanOutput.emit(
+                scan_id, f"[INFO] Starting: {profile['description']}\n"
+            )
             self.nmapScanOutput.emit(scan_id, f"[INFO] Target: {scan_target}\n")
             self.nmapScanOutput.emit(scan_id, f"[INFO] Command: {' '.join(cmd)}\n")
             self.nmapScanOutput.emit(scan_id, "-" * 60 + "\n\n")
-            
+
             # Platform-specific flags
-            _IS_WINDOWS = sys.platform == 'win32'
+            _IS_WINDOWS = sys.platform == "win32"
             flags = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
-            
+
             try:
                 # Start process
                 process = subprocess.Popen(
@@ -717,37 +753,41 @@ class BackendBridge(QObject):
                     bufsize=1,
                     creationflags=flags,
                 )
-                
+
                 # Stream output
                 start_time = datetime.now()
-                
-                for line in iter(process.stdout.readline, ''):
+
+                for line in iter(process.stdout.readline, ""):
                     if not line:
                         break
-                    
+
                     accumulated_output.append(line)
                     self.nmapScanOutput.emit(scan_id, line)
                     worker.signals.heartbeat.emit(worker.worker_id)
-                    
+
                     # Check timeout
                     elapsed = (datetime.now() - start_time).total_seconds()
                     if elapsed > timeout:
                         process.kill()
-                        self.nmapScanOutput.emit(scan_id, f"\n[ERROR] Scan timed out after {timeout}s\n")
+                        self.nmapScanOutput.emit(
+                            scan_id, f"\n[ERROR] Scan timed out after {timeout}s\n"
+                        )
                         return {"success": False, "exit_code": -1, "report_path": ""}
-                    
+
                     # Check cancellation
                     if worker.is_cancelled():
                         process.kill()
-                        self.nmapScanOutput.emit(scan_id, "\n[CANCELLED] Scan was cancelled\n")
+                        self.nmapScanOutput.emit(
+                            scan_id, "\n[CANCELLED] Scan was cancelled\n"
+                        )
                         return {"success": False, "exit_code": -2, "report_path": ""}
-                
+
                 process.stdout.close()
                 exit_code = process.wait()
-                
+
                 # Save report
                 report_path = get_reports_dir() / f"nmap_{scan_id}.txt"
-                with open(report_path, 'w', encoding='utf-8') as f:
+                with open(report_path, "w", encoding="utf-8") as f:
                     f.write(f"Nmap Scan Report\n")
                     f.write(f"================\n")
                     f.write(f"Scan Type: {profile['description']}\n")
@@ -756,46 +796,62 @@ class BackendBridge(QObject):
                     f.write(f"Command: {' '.join(cmd)}\n")
                     f.write("-" * 60 + "\n\n")
                     f.writelines(accumulated_output)
-                
+
                 success = exit_code == 0
-                return {"success": success, "exit_code": exit_code, "report_path": str(report_path)}
-                
+                return {
+                    "success": success,
+                    "exit_code": exit_code,
+                    "report_path": str(report_path),
+                }
+
             except FileNotFoundError:
-                return {"success": False, "exit_code": 1, "report_path": "", "error": "Nmap not found"}
+                return {
+                    "success": False,
+                    "exit_code": 1,
+                    "report_path": "",
+                    "error": "Nmap not found",
+                }
             except Exception as e:
-                return {"success": False, "exit_code": 1, "report_path": "", "error": str(e)}
-        
+                return {
+                    "success": False,
+                    "exit_code": 1,
+                    "report_path": "",
+                    "error": str(e),
+                }
+
         def on_success(wid: str, result: dict) -> None:
             """Scan completed."""
             success = result.get("success", False)
             exit_code = result.get("exit_code", 1)
             report_path = result.get("report_path", "")
-            
+
             if success:
                 self.nmapScanOutput.emit(scan_id, f"\n[SUCCESS] Scan completed\n")
-                self.nmapScanOutput.emit(scan_id, f"[INFO] Report saved: {report_path}\n")
+                self.nmapScanOutput.emit(
+                    scan_id, f"[INFO] Report saved: {report_path}\n"
+                )
                 self.toast.emit("success", "Nmap scan completed")
             else:
                 error = result.get("error", "Unknown error")
                 self.nmapScanOutput.emit(scan_id, f"\n[ERROR] {error}\n")
                 self.toast.emit("error", f"Scan failed: {error}")
-            
+
             self.nmapScanFinished.emit(scan_id, success, exit_code, report_path)
-            
+
             self._watchdog.unregister_worker(worker_id)
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
-        
+
         def on_error(wid: str, error_msg: str) -> None:
             """Scan failed."""
             self.nmapScanOutput.emit(scan_id, f"\n[ERROR] {error_msg}\n")
             self.toast.emit("error", f"Scan error: {error_msg}")
             self.nmapScanFinished.emit(scan_id, False, 1, "")
-            
+
             self._watchdog.unregister_worker(worker_id)
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
-        
+
         # Create and start worker
         worker = CancellableWorker(
             worker_id,
@@ -804,11 +860,13 @@ class BackendBridge(QObject):
         )
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
-        
+
         self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id, stale_threshold_sec=WorkerWatchdog.EXTENDED_STALE_THRESHOLD_SEC)
+        self._watchdog.register_worker(
+            worker_id, stale_threshold_sec=WorkerWatchdog.EXTENDED_STALE_THRESHOLD_SEC
+        )
         self._thread_pool.start(worker)
-        
+
         logger.info(f"Nmap scan started: {scan_type} -> {target or 'local network'}")
 
     @Slot(str)
@@ -816,21 +874,23 @@ class BackendBridge(QObject):
         """Open a saved report file."""
         import os
         import sys
-        
+
         if not os.path.exists(report_path):
             self.toast.emit("error", "Report file not found")
             return
-        
+
         try:
-            if sys.platform == 'win32':
+            if sys.platform == "win32":
                 os.startfile(report_path)
-            elif sys.platform == 'darwin':
+            elif sys.platform == "darwin":
                 import subprocess
-                subprocess.run(['open', report_path], check=False)
+
+                subprocess.run(["open", report_path], check=False)
             else:
                 import subprocess
-                subprocess.run(['xdg-open', report_path], check=False)
-            
+
+                subprocess.run(["xdg-open", report_path], check=False)
+
             self.toast.emit("success", "Opening report...")
         except Exception as e:
             self.toast.emit("error", f"Could not open report: {e}")

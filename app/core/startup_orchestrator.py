@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 # Phase timeouts: ensure startup completes even if a task hangs
 PHASE_TIMEOUTS = {
-    "critical": 5000,      # Critical initialization: max 5 seconds
-    "important": 10000,    # Important services: max 10 seconds
-    "background": 30000,   # Background tasks: max 30 seconds
+    "critical": 5000,  # Critical initialization: max 5 seconds
+    "important": 10000,  # Important services: max 10 seconds
+    "background": 30000,  # Background tasks: max 30 seconds
 }
 
 # Phase definitions for tracking
@@ -50,27 +50,27 @@ class StartupTask(QRunnable):
         start_time = time.time()
         try:
             logger.info(f"[StartupTask] Running: {self.name}")
-            
+
             # Set timeout if specified
             if self.timeout_ms > 0:
                 self._timeout_timer = QTimer()
                 self._timeout_timer.setSingleShot(True)
                 self._timeout_timer.timeout.connect(self._on_timeout)
                 self._timeout_timer.start(self.timeout_ms)
-            
+
             self.func(*self.args, **self.kwargs)
-            
+
             # Cancel timeout if task completed in time
             if self._timeout_timer:
                 self._timeout_timer.stop()
-            
+
             elapsed = (time.time() - start_time) * 1000
             logger.info(f"[StartupTask] Completed: {self.name} ({elapsed:.0f}ms)")
             self.signals.completed.emit(self.name)
         except Exception as e:
             logger.exception(f"[StartupTask] Failed {self.name}: {e}")
             self.signals.failed.emit(self.name, str(e))
-    
+
     def _on_timeout(self):
         """Handle task timeout"""
         logger.error(f"[StartupTask] Timeout: {self.name}")
@@ -153,9 +153,11 @@ class StartupOrchestrator(QObject):
 
         def execute():
             task = StartupTask(
-                name, func, 
+                name,
+                func,
                 timeout_ms=PHASE_TIMEOUTS.get("background", 30000),
-                *args, **kwargs
+                *args,
+                **kwargs,
             )
             task.signals.completed.connect(self._on_task_completed)
             task.signals.failed.connect(self._on_task_failed)
@@ -168,9 +170,11 @@ class StartupOrchestrator(QObject):
         """Mark the start of a startup phase"""
         self._current_phase = phase
         self._phase_success[phase] = True
-        logger.info(f"[Startup] Starting phase: {phase} ({STARTUP_PHASES.get(phase, 'unknown')})")
+        logger.info(
+            f"[Startup] Starting phase: {phase} ({STARTUP_PHASES.get(phase, 'unknown')})"
+        )
         self.phaseStarted.emit(phase)
-        
+
         # Set phase timeout
         if phase in PHASE_TIMEOUTS:
             timeout_ms = PHASE_TIMEOUTS[phase]
@@ -186,12 +190,12 @@ class StartupOrchestrator(QObject):
         self._phase_success[phase] = success
         status = "SUCCESS" if success else "FAILED"
         logger.info(f"[Startup] Ending phase: {phase} ({status})")
-        
+
         # Cancel phase timeout
         if phase in self._phase_timers:
             self._phase_timers[phase].stop()
             del self._phase_timers[phase]
-        
+
         if success:
             self.phaseCompleted.emit(phase)
         else:

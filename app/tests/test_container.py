@@ -1,4 +1,5 @@
 """Unit tests for dependency injection container."""
+
 # nosec B101 - assert statements are expected in pytest test files
 
 import pytest

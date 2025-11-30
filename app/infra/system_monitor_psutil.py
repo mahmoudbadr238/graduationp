@@ -215,9 +215,11 @@ class PsutilSystemMonitor(ISystemMonitor):
                             "usage": float(util.gpu),
                             "memory_used": mem_info.used // (1024**2),  # MB
                             "memory_total": mem_info.total // (1024**2),  # MB
-                            "memory_percent": (mem_info.used / mem_info.total * 100)
-                            if mem_info.total > 0
-                            else 0,
+                            "memory_percent": (
+                                (mem_info.used / mem_info.total * 100)
+                                if mem_info.total > 0
+                                else 0
+                            ),
                             "temperature": temp,
                             "driver_version": driver_version,
                             "clock_graphics_mhz": clock_graphics,
@@ -254,7 +256,11 @@ class PsutilSystemMonitor(ISystemMonitor):
                         if self._wmi_cache
                         else wmi.WMI(namespace=r"root\cimv2")
                     )
-                    for counter in perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine():
+                    for (
+                        counter
+                    ) in (
+                        perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine()
+                    ):
                         name = counter.Name
                         if "phys_" in name and "_eng_" in name:
                             try:
@@ -333,9 +339,9 @@ class PsutilSystemMonitor(ISystemMonitor):
                         "memory_percent": 0,
                         "temperature": 0,  # Not available via standard WMI (requires AMD ADL SDK)
                         "driver_version": gpu.DriverVersion or "Unknown",
-                        "driver_date": str(gpu.DriverDate)[:8]
-                        if gpu.DriverDate
-                        else "Unknown",
+                        "driver_date": (
+                            str(gpu.DriverDate)[:8] if gpu.DriverDate else "Unknown"
+                        ),
                         "status": gpu.Status or "Unknown",
                         "pnp_device_id": gpu.PNPDeviceID or "Unknown",
                     }
@@ -686,9 +692,9 @@ class PsutilSystemMonitor(ISystemMonitor):
                             and result2.stdout.strip().lower() == "true"
                         )
                         security_info["tpm"] = {
-                            "status": "Available"
-                            if tpm_ready
-                            else "Present but not ready",
+                            "status": (
+                                "Available" if tpm_ready else "Present but not ready"
+                            ),
                             "enabled": tpm_ready,
                         }
                     else:

@@ -299,7 +299,9 @@ class GPUBackend(QObject):
             if success:
                 logger.info(f"GPU {gpu_id} power limit set to {watts}W")
             else:
-                logger.warning(f"Failed to set GPU {gpu_id} power limit (requires admin)")
+                logger.warning(
+                    f"Failed to set GPU {gpu_id} power limit (requires admin)"
+                )
             return success
         except Exception as e:
             logger.error(f"Error setting power limit: {e}")
@@ -373,18 +375,20 @@ class GPUBackend(QObject):
             self._is_updating = True
             self._last_update_time = time.time() * 1000  # ms
             self._set_status("updating")
-            
+
             self._update_metrics()
-            
+
             self._last_success_time = time.time() * 1000  # ms
             self._consecutive_failures = 0
             self._set_status("ok")
         except Exception as e:
             logger.error(f"Error updating metrics: {e}")
             self._consecutive_failures += 1
-            
+
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                logger.error(f"GPU backend disabled after {MAX_CONSECUTIVE_FAILURES} failures")
+                logger.error(
+                    f"GPU backend disabled after {MAX_CONSECUTIVE_FAILURES} failures"
+                )
                 self._set_status("disabled")
                 self.stopMonitoring()
             else:
@@ -399,11 +403,13 @@ class GPUBackend(QObject):
 
         elapsed = (time.time() * 1000) - self._last_update_time
         if elapsed > METRICS_UPDATE_TIMEOUT:
-            logger.error(f"GPU metrics update timeout ({elapsed:.0f}ms > {METRICS_UPDATE_TIMEOUT}ms)")
+            logger.error(
+                f"GPU metrics update timeout ({elapsed:.0f}ms > {METRICS_UPDATE_TIMEOUT}ms)"
+            )
             self._is_updating = False
             self._consecutive_failures += 1
             self._set_status("error")
-            
+
             # Force recovery: stop and restart monitoring
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 logger.error("GPU backend disabled after watchdog timeout")
@@ -500,7 +506,7 @@ class GPUBackend(QObject):
             self._update_timer.stop()
         if self._watchdog_timer.isActive():
             self._watchdog_timer.stop()
-        
+
         # Cleanup GPU manager
         if self._manager:
             try:
@@ -512,7 +518,7 @@ class GPUBackend(QObject):
 
         # Clear cache
         self._metrics_cache.clear()
-        
+
         logger.info("GPU Backend cleanup complete")
 
 

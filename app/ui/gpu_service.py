@@ -69,13 +69,13 @@ class GPUServiceBridge(QObject):
         self._interval = 2000  # Default 2s
         self._gpu_count = 0
         self._metrics_cache: list[dict[str, Any]] = []
-        
+
         # History tracking for charts (per GPU)
         # Each GPU has history for: usage, temp, memory, power, clockCore, clockMem
         self._history: dict[int, dict[str, deque]] = {}
 
         logger.info("GPU Service Bridge initialized")
-    
+
     def _init_gpu_history(self, gpu_id: int):
         """Initialize history tracking for a GPU"""
         if gpu_id not in self._history:
@@ -90,13 +90,13 @@ class GPUServiceBridge(QObject):
                 "fanSpeed": deque(maxlen=HISTORY_MAX_POINTS),
                 "memController": deque(maxlen=HISTORY_MAX_POINTS),
             }
-    
+
     def _update_history(self, metrics: list[dict[str, Any]]):
         """Update history from current metrics"""
         for gpu in metrics:
             gpu_id = gpu.get("id", 0)
             self._init_gpu_history(gpu_id)
-            
+
             hist = self._history[gpu_id]
             hist["usage"].append(gpu.get("usage", 0))
             hist["memUsage"].append(gpu.get("memPercent", 0))
@@ -107,7 +107,7 @@ class GPUServiceBridge(QObject):
             hist["clockMem"].append(gpu.get("clockMemMHz", 0))
             hist["fanSpeed"].append(gpu.get("fanPercent", 0))
             hist["memController"].append(gpu.get("memControllerUtil", 0))
-        
+
         self.historyUpdated.emit()
 
     # Properties
@@ -119,7 +119,7 @@ class GPUServiceBridge(QObject):
     def gpuCount(self) -> int:
         return self._gpu_count
 
-    @Property('QVariantList', notify=metricsChanged)
+    @Property("QVariantList", notify=metricsChanged)
     def metrics(self) -> list:
         """Get all GPU metrics as a list of dicts"""
         return self._metrics_cache
@@ -221,34 +221,34 @@ class GPUServiceBridge(QObject):
     def getHistory(self, gpu_id: int, metric_type: str) -> list[float]:
         """
         Get history data for a specific GPU and metric type.
-        
+
         Args:
             gpu_id: GPU index
-            metric_type: One of 'usage', 'memUsage', 'temperature', 'power', 
+            metric_type: One of 'usage', 'memUsage', 'temperature', 'power',
                         'powerPercent', 'clockCore', 'clockMem', 'fanSpeed', 'memController'
-        
+
         Returns:
             List of historical values
         """
         if gpu_id in self._history and metric_type in self._history[gpu_id]:
             return list(self._history[gpu_id][metric_type])
         return []
-    
+
     @Slot(int, result="QVariantMap")
     def getAllHistory(self, gpu_id: int) -> dict[str, list]:
         """
         Get all history data for a specific GPU.
-        
+
         Args:
             gpu_id: GPU index
-        
+
         Returns:
             Dictionary with all metric histories
         """
         if gpu_id in self._history:
             return {key: list(val) for key, val in self._history[gpu_id].items()}
         return {}
-    
+
     @Slot()
     def clearHistory(self):
         """Clear all history data"""
@@ -367,10 +367,12 @@ class GPUServiceBridge(QObject):
                     "GPU monitoring is unavailable on this system.",
                 )
                 return
-            
+
             # Auto-restart with cooldown
             restart_delay = max(1000, int(self._min_restart_cooldown * 1000))
-            logger.info(f"Restarting worker in {restart_delay}ms (failure {len(self._failures)}/3)")
+            logger.info(
+                f"Restarting worker in {restart_delay}ms (failure {len(self._failures)}/3)"
+            )
             self._set_status("restarting")
             self._last_restart_time = time.time()
             QTimer.singleShot(restart_delay, lambda: self.start(self._interval))

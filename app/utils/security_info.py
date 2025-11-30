@@ -37,28 +37,37 @@ class SecurityInfo:
                 "SignatureOutofDate "
                 "| ConvertTo-Json"
             )
-            
+
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            
+
             if result.returncode == 0:
                 import json
+
                 data = json.loads(result.stdout)
                 return {
                     "enabled": data.get("AntivirusEnabled", False),
                     "realtime_protection": data.get("RealTimeProtectionEnabled", False),
                     "last_scan": data.get("LastFullScanTime", "Unknown"),
-                    "definition_status": "Current" if not data.get("SignatureOutofDate", True) else "Outdated",
+                    "definition_status": (
+                        "Current"
+                        if not data.get("SignatureOutofDate", True)
+                        else "Outdated"
+                    ),
                 }
         except subprocess.TimeoutExpired:
             logger.warning("Windows Defender query timed out")
-        except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
+        except (
+            subprocess.CalledProcessError,
+            json.JSONDecodeError,
+            FileNotFoundError,
+        ) as e:
             logger.debug(f"Could not query Windows Defender: {e}")
-        
+
         return {
             "enabled": False,
             "realtime_protection": False,
@@ -76,25 +85,26 @@ class SecurityInfo:
                 "Select-Object -Property Name, Enabled | "
                 "ConvertTo-Json"
             )
-            
+
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            
+
             if result.returncode == 0:
                 import json
+
                 data = json.loads(result.stdout)
-                
+
                 # data is either a single object or list of objects
                 if not isinstance(data, list):
                     data = [data]
-                
+
                 # Check if any profile is enabled
                 enabled_profiles = [p["Name"] for p in data if p.get("Enabled", False)]
-                
+
                 return {
                     "enabled": len(enabled_profiles) > 0,
                     "enabled_profiles": enabled_profiles,
@@ -102,9 +112,13 @@ class SecurityInfo:
                 }
         except subprocess.TimeoutExpired:
             logger.warning("Firewall query timed out")
-        except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
+        except (
+            subprocess.CalledProcessError,
+            json.JSONDecodeError,
+            FileNotFoundError,
+        ) as e:
             logger.debug(f"Could not query Firewall: {e}")
-        
+
         return {
             "enabled": False,
             "enabled_profiles": [],
@@ -121,14 +135,14 @@ class SecurityInfo:
                 "-Name 'ConsentPromptBehaviorAdmin' 2>/dev/null | "
                 "Select-Object -ExpandProperty 'ConsentPromptBehaviorAdmin'"
             )
-            
+
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            
+
             if result.returncode == 0:
                 try:
                     value = int(result.stdout.strip())
@@ -144,7 +158,7 @@ class SecurityInfo:
             logger.warning("UAC query timed out")
         except FileNotFoundError:
             pass
-        
+
         return {
             "enabled": True,
             "status": "Unknown",
@@ -170,11 +184,15 @@ class SecurityInfo:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                creationflags=_SUBPROCESS_FLAGS
+                creationflags=_SUBPROCESS_FLAGS,
             )
             if result.returncode == 0:
                 return result.stdout.strip()
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ) as e:
             logger.debug(f"PowerShell command failed: {e}")
         return None
 
@@ -193,39 +211,39 @@ class SecurityInfo:
                 "@{Status='NotAvailable'; Method='None'} | ConvertTo-Json "
                 "}"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_cmd)
             if output:
                 data = json.loads(output)
                 status = data.get("Status", "Unknown")
                 method = data.get("Method", "None")
-                
+
                 if status == "On":
                     return {
                         "enabled": True,
                         "status": "Enabled",
                         "method": method,
-                        "detail": f"BitLocker ({method})"
+                        "detail": f"BitLocker ({method})",
                     }
                 elif status == "Off":
                     return {
                         "enabled": False,
                         "status": "Disabled",
                         "method": "None",
-                        "detail": "Not encrypted"
+                        "detail": "Not encrypted",
                     }
                 elif status != "NotAvailable":
                     return {
                         "enabled": False,
                         "status": status,
                         "method": method,
-                        "detail": f"BitLocker: {status}"
+                        "detail": f"BitLocker: {status}",
                     }
         except json.JSONDecodeError:
             logger.debug("Failed to parse BitLocker JSON response")
         except Exception as e:
             logger.debug(f"Could not query BitLocker: {e}")
-        
+
         # Fallback: Check via WMI EncryptableVolume (works without admin on some systems)
         try:
             ps_wmi = (
@@ -248,18 +266,18 @@ class SecurityInfo:
                             "enabled": True,
                             "status": "Enabled",
                             "method": "BitLocker",
-                            "detail": "BitLocker active"
+                            "detail": "BitLocker active",
                         }
                     elif status == "Off":
                         return {
                             "enabled": False,
-                            "status": "Disabled", 
+                            "status": "Disabled",
                             "method": "None",
-                            "detail": "Not encrypted"
+                            "detail": "Not encrypted",
                         }
         except Exception as e:
             logger.debug(f"WMI BitLocker fallback failed: {e}")
-        
+
         # Final fallback: Check registry for Device Encryption
         try:
             ps_registry = (
@@ -275,16 +293,16 @@ class SecurityInfo:
                         "enabled": True,
                         "status": "Enabled",
                         "method": "Device Encryption",
-                        "detail": "Device Encryption active"
+                        "detail": "Device Encryption active",
                     }
         except Exception as e:
             logger.debug(f"Registry encryption check failed: {e}")
-        
+
         return {
             "enabled": False,
             "status": "NotAvailable",
             "method": "None",
-            "detail": "BitLocker not available (run as admin)"
+            "detail": "BitLocker not available (run as admin)",
         }
 
     @staticmethod
@@ -295,9 +313,9 @@ class SecurityInfo:
             "lastInstallDate": None,
             "pendingUpdates": 0,
             "restartRequired": False,
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Get last update install time
             ps_last_update = (
@@ -309,15 +327,19 @@ class SecurityInfo:
                 "  if ($lastUpdate) { $lastUpdate.Date.ToString('o') } else { 'None' } "
                 "} else { 'None' }"
             )
-            
-            last_update_output = SecurityInfo._run_powershell(ps_last_update, timeout=15)
-            if last_update_output and last_update_output != 'None':
+
+            last_update_output = SecurityInfo._run_powershell(
+                ps_last_update, timeout=15
+            )
+            if last_update_output and last_update_output != "None":
                 try:
                     # Parse ISO format date
-                    result["lastInstallDate"] = last_update_output.split('.')[0]  # Remove milliseconds
+                    result["lastInstallDate"] = last_update_output.split(".")[
+                        0
+                    ]  # Remove milliseconds
                 except Exception:
                     result["lastInstallDate"] = last_update_output
-            
+
             # Check for pending updates and restart required
             ps_pending = (
                 "$updateSession = New-Object -ComObject Microsoft.Update.Session; "
@@ -330,13 +352,13 @@ class SecurityInfo:
                 "$restartRequired = Test-Path $rebootKey; "
                 "@{Pending=$pendingCount; RestartRequired=$restartRequired} | ConvertTo-Json"
             )
-            
+
             pending_output = SecurityInfo._run_powershell(ps_pending, timeout=30)
             if pending_output:
                 data = json.loads(pending_output)
                 result["pendingUpdates"] = data.get("Pending", 0)
                 result["restartRequired"] = data.get("RestartRequired", False)
-            
+
             # Determine overall status
             if result["restartRequired"]:
                 result["status"] = "RestartRequired"
@@ -347,12 +369,12 @@ class SecurityInfo:
             else:
                 result["status"] = "UpToDate"
                 result["detail"] = "System is up to date"
-                
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse Windows Update JSON")
         except Exception as e:
             logger.debug(f"Could not query Windows Update: {e}")
-        
+
         return result
 
     @staticmethod
@@ -362,9 +384,9 @@ class SecurityInfo:
             "enabled": False,
             "nlaEnabled": True,
             "status": "Unknown",
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Check RDP enabled status via registry
             ps_rdp = (
@@ -374,17 +396,17 @@ class SecurityInfo:
                 "$nlaEnabled = (Get-ItemProperty -Path $nlaKey -Name 'UserAuthentication' -ErrorAction SilentlyContinue).UserAuthentication; "
                 "@{RdpDisabled=$rdpEnabled; NlaEnabled=$nlaEnabled} | ConvertTo-Json"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_rdp)
             if output:
                 data = json.loads(output)
                 # fDenyTSConnections: 0 = RDP enabled, 1 = RDP disabled
                 rdp_disabled = data.get("RdpDisabled", 1)
                 nla_enabled = data.get("NlaEnabled", 1)
-                
-                result["enabled"] = (rdp_disabled == 0)
-                result["nlaEnabled"] = (nla_enabled == 1)
-                
+
+                result["enabled"] = rdp_disabled == 0
+                result["nlaEnabled"] = nla_enabled == 1
+
                 if result["enabled"]:
                     result["status"] = "Enabled"
                     if result["nlaEnabled"]:
@@ -394,34 +416,30 @@ class SecurityInfo:
                 else:
                     result["status"] = "Disabled"
                     result["detail"] = "Remote Desktop is disabled"
-                    
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse RDP JSON")
         except Exception as e:
             logger.debug(f"Could not query RDP status: {e}")
-        
+
         return result
 
     @staticmethod
     def get_admin_account_count() -> Dict[str, Any]:
         """Get count of members in the local Administrators group."""
-        result = {
-            "count": 0,
-            "status": "Unknown",
-            "detail": "Unable to determine"
-        }
-        
+        result = {"count": 0, "status": "Unknown", "detail": "Unable to determine"}
+
         try:
             ps_admins = (
                 "$admins = Get-LocalGroupMember -Group 'Administrators' -ErrorAction SilentlyContinue; "
                 "if ($admins) { $admins.Count } else { 0 }"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_admins)
             if output:
                 count = int(output)
                 result["count"] = count
-                
+
                 if count <= 2:
                     result["status"] = "Good"
                     result["detail"] = f"{count} admin(s)"
@@ -431,12 +449,12 @@ class SecurityInfo:
                 else:
                     result["status"] = "Risk"
                     result["detail"] = f"{count} admins (too many)"
-                    
+
         except (ValueError, TypeError):
             logger.debug("Failed to parse admin count")
         except Exception as e:
             logger.debug(f"Could not query admin count: {e}")
-        
+
         return result
 
     @staticmethod
@@ -445,9 +463,9 @@ class SecurityInfo:
         result = {
             "level": "Unknown",
             "status": "Unknown",
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Query both UAC registry values
             ps_uac = (
@@ -457,14 +475,14 @@ class SecurityInfo:
                 "$promptOnSecure = (Get-ItemProperty -Path $regPath -Name 'PromptOnSecureDesktop' -ErrorAction SilentlyContinue).PromptOnSecureDesktop; "
                 "@{EnableLUA=$enableLUA; ConsentAdmin=$consentAdmin; PromptSecure=$promptOnSecure} | ConvertTo-Json"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_uac)
             if output:
                 data = json.loads(output)
                 enable_lua = data.get("EnableLUA", 1)
                 consent_admin = data.get("ConsentAdmin", 5)
                 prompt_secure = data.get("PromptSecure", 1)
-                
+
                 if enable_lua == 0:
                     result["level"] = "Disabled"
                     result["status"] = "Disabled"
@@ -485,12 +503,12 @@ class SecurityInfo:
                     result["level"] = "Medium"
                     result["status"] = "Medium"
                     result["detail"] = "Custom UAC settings"
-                    
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse UAC JSON")
         except Exception as e:
             logger.debug(f"Could not query UAC level: {e}")
-        
+
         return result
 
     @staticmethod
@@ -499,9 +517,9 @@ class SecurityInfo:
         result = {
             "enabled": False,
             "status": "Unknown",
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Query SmartScreen registry setting
             ps_smartscreen = (
@@ -513,15 +531,15 @@ class SecurityInfo:
                 "}; "
                 "$smartScreen"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_smartscreen)
             if output:
                 output_lower = output.lower()
-                if output_lower in ['on', 'requireadmin', 'warn', '1', '2']:
+                if output_lower in ["on", "requireadmin", "warn", "1", "2"]:
                     result["enabled"] = True
                     result["status"] = "Enabled"
                     result["detail"] = "SmartScreen is protecting your PC"
-                elif output_lower in ['off', '0']:
+                elif output_lower in ["off", "0"]:
                     result["enabled"] = False
                     result["status"] = "Disabled"
                     result["detail"] = "SmartScreen protection is off"
@@ -535,10 +553,10 @@ class SecurityInfo:
                 result["enabled"] = True
                 result["status"] = "Enabled"
                 result["detail"] = "Default SmartScreen (assumed)"
-                    
+
         except Exception as e:
             logger.debug(f"Could not query SmartScreen: {e}")
-        
+
         return result
 
     @staticmethod
@@ -548,9 +566,9 @@ class SecurityInfo:
             "enabled": False,
             "status": "Unknown",
             "vbsEnabled": False,
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Query Device Guard / VBS status
             ps_hvci = (
@@ -563,16 +581,16 @@ class SecurityInfo:
                 "  @{VBSState=0; HVCIRunning=$false; VBSRunning=$false} | ConvertTo-Json "
                 "}"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_hvci)
             if output:
                 data = json.loads(output)
                 hvci_running = data.get("HVCIRunning", False)
                 vbs_running = data.get("VBSRunning", False)
-                
+
                 result["vbsEnabled"] = vbs_running
                 result["enabled"] = hvci_running
-                
+
                 if hvci_running:
                     result["status"] = "Enabled"
                     result["detail"] = "Memory Integrity is active"
@@ -582,12 +600,12 @@ class SecurityInfo:
                 else:
                     result["status"] = "Disabled"
                     result["detail"] = "Memory Integrity is off"
-                    
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse HVCI JSON")
         except Exception as e:
             logger.debug(f"Could not query Memory Integrity: {e}")
-        
+
         return result
 
     @staticmethod
@@ -610,54 +628,58 @@ class SecurityInfo:
             "present": False,
             "enabled": False,
             "version": "Unknown",
-            "detail": "Unable to determine"
+            "detail": "Unable to determine",
         }
-        
+
         try:
             # Primary method: Get-Tpm cmdlet (requires admin, but often works)
             ps_tpm = "Get-Tpm | ConvertTo-Json -Compress"
             output = SecurityInfo._run_powershell(ps_tpm, timeout=10)
-            
+
             if output:
                 data = json.loads(output)
                 tpm_present = data.get("TpmPresent", False)
                 tpm_ready = data.get("TpmReady", False)
                 tpm_enabled = data.get("TpmEnabled", tpm_ready)
-                
+
                 result["present"] = tpm_present
                 result["enabled"] = tpm_enabled
-                
+
                 # Try to get version from ManufacturerVersionFull20 or similar
                 spec_version = data.get("ManufacturerVersionFull20", "")
                 if not spec_version:
                     # Check for SpecVersion in different format
                     spec_version = str(data.get("ManufacturerVersion", ""))
-                
+
                 # Determine TPM version (1.2 or 2.0)
                 if tpm_present:
                     # Check if it's TPM 2.0 by looking at various indicators
-                    manufacturer_version = str(data.get("ManufacturerVersionFull20", ""))
+                    manufacturer_version = str(
+                        data.get("ManufacturerVersionFull20", "")
+                    )
                     if manufacturer_version or "2.0" in str(data):
                         result["version"] = "2.0"
                     else:
                         # Try to detect from other fields
                         result["version"] = "2.0"  # Most modern systems have 2.0
-                    
+
                     if tpm_enabled:
                         result["detail"] = f"TPM {result['version']} active"
                     else:
-                        result["detail"] = f"TPM {result['version']} present but not enabled"
+                        result["detail"] = (
+                            f"TPM {result['version']} present but not enabled"
+                        )
                 else:
                     result["version"] = "Not present"
                     result["detail"] = "No TPM detected"
-                
+
                 return result
-                
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse Get-Tpm JSON, trying WMI fallback")
         except Exception as e:
             logger.debug(f"Get-Tpm failed: {e}, trying WMI fallback")
-        
+
         # Fallback: WMI method
         try:
             ps_wmi = (
@@ -672,16 +694,18 @@ class SecurityInfo:
                 "  @{Present=$false} | ConvertTo-Json "
                 "}"
             )
-            
+
             output = SecurityInfo._run_powershell(ps_wmi, timeout=10)
             if output:
                 data = json.loads(output)
                 tpm_present = data.get("Present", False)
-                
+
                 if tpm_present:
                     result["present"] = True
-                    result["enabled"] = data.get("IsEnabled", False) or data.get("IsActivated", False)
-                    
+                    result["enabled"] = data.get("IsEnabled", False) or data.get(
+                        "IsActivated", False
+                    )
+
                     # Parse spec version (e.g., "1.2, 2.0" or "2.0")
                     spec_version = data.get("SpecVersion", "")
                     if spec_version:
@@ -694,21 +718,23 @@ class SecurityInfo:
                             result["version"] = spec_version.split(",")[0].strip()
                     else:
                         result["version"] = "Unknown"
-                    
+
                     if result["enabled"]:
                         result["detail"] = f"TPM {result['version']} active"
                     else:
-                        result["detail"] = f"TPM {result['version']} present but disabled"
+                        result["detail"] = (
+                            f"TPM {result['version']} present but disabled"
+                        )
                 else:
                     result["present"] = False
                     result["version"] = "Not present"
                     result["detail"] = "No TPM hardware found"
-                    
+
         except json.JSONDecodeError:
             logger.debug("Failed to parse WMI TPM JSON")
         except Exception as e:
             logger.debug(f"WMI TPM query failed: {e}")
-        
+
         # Final fallback: Registry-based detection (works without admin)
         if not result["present"]:
             try:
@@ -733,14 +759,16 @@ class SecurityInfo:
                             result["version"] = "1.2"
                         else:
                             result["version"] = "2.0"  # Assume 2.0 on modern systems
-                        
+
                         # We can't determine enabled state without admin, assume enabled if service exists
                         result["enabled"] = True
-                        result["detail"] = f"TPM {result['version']} detected (run as admin for details)"
-                        
+                        result["detail"] = (
+                            f"TPM {result['version']} detected (run as admin for details)"
+                        )
+
             except Exception as e:
                 logger.debug(f"Registry TPM detection failed: {e}")
-        
+
         return result
 
     @staticmethod
@@ -760,7 +788,7 @@ class SecurityInfo:
         uac = SecurityInfo.get_uac_level()
         smartscreen = SecurityInfo.get_smartscreen_status()
         memory_int = SecurityInfo.get_memory_integrity_status()
-        
+
         # Try to get Secure Boot status
         secure_boot_enabled = False
         secure_boot_status = "N/A"
@@ -776,11 +804,11 @@ class SecurityInfo:
                     secure_boot_status = "Disabled"
         except Exception:
             pass
-        
+
         # === INTERNET PROTECTION (Firewall + Antivirus) ===
         fw_on = firewall.get("enabled", False)
         av_on = defender.get("enabled", False)
-        
+
         if fw_on and av_on:
             internet_status = "On"
             internet_detail = "Firewall and antivirus running"
@@ -799,24 +827,29 @@ class SecurityInfo:
             internet_detail = "Firewall and antivirus are off"
             internet_good = False
             internet_warning = False
-        
+
         # === UPDATES ===
         update_raw_status = win_update.get("status", "Unknown")
         last_install = win_update.get("lastInstallDate", "")
-        
+
         # Format last install date nicely
         update_last_str = ""
         update_days_ago = None
         if last_install:
             try:
                 from datetime import datetime
+
                 # Parse ISO date
-                dt = datetime.fromisoformat(last_install.replace('Z', '+00:00').split('+')[0])
+                dt = datetime.fromisoformat(
+                    last_install.replace("Z", "+00:00").split("+")[0]
+                )
                 update_days_ago = (datetime.now() - dt).days
                 update_last_str = dt.strftime("%d %b %Y")
             except Exception:
-                update_last_str = last_install[:10] if len(last_install) >= 10 else last_install
-        
+                update_last_str = (
+                    last_install[:10] if len(last_install) >= 10 else last_install
+                )
+
         if update_raw_status == "UpToDate":
             updates_status = "Up to date"
             updates_good = True
@@ -839,38 +872,48 @@ class SecurityInfo:
                 updates_status = "Unknown"
                 updates_good = False
                 updates_warning = True
-        
-        updates_detail = f"Last updated: {update_last_str}" if update_last_str else "Check Windows Update"
-        
+
+        updates_detail = (
+            f"Last updated: {update_last_str}"
+            if update_last_str
+            else "Check Windows Update"
+        )
+
         # === DEVICE PROTECTION (TPM + Secure Boot + Disk Encryption) ===
         tpm_present = tpm.get("present", False)
         tpm_enabled = tpm.get("enabled", False)
         tpm_version = tpm.get("version", "Unknown")
         disk_enc_on = disk_enc.get("enabled", False)
-        
+
         device_parts = []
         if tpm_present and tpm_enabled:
             device_parts.append(f"TPM {tpm_version}")
         elif tpm_present:
             device_parts.append("TPM (disabled)")
-        
+
         if secure_boot_enabled:
             device_parts.append("Secure Boot")
-        
+
         if disk_enc_on:
             device_parts.append("C: encrypted")
-        
+
         # Determine device protection level
         has_tpm = tpm_present and tpm_enabled
         has_secureboot = secure_boot_enabled
         has_encryption = disk_enc_on
-        
+
         if has_tpm and has_secureboot and has_encryption:
             device_status = "Strong"
             device_good = True
             device_warning = False
-            device_detail = ", ".join(device_parts) if device_parts else "All protections active"
-        elif (has_tpm and has_secureboot) or (has_tpm and has_encryption) or (has_secureboot and has_encryption):
+            device_detail = (
+                ", ".join(device_parts) if device_parts else "All protections active"
+            )
+        elif (
+            (has_tpm and has_secureboot)
+            or (has_tpm and has_encryption)
+            or (has_secureboot and has_encryption)
+        ):
             device_status = "Okay"
             device_good = False
             device_warning = True
@@ -881,40 +924,44 @@ class SecurityInfo:
                 missing.append("no TPM")
             if not has_secureboot:
                 missing.append("Secure Boot off")
-            device_detail = ", ".join(device_parts) if device_parts else "Partial protection"
+            device_detail = (
+                ", ".join(device_parts) if device_parts else "Partial protection"
+            )
             if missing:
                 device_detail += f" ({', '.join(missing)})"
         elif has_tpm or has_secureboot:
             device_status = "Okay"
             device_good = False
             device_warning = True
-            device_detail = ", ".join(device_parts) if device_parts else "Limited protection"
+            device_detail = (
+                ", ".join(device_parts) if device_parts else "Limited protection"
+            )
         else:
             device_status = "Weak"
             device_good = False
             device_warning = False
             device_detail = "TPM and Secure Boot not enabled"
-        
+
         # === REMOTE & APPS (RDP + Admins + UAC + SmartScreen) ===
         rdp_on = rdp.get("enabled", False)
         admin_count = admins.get("count", 0)
         uac_level = uac.get("level", "Unknown")
         smartscreen_on = smartscreen.get("enabled", True)
-        
+
         # Count risky conditions
         risky_count = 0
         remote_parts = []
-        
+
         if rdp_on:
             risky_count += 2  # RDP on is more serious
             remote_parts.append("RDP on")
         else:
             remote_parts.append("RDP off")
-        
+
         remote_parts.append(f"{admin_count} admin{'s' if admin_count != 1 else ''}")
         if admin_count > 2:
             risky_count += 1
-        
+
         if uac_level in ["High", "Medium"]:
             remote_parts.append(f"UAC {uac_level.lower()}")
         elif uac_level == "Disabled":
@@ -923,10 +970,10 @@ class SecurityInfo:
         elif uac_level == "Low":
             risky_count += 1
             remote_parts.append("UAC low")
-        
+
         if not smartscreen_on:
             risky_count += 1
-        
+
         if risky_count == 0:
             remote_status = "Safe"
             remote_good = True
@@ -939,14 +986,14 @@ class SecurityInfo:
             remote_status = "Risky"
             remote_good = False
             remote_warning = False
-        
+
         remote_detail = ", ".join(remote_parts)
-        
+
         # === OVERALL STATUS ===
         # Critical: firewall OR antivirus off = At risk
         # Warning: any single category not good = Needs attention
         # Good: all categories good = Protected
-        
+
         if not fw_on or not av_on:
             overall_status = "At risk"
             overall_good = False
@@ -957,7 +1004,9 @@ class SecurityInfo:
                 overall_detail = "Firewall is off"
             else:
                 overall_detail = "Antivirus is off"
-        elif not internet_good or not updates_good or not device_good or not remote_good:
+        elif (
+            not internet_good or not updates_good or not device_good or not remote_good
+        ):
             overall_status = "Needs attention"
             overall_good = False
             overall_warning = True
@@ -967,7 +1016,7 @@ class SecurityInfo:
             overall_good = True
             overall_warning = False
             overall_detail = "All key protections are on"
-        
+
         return {
             # Overall status card
             "overall": {
@@ -1022,7 +1071,7 @@ class SecurityInfo:
                 "uacLevel": uac_level,
                 "smartScreenEnabled": smartscreen_on,
                 "memoryIntegrityEnabled": memory_int.get("enabled", False),
-            }
+            },
         }
 
 
@@ -1031,15 +1080,15 @@ if __name__ == "__main__":
     status = SecurityInfo.get_all_security_status()
     print("=== Basic Security Status ===")
     print(json.dumps(status, indent=2, default=str))
-    
+
     print("\n=== Extended Security Status ===")
     extended = SecurityInfo.get_extended_security_status()
     print(json.dumps(extended, indent=2, default=str))
-    
+
     print("\n=== TPM Status ===")
     tpm = SecurityInfo.get_tpm_status()
     print(json.dumps(tpm, indent=2, default=str))
-    
+
     print("\n=== Simplified Security Status ===")
     simplified = SecurityInfo.get_simplified_security_status()
     print(json.dumps(simplified, indent=2, default=str))

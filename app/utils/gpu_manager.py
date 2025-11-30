@@ -398,7 +398,11 @@ class AMDMonitor:
             return self.performance_counters
 
         try:
-            for counter in self._wmi_cache.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine():
+            for (
+                counter
+            ) in (
+                self._wmi_cache.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine()
+            ):
                 name = counter.Name
                 if "phys_" in name:
                     try:

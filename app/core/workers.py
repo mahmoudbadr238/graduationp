@@ -109,7 +109,7 @@ class WorkerWatchdog(QObject):
 
     # Default threshold (can be overridden per-worker)
     DEFAULT_STALE_THRESHOLD_SEC = 15
-    
+
     # Extended threshold for long-running operations (network scans, etc.)
     EXTENDED_STALE_THRESHOLD_SEC = 120
 
@@ -128,10 +128,13 @@ class WorkerWatchdog(QObject):
             self._workers[worker_id] = datetime.now()
             # Use provided threshold, or default
             self._worker_thresholds[worker_id] = (
-                stale_threshold_sec if stale_threshold_sec is not None 
+                stale_threshold_sec
+                if stale_threshold_sec is not None
                 else self.DEFAULT_STALE_THRESHOLD_SEC
             )
-            logger.debug(f"Watchdog: registered '{worker_id}' with {self._worker_thresholds[worker_id]}s threshold")
+            logger.debug(
+                f"Watchdog: registered '{worker_id}' with {self._worker_thresholds[worker_id]}s threshold"
+            )
 
     def heartbeat(self, worker_id: str):
         """Worker sends heartbeat to indicate it's alive"""

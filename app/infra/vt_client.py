@@ -51,7 +51,9 @@ class VirusTotalClient:
         """Enforce rate limiting to stay within API quota."""
         now = time.time()
         # Remove old requests outside the window
-        self._request_times = [t for t in self._request_times if now - t < RATE_LIMIT_WINDOW]
+        self._request_times = [
+            t for t in self._request_times if now - t < RATE_LIMIT_WINDOW
+        ]
 
         # If we've hit the limit, wait
         if len(self._request_times) >= REQUEST_RATE_LIMIT:
@@ -84,18 +86,22 @@ class VirusTotalClient:
                 return response
 
             except requests.Timeout:
-                logger.warning(f"Timeout on attempt {attempt + 1}/{RETRY_ATTEMPTS} for {url}")
+                logger.warning(
+                    f"Timeout on attempt {attempt + 1}/{RETRY_ATTEMPTS} for {url}"
+                )
                 if attempt < RETRY_ATTEMPTS - 1:
-                    wait_time = RETRY_BACKOFF ** attempt
+                    wait_time = RETRY_BACKOFF**attempt
                     time.sleep(wait_time)
                 continue
 
             except requests.HTTPError as e:
                 # 429 = rate limited, 503 = service unavailable
                 if e.response.status_code in (429, 503):
-                    logger.warning(f"Service throttling (HTTP {e.response.status_code}), retrying...")
+                    logger.warning(
+                        f"Service throttling (HTTP {e.response.status_code}), retrying..."
+                    )
                     if attempt < RETRY_ATTEMPTS - 1:
-                        wait_time = RETRY_BACKOFF ** attempt
+                        wait_time = RETRY_BACKOFF**attempt
                         time.sleep(wait_time)
                     continue
                 # Other HTTP errors - don't retry
@@ -107,7 +113,7 @@ class VirusTotalClient:
                 logger.error(f"Request failed: {e}")
                 self._last_error = str(e)
                 if attempt < RETRY_ATTEMPTS - 1:
-                    wait_time = RETRY_BACKOFF ** attempt
+                    wait_time = RETRY_BACKOFF**attempt
                     time.sleep(wait_time)
                     continue
                 return None
@@ -184,7 +190,10 @@ class VirusTotalClient:
             file_size = os.path.getsize(file_path)
             if file_size > MAX_FILE_SIZE:
                 logger.error(f"File too large: {file_size} > {MAX_FILE_SIZE}")
-                return {"error": f"File too large (max {MAX_FILE_SIZE/1024/1024}MB)", "file": file_path}
+                return {
+                    "error": f"File too large (max {MAX_FILE_SIZE/1024/1024}MB)",
+                    "file": file_path,
+                }
 
             logger.info(f"Uploading file {file_path} ({file_size} bytes)")
 
@@ -302,7 +311,10 @@ class VirusTotalClient:
             response = self._request_with_retry("GET", endpoint)
 
             if not response:
-                return {"error": self._last_error or "Request failed", "analysis_id": analysis_id}
+                return {
+                    "error": self._last_error or "Request failed",
+                    "analysis_id": analysis_id,
+                }
 
             data = response.json()
             attributes = data.get("data", {}).get("attributes", {})

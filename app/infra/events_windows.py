@@ -18,6 +18,7 @@ if _IS_WINDOWS:
     try:
         import win32con
         import win32evtlog
+
         _WIN32_AVAILABLE = True
     except ImportError:
         _WIN32_AVAILABLE = False
@@ -39,7 +40,7 @@ class WindowsEventReader(IEventReader):
 
     # Map Windows event types to severity levels (only set if win32 available)
     EVENT_TYPE_MAP = {}
-    
+
     def __init__(self):
         """Initialize the event reader."""
         if _WIN32_AVAILABLE:
@@ -53,14 +54,14 @@ class WindowsEventReader(IEventReader):
 
     def tail(self, limit: int = 100) -> Iterable[EventItem]:
         """Return recent Windows event log entries.
-        
+
         Returns gracefully with available events if some sources are inaccessible.
         """
         # Return empty on non-Windows or if win32 modules unavailable
         if not _WIN32_AVAILABLE:
             logger.info("Event viewer not available on this platform")
             return []
-        
+
         events = []
         per_source_limit = limit // 2
 
@@ -83,36 +84,36 @@ class WindowsEventReader(IEventReader):
         # Sort by timestamp descending and limit
         events.sort(key=lambda e: e.timestamp, reverse=True)
         result = events[:limit]
-        
+
         if not result:
             logger.warning("No events available from any source")
             # Return empty list gracefully instead of failing
-        
+
         return result
 
     def _read_source(self, source: str, limit: int) -> list[EventItem]:
         """Read events from a specific source with encoding-safe handling.
-        
+
         Args:
             source: Event log source name (Application, System, Security)
             limit: Maximum events to read per batch
-            
+
         Returns:
             List of EventItem objects, may be empty if source unavailable
-            
+
         Raises:
             PermissionError: If access denied (e.g., Security log without admin)
             OSError: If source doesn't exist or is inaccessible
         """
         events = []
-        
+
         try:
             hand = win32evtlog.OpenEventLog(None, source)
         except Exception as e:
             # Gracefully handle Event Viewer unavailable or closed
             logger.error(f"Cannot open {source} event log: {e}")
             raise
-            
+
         try:
             flags = (
                 win32evtlog.EVENTLOG_BACKWARDS_READ
@@ -155,12 +156,14 @@ class WindowsEventReader(IEventReader):
                         except Exception as e:
                             logger.warning(f"Error processing event: {e}")
                             continue
-                    
+
                     batch_count += 1
                     if batch_count > 100:  # Prevent infinite loops
-                        logger.warning(f"Read {batch_count} batches from {source}, stopping")
+                        logger.warning(
+                            f"Read {batch_count} batches from {source}, stopping"
+                        )
                         break
-                        
+
                 except OSError as e:
                     logger.error(f"Error reading batch from {source}: {e}")
                     break
@@ -202,7 +205,7 @@ class WindowsEventReader(IEventReader):
                     if s:
                         # Replace any non-ASCII characters with safe alternatives
                         try:
-                            safe_s = s.encode('ascii', errors='replace').decode('ascii')
+                            safe_s = s.encode("ascii", errors="replace").decode("ascii")
                             inserts.append(safe_s)
                         except Exception:
                             inserts.append("(text)")

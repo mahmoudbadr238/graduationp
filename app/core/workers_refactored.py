@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class WorkerSignals(QObject):
     """
     Thread-safe signals emitted by workers.
-    
+
     These signals are automatically queued to the main thread by Qt's signal system
     when emitted from worker threads.
     """
@@ -177,13 +177,17 @@ class CancellableWorker(QRunnable):
             # Check timeout
             elapsed_ms = self.get_elapsed_ms()
             if self.timeout_ms > 0 and elapsed_ms > self.timeout_ms:
-                raise TimeoutError(f"Task exceeded {self.timeout_ms}ms timeout "
-                                  f"(actual: {elapsed_ms:.0f}ms)")
+                raise TimeoutError(
+                    f"Task exceeded {self.timeout_ms}ms timeout "
+                    f"(actual: {elapsed_ms:.0f}ms)"
+                )
 
             # Check cancellation
             if self.is_cancelled():
                 self.signals.cancelled.emit(self.worker_id)
-                logger.info(f"Worker '{self.worker_id}' cancelled after {elapsed_ms:.0f}ms")
+                logger.info(
+                    f"Worker '{self.worker_id}' cancelled after {elapsed_ms:.0f}ms"
+                )
                 return
 
             # Success
@@ -195,8 +199,10 @@ class CancellableWorker(QRunnable):
         except Exception as e:
             elapsed_ms = self.get_elapsed_ms()
             error_msg = f"{type(e).__name__}: {e!s}"
-            logger.exception(f"Worker '{self.worker_id}' failed after {elapsed_ms:.0f}ms: "
-                           f"{error_msg}\n{traceback.format_exc()}")
+            logger.exception(
+                f"Worker '{self.worker_id}' failed after {elapsed_ms:.0f}ms: "
+                f"{error_msg}\n{traceback.format_exc()}"
+            )
 
             with QMutexLocker(self._mutex):
                 self._status = "failed"
@@ -217,7 +223,7 @@ class WorkerWatchdog(QObject):
     Usage:
         watchdog = WorkerWatchdog(check_interval_ms=5000, stale_threshold_sec=15)
         watchdog.workerStalled.connect(on_worker_stalled)
-        
+
         worker = CancellableWorker(...)
         worker.signals.heartbeat.connect(watchdog.heartbeat)
         watchdog.register_worker("task-1")
@@ -250,8 +256,10 @@ class WorkerWatchdog(QObject):
         self._stale_threshold_sec = stale_threshold_sec
         self._timer.start(check_interval_ms)
 
-        logger.debug(f"WorkerWatchdog initialized (check={check_interval_ms}ms, "
-                    f"stale={stale_threshold_sec}s)")
+        logger.debug(
+            f"WorkerWatchdog initialized (check={check_interval_ms}ms, "
+            f"stale={stale_threshold_sec}s)"
+        )
 
     def register_worker(self, worker_id: str) -> None:
         """Register a worker for heartbeat monitoring.
@@ -304,8 +312,10 @@ class WorkerWatchdog(QObject):
 
         # Emit signals outside lock
         for worker_id, elapsed in stalled_workers:
-            logger.warning(f"Watchdog: '{worker_id}' stalled "
-                          f"({elapsed:.1f}s since last heartbeat)")
+            logger.warning(
+                f"Watchdog: '{worker_id}' stalled "
+                f"({elapsed:.1f}s since last heartbeat)"
+            )
             self.workerStalled.emit(worker_id, elapsed)
 
             # Auto-unregister to prevent repeated alerts

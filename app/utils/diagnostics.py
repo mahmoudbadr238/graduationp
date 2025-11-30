@@ -126,7 +126,6 @@ def collect_diagnostics() -> dict[str, Any]:
     return diagnostics
 
 
-
 def run_diagnostics() -> int:
     """Run diagnostic smoke test and print system information.
 
@@ -142,7 +141,9 @@ def run_diagnostics() -> int:
     # System info
     print("System Information:")
     sys_info = diags.get("system", {})
-    print(f"  OS: {sys_info.get('os')} {sys_info.get('os_version')} ({sys_info.get('architecture')})")
+    print(
+        f"  OS: {sys_info.get('os')} {sys_info.get('os_version')} ({sys_info.get('architecture')})"
+    )
     print(f"  Python: {sys_info.get('python_version')}")
     print(f"  Executable: {sys_info.get('python_executable')}")
     priv = diags.get("privileges", "unknown")
@@ -219,7 +220,9 @@ def run_diagnostics() -> int:
         if integrations.get("virustotal_available"):
             print("  [OK] VirusTotal: API key configured")
         else:
-            print("  [WARNING] VirusTotal: VT_API_KEY not set (file/URL scanning limited)")
+            print(
+                "  [WARNING] VirusTotal: VT_API_KEY not set (file/URL scanning limited)"
+            )
     else:
         print(f"  [WARNING] Could not check integrations: {integrations['error']}")
 

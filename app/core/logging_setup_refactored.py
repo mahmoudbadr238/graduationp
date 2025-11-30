@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Optional Sentry (only if DSN is set)
 try:
     import sentry_sdk
+
     SENTRY_AVAILABLE = True
 except ImportError:
     sentry_sdk = None
@@ -45,7 +46,7 @@ except ImportError:
 class QtLogSignalAdapter(logging.Handler):
     """
     Adapter that forwards log records to Qt signals.
-    
+
     Allows QML to display log notifications (toasts, alerts) in real-time.
     Only forwards WARNING and above to avoid notification spam.
     """
@@ -102,10 +103,10 @@ class QtCrashHandler(QObject):
 class StructuredFormatter(logging.Formatter):
     """
     Structured logging formatter with standardized levels.
-    
+
     Formats log records with color codes and consistent structure:
       [TIMESTAMP] [LEVEL] [LOGGER] message
-    
+
     Example output:
       2024-01-15 10:30:45.123 [INFO] app.core.container: Container initialized
       2024-01-15 10:30:45.234 [WARNING] app.infra.nmap: Nmap not found in PATH
@@ -173,10 +174,15 @@ def setup_logging(app_name: str = "Sentinel") -> None:
     # Set console encoding to UTF-8 to handle Unicode characters
     if sys.platform == "win32":
         import io
+
         # On Windows, ensure stdout/stderr use UTF-8
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
-    
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace"
+        )
+
     config = get_config()
     logs_dir = config.logs_dir
 

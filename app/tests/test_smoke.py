@@ -17,7 +17,8 @@ def test_diagnose_command():
     """Test that --diagnose flag works without errors."""
     result = subprocess.run(
         [sys.executable, "-m", "app", "--diagnose"],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
         text=True,
         timeout=30,
     )
@@ -35,7 +36,8 @@ def test_export_diagnostics():
     try:
         result = subprocess.run(
             [sys.executable, "-m", "app", "--export-diagnostics", str(output_file)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             timeout=30,
         )
@@ -56,7 +58,8 @@ def test_reset_settings():
     """Test that --reset-settings flag works."""
     result = subprocess.run(
         [sys.executable, "-m", "app", "--reset-settings"],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
         text=True,
         timeout=30,
     )

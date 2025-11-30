@@ -93,7 +93,7 @@ class DesktopSecurityApplication:
         # Add QML import paths
         qml_path = os.path.join(workspace_root, "qml")
         self.engine.addImportPath(qml_path)
-        
+
         # Add subdirectories for component imports
         self.engine.addImportPath(os.path.join(qml_path, "components"))
         self.engine.addImportPath(os.path.join(qml_path, "theme"))
@@ -148,13 +148,15 @@ class DesktopSecurityApplication:
                     if self.settings_service:
                         gpu_interval = self.settings_service.updateIntervalMs
                     self.gpu_service.start(gpu_interval)
-                    print(f"[OK] GPU service initialized, started with {gpu_interval}ms interval")
+                    print(
+                        f"[OK] GPU service initialized, started with {gpu_interval}ms interval"
+                    )
                 except (ImportError, RuntimeError, OSError) as e:
                     print(f"[WARNING] GPU service initialization failed: {e}")
                     self.gpu_service = None
 
             self.orchestrator.schedule_deferred(300, "GPU Backend", init_gpu)
-            
+
             # IMMEDIATE: System Snapshot Service (cross-platform)
             try:
                 self.snapshot_service = SystemSnapshotService()
@@ -162,36 +164,46 @@ class DesktopSecurityApplication:
                 self.snapshot_service._update_metrics()
                 self.snapshot_service._update_disk_partitions()
                 self.snapshot_service._update_network_interfaces()
-                self.engine.rootContext().setContextProperty("SnapshotService", self.snapshot_service)
+                self.engine.rootContext().setContextProperty(
+                    "SnapshotService", self.snapshot_service
+                )
                 self.snapshot_service.start(2000)  # Start with 2s interval
-                print(f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%")
+                print(
+                    f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
+                )
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] System Snapshot service failed: {e}")
                 self.snapshot_service = None
-            
+
             # IMMEDIATE: Settings Service (cross-platform)
             try:
                 self.settings_service = SettingsService()
-                self.engine.rootContext().setContextProperty("SettingsService", self.settings_service)
+                self.engine.rootContext().setContextProperty(
+                    "SettingsService", self.settings_service
+                )
                 print("[OK] Settings service initialized and exposed to QML")
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] Settings service failed: {e}")
                 self.settings_service = None
-            
+
             # IMMEDIATE: Notification Service (cross-platform)
             try:
                 self.notification_service = NotificationService()
-                self.engine.rootContext().setContextProperty("NotificationService", self.notification_service)
+                self.engine.rootContext().setContextProperty(
+                    "NotificationService", self.notification_service
+                )
                 print("[OK] Notification service initialized and exposed to QML")
-                
+
                 # Connect Snapshot service to notification service for security alerts
                 if self.snapshot_service:
-                    self.snapshot_service.set_notification_service(self.notification_service)
+                    self.snapshot_service.set_notification_service(
+                        self.notification_service
+                    )
                     print("[OK] Security notifications connected")
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] Notification service failed: {e}")
                 self.notification_service = None
-                
+
         except (ImportError, RuntimeError, UnicodeEncodeError) as e:
             print(f"[ERROR] Critical backend setup failed: {e}")
             print("Application will continue with limited functionality")

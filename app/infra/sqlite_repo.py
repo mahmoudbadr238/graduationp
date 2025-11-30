@@ -33,9 +33,13 @@ class SqliteRepo(IScanRepository, IEventRepository):
     def _get_connection(self) -> sqlite3.Connection:
         """Get a database connection from pool or create new one"""
         # For now, use a simple approach (thread-safe SQLite connections)
-        conn = sqlite3.connect(str(self.db_path), timeout=CONNECTION_TIMEOUT, check_same_thread=False)
+        conn = sqlite3.connect(
+            str(self.db_path), timeout=CONNECTION_TIMEOUT, check_same_thread=False
+        )
         conn.row_factory = sqlite3.Row  # Better performance with row factories
-        conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+        conn.execute(
+            "PRAGMA journal_mode=WAL"
+        )  # Write-Ahead Logging for better concurrency
         conn.execute("PRAGMA synchronous=NORMAL")  # Balance between safety and speed
         conn.execute("PRAGMA cache_size=5000")  # Increase page cache
         return conn
@@ -47,7 +51,8 @@ class SqliteRepo(IScanRepository, IEventRepository):
             cursor = conn.cursor()
 
             # Scans table with better indexing
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS scans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     started_at TEXT NOT NULL,
@@ -58,10 +63,12 @@ class SqliteRepo(IScanRepository, IEventRepository):
                     findings TEXT,
                     meta TEXT
                 )
-            """)
+            """
+            )
 
             # Events table with better indexing
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT NOT NULL,
@@ -69,15 +76,26 @@ class SqliteRepo(IScanRepository, IEventRepository):
                     source TEXT NOT NULL,
                     message TEXT NOT NULL
                 )
-            """)
+            """
+            )
 
             # Create optimized indexes (avoiding duplicates)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_type ON scans(type)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_started ON scans(started_at DESC)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_level ON events(level)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_scans_started ON scans(started_at DESC)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_scans_status ON scans(status)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_level ON events(level)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)"
+            )
 
             conn.commit()
             logger.info(f"Database initialized at {self.db_path}")
@@ -144,7 +162,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
                         ScanRecord(
                             id=row[0],
                             started_at=datetime.fromisoformat(row[1]),
-                            finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                            finished_at=(
+                                datetime.fromisoformat(row[2]) if row[2] else None
+                            ),
                             type=ScanType(row[3]),
                             target=row[4],
                             status=row[5],
@@ -224,7 +244,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
                         ScanRecord(
                             id=row[0],
                             started_at=datetime.fromisoformat(row[1]),
-                            finished_at=datetime.fromisoformat(row[2]) if row[2] else None,
+                            finished_at=(
+                                datetime.fromisoformat(row[2]) if row[2] else None
+                            ),
                             type=ScanType(row[3]),
                             target=row[4],
                             status=row[5],
@@ -253,7 +275,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            
+
             # Use transaction for better performance
             cursor.execute("BEGIN TRANSACTION")
             try:
@@ -263,7 +285,12 @@ class SqliteRepo(IScanRepository, IEventRepository):
                     VALUES (?, ?, ?, ?)
                 """,
                     [
-                        (item.timestamp.isoformat(), item.level, item.source, item.message)
+                        (
+                            item.timestamp.isoformat(),
+                            item.level,
+                            item.source,
+                            item.message,
+                        )
                         for item in items
                     ],
                 )
