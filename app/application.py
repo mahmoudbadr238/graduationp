@@ -141,16 +141,19 @@ class DesktopSecurityApplication:
                 100, "Backend Monitoring", init_backend_heavy
             )
 
-            # DEFERRED: GPU service (300ms after UI loads, non-blocking)
+            # DEFERRED: GPU service (1000ms after UI loads, non-blocking)
+            # Staggered to avoid startup CPU spike
             def init_gpu():
                 try:
                     self.gpu_service = get_gpu_service()
                     root_context = self.engine.rootContext()
                     root_context.setContextProperty("GPUService", self.gpu_service)
-                    # Use interval from settings if available, otherwise default to 2s
-                    gpu_interval = 2000
+                    # Use longer interval for GPU to reduce CPU usage (3 seconds)
+                    gpu_interval = 3000
                     if self.settings_service:
-                        gpu_interval = self.settings_service.updateIntervalMs
+                        # Use settings if available, but minimum 2 seconds
+                        settings_interval = self.settings_service.updateIntervalMs
+                        gpu_interval = max(2000, settings_interval)
                     self.gpu_service.start(gpu_interval)
                     print(
                         f"[OK] GPU service initialized, started with {gpu_interval}ms interval"
@@ -159,7 +162,7 @@ class DesktopSecurityApplication:
                     print(f"[WARNING] GPU service initialization failed: {e}")
                     self.gpu_service = None
 
-            self.orchestrator.schedule_deferred(300, "GPU Backend", init_gpu)
+            self.orchestrator.schedule_deferred(1000, "GPU Backend", init_gpu)
 
             # IMMEDIATE: System Snapshot Service (cross-platform)
             try:
@@ -171,7 +174,7 @@ class DesktopSecurityApplication:
                 self.engine.rootContext().setContextProperty(
                     "SnapshotService", self.snapshot_service
                 )
-                self.snapshot_service.start(2000)  # Start with 2s interval
+                self.snapshot_service.start(3000)  # Start with 3s interval (reduced from 2s)
                 print(
                     f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
                 )

@@ -115,7 +115,8 @@ class SystemSnapshotService(QObject):
         self._update_metrics()
         # Defer security info update significantly to avoid blocking startup
         # Security info involves slow PowerShell commands (can take 5-10+ seconds)
-        QTimer.singleShot(3000, self._update_security_info)
+        # Delay 10 seconds to let the app fully stabilize first
+        QTimer.singleShot(10000, self._update_security_info)
         print("[SnapshotService] Initial metrics updated")
 
     def set_notification_service(self, service):
@@ -662,22 +663,36 @@ class SystemSnapshotService(QObject):
 
                 # Map SecurityInfo output to our format
                 fw_status = security_status.get("firewall", {})
-                info["firewallStatus"] = (
-                    "Enabled" if fw_status.get("enabled") else "Disabled"
-                )
+                # Check if status is "Requires Admin" (failed due to no admin rights)
+                if fw_status.get("status") == "Requires Admin":
+                    info["firewallStatus"] = "Requires Admin"
+                elif fw_status.get("enabled") is None:
+                    info["firewallStatus"] = "Unknown"
+                else:
+                    info["firewallStatus"] = (
+                        "Enabled" if fw_status.get("enabled") else "Disabled"
+                    )
 
                 av_status = (
                     security_status.get("antivirus", {})
                     if "antivirus" in security_status
                     else security_status.get("defender", {})
                 )
-                info["antivirusEnabled"] = av_status.get("enabled", False)
-                if av_status.get("enabled"):
+                # Check if requires admin
+                if av_status.get("status") == "requires_admin":
+                    info["antivirusEnabled"] = None
+                    info["antivirus"] = "Requires Admin"
+                elif av_status.get("enabled") is None:
+                    info["antivirusEnabled"] = None
+                    info["antivirus"] = "Unknown"
+                elif av_status.get("enabled"):
+                    info["antivirusEnabled"] = True
                     realtime = av_status.get("realtime_protection", False)
                     info["antivirus"] = (
                         f"Windows Defender (Real-time: {'On' if realtime else 'Off'})"
                     )
                 else:
+                    info["antivirusEnabled"] = False
                     info["antivirus"] = "Windows Defender (Disabled)"
 
                 info["secureBoot"] = self._check_secure_boot()

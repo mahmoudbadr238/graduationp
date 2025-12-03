@@ -765,6 +765,15 @@ JSON response:"""
         1. First, check the local knowledge base for known Event IDs
         2. If not found, fall back to AI/heuristic explanation
         """
+        # Lazy model initialization on first use
+        if not self._initialized:
+            logger.info("First AI request - loading model now...")
+            try:
+                self._initialize_model()
+            except Exception as e:
+                logger.error(f"Model initialization failed: {e}")
+                self._use_transformers = False
+        
         # Check cache first
         cache_key = self._make_cache_key(event)
         if cache_key in self._cache:
@@ -836,16 +845,12 @@ JSON response:"""
         """Main loop: read requests from stdin, write responses to stdout."""
         logger.info("AI Worker starting...")
 
-        # Initialize model once at startup (with timeout protection)
-        try:
-            self._initialize_model()
-        except Exception as e:
-            logger.error(f"Model initialization failed: {e}")
-            self._use_transformers = False
+        # DON'T initialize model at startup - defer until first request
+        # This prevents CPU spike when app launches
+        # Model will load lazily on first explain_event request
+        logger.info("AI Worker ready (model loads on first use)")
 
-        logger.info("AI Worker ready, waiting for requests...")
-
-        # Send ready signal
+        # Send ready signal immediately (model loads lazily)
         self._send_response({"id": "init", "ok": True, "result": "ready", "error": None})
 
         # Main loop with proper signal handling

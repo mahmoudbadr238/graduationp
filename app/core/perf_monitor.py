@@ -20,20 +20,24 @@ import psutil
 log = logging.getLogger("perf")
 
 
-def start_perf_monitor(interval_seconds: int = 3) -> None:
+def start_perf_monitor(interval_seconds: int = 5) -> None:
     """
     Periodically log CPU and memory usage for the Sentinel process.
 
     - Runs in a daemon thread (no blocking of UI).
     - Uses the existing logging system so entries go to sentinel.log.
     - Safe to call once at startup.
+    - Starts after a delay to avoid impacting startup performance.
 
     Args:
-        interval_seconds: Time between measurements (default: 3 seconds).
+        interval_seconds: Time between measurements (default: 5 seconds).
     """
     proc = psutil.Process(os.getpid())
 
     def _loop() -> None:
+        # Wait 5 seconds before starting to let app stabilize
+        time.sleep(5)
+        
         # First call primes cpu_percent, subsequent calls measure since last call
         _ = proc.cpu_percent(interval=None)
         while True:

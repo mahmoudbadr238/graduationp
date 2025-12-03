@@ -136,7 +136,10 @@ class BackendBridge(QObject):
         self._event_summarizer = None
         
         self._init_ai_services()
-        self._start_ai_worker()
+        
+        # Defer AI worker start to avoid startup CPU spike
+        # Start 2 seconds after app initialization
+        QTimer.singleShot(2000, self._start_ai_worker)
 
     def _init_ai_services(self):
         """Initialize local AI services (no network calls)."""
@@ -294,9 +297,9 @@ class BackendBridge(QObject):
 
     @Slot()
     def startLive(self):
-        """Start live system monitoring (3 second interval for smooth updates)."""
+        """Start live system monitoring (5 second interval for balanced performance)."""
         if not self.live_timer.isActive():
-            self.live_timer.start(3000)  # 3 seconds - balanced for performance
+            self.live_timer.start(5000)  # 5 seconds - reduced CPU usage
             self._tick()  # Emit first snapshot immediately
             logger.info("Live monitoring started")
 

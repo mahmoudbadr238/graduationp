@@ -19,6 +19,21 @@ _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 class SecurityInfo:
     """Retrieve Windows security status (Firewall, Antivirus, etc.)"""
+    
+    # Flag to track if we're running as admin
+    _is_admin: Optional[bool] = None
+    
+    @staticmethod
+    def _check_admin() -> bool:
+        """Check if running with admin privileges."""
+        if SecurityInfo._is_admin is not None:
+            return SecurityInfo._is_admin
+        try:
+            import ctypes
+            SecurityInfo._is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            SecurityInfo._is_admin = False
+        return SecurityInfo._is_admin
 
     @staticmethod
     def get_windows_defender_status() -> Dict[str, Any]:
@@ -42,10 +57,11 @@ class SecurityInfo:
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=8,  # Increased timeout
+                creationflags=_SUBPROCESS_FLAGS,
             )
 
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
                 return {
                     "enabled": data.get("AntivirusEnabled", False),
@@ -56,6 +72,7 @@ class SecurityInfo:
                         if not data.get("SignatureOutofDate", True)
                         else "Outdated"
                     ),
+                    "status": "query_success",
                 }
         except subprocess.TimeoutExpired:
             logger.warning("Windows Defender query timed out")
@@ -66,6 +83,16 @@ class SecurityInfo:
         ) as e:
             logger.debug(f"Could not query Windows Defender: {e}")
 
+        # Return "Requires Admin" status if not admin
+        if not SecurityInfo._check_admin():
+            return {
+                "enabled": None,  # Unknown
+                "realtime_protection": None,
+                "last_scan": "Requires Admin",
+                "definition_status": "Requires Admin",
+                "status": "requires_admin",
+            }
+        
         return {
             "enabled": False,
             "realtime_protection": False,
@@ -88,10 +115,11 @@ class SecurityInfo:
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=8,  # Increased timeout
+                creationflags=_SUBPROCESS_FLAGS,
             )
 
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
 
                 # data is either a single object or list of objects
@@ -115,6 +143,14 @@ class SecurityInfo:
         ) as e:
             logger.debug(f"Could not query Firewall: {e}")
 
+        # Return "Requires Admin" status if not admin
+        if not SecurityInfo._check_admin():
+            return {
+                "enabled": None,
+                "enabled_profiles": [],
+                "status": "Requires Admin",
+            }
+        
         return {
             "enabled": False,
             "enabled_profiles": [],
@@ -773,6 +809,9 @@ class SecurityInfo:
         Get simplified, user-friendly security status for the UI.
         Returns aggregated status for main categories plus overall health.
         """
+        # Check if running as admin
+        is_admin = SecurityInfo._check_admin()
+        
         # Gather all raw data
         defender = SecurityInfo.get_windows_defender_status()
         firewall = SecurityInfo.get_firewall_status()
@@ -802,10 +841,20 @@ class SecurityInfo:
             pass
 
         # === INTERNET PROTECTION (Firewall + Antivirus) ===
-        fw_on = firewall.get("enabled", False)
-        av_on = defender.get("enabled", False)
+        # Check if data requires admin
+        fw_requires_admin = firewall.get("status") == "Requires Admin"
+        av_requires_admin = defender.get("status") == "requires_admin"
+        
+        fw_on = firewall.get("enabled", False) if not fw_requires_admin else None
+        av_on = defender.get("enabled", False) if not av_requires_admin else None
 
-        if fw_on and av_on:
+        if fw_requires_admin or av_requires_admin:
+            # Cannot determine status without admin rights
+            internet_status = "Checking"
+            internet_detail = "Run as Administrator for accurate status"
+            internet_good = False
+            internet_warning = True
+        elif fw_on and av_on:
             internet_status = "On"
             internet_detail = "Firewall and antivirus running"
             internet_good = True
