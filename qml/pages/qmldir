@@ -8,3 +8,4 @@ NmapScanResultPage 1.0 NmapScanResultPage.qml
 ScanTool 1.0 ScanTool.qml
 DataLossPrevention 1.0 DataLossPrevention.qml
 SettingsPage 1.0 SettingsPage.qml
+SecurityAssistant 1.0 SecurityAssistant.qml

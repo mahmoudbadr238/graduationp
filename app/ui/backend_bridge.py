@@ -48,6 +48,10 @@ class BackendBridge(QObject):
         str, bool, int, str
     )  # scanId, success, exitCode, reportPath
 
+    # AI signals (100% local, no network)
+    eventExplanationReady = Signal(str, str)  # eventId, explanationJson
+    chatMessageAdded = Signal(str, str)  # role ("user"|"assistant"), content
+
     def __init__(self):
         super().__init__()
 
@@ -98,6 +102,42 @@ class BackendBridge(QObject):
 
         # Active workers (for cancellation)
         self._active_workers: dict[str, CancellableWorker] = {}
+
+        # AI services (100% local, no network calls)
+        self._event_explainer = None
+        self._security_chatbot = None
+        self._chat_conversation: list[dict[str, str]] = []
+        self._init_ai_services()
+
+    def _init_ai_services(self):
+        """Initialize local AI services (no network calls)."""
+        try:
+            from ..ai.local_llm_engine import get_llm_engine
+            from ..ai.event_explainer import get_event_explainer
+            from ..ai.security_chatbot import get_security_chatbot
+
+            llm_engine = get_llm_engine()
+            self._event_explainer = get_event_explainer(llm_engine)
+
+            # Chatbot needs event_repo for context
+            self._security_chatbot = get_security_chatbot(
+                llm_engine,
+                snapshot_service=None,  # Set later via set_snapshot_service
+                event_repo=self.event_repo,
+            )
+
+            mode = "transformers" if llm_engine.is_available else "fallback"
+            logger.info(f"AI services initialized (mode: {mode})")
+        except Exception as e:
+            logger.warning(f"AI services not available: {e}")
+            self._event_explainer = None
+            self._security_chatbot = None
+
+    def set_snapshot_service(self, snapshot_service):
+        """Set snapshot service for chatbot context (called from application.py)."""
+        if self._security_chatbot:
+            self._security_chatbot._snapshot_service = snapshot_service
+            logger.info("Snapshot service connected to AI chatbot")
 
     @Slot()
     def startLive(self):
@@ -894,3 +934,193 @@ class BackendBridge(QObject):
             self.toast.emit("success", "Opening report...")
         except Exception as e:
             self.toast.emit("error", f"Could not open report: {e}")
+
+    # ==================== AI FEATURES (100% LOCAL) ====================
+
+    @Slot(result=bool)
+    def aiAvailable(self) -> bool:
+        """Check if AI services are available."""
+        return self._event_explainer is not None
+
+    @Slot(result=str)
+    def aiMode(self) -> str:
+        """Get the current AI mode (transformers or fallback)."""
+        if self._event_explainer is None:
+            return "unavailable"
+        try:
+            from ..ai.local_llm_engine import get_llm_engine
+
+            engine = get_llm_engine()
+            return "transformers" if engine.is_available else "fallback"
+        except Exception:
+            return "fallback"
+
+    @Slot(int)
+    def requestEventExplanation(self, event_index: int) -> None:
+        """
+        Request AI explanation for an event by its index in the loaded events.
+
+        Args:
+            event_index: Index of the event in the current events list
+        """
+        if self._event_explainer is None:
+            self.toast.emit("error", "AI services not available")
+            return
+
+        worker_id = f"ai-explain-{event_index}"
+
+        # Prevent duplicate requests
+        if worker_id in self._active_workers:
+            return
+
+        def explain_task(worker):
+            """Background AI explanation task."""
+            worker.signals.heartbeat.emit(worker_id)
+
+            # Get events from repo
+            events = self.event_reader.tail(limit=300)
+            if event_index < 0 or event_index >= len(events):
+                raise ValueError(f"Event index {event_index} out of range")
+
+            event = events[event_index]
+
+            # Build event dict for explainer
+            event_dict = {
+                "log_name": getattr(event, "log_name", "Windows"),
+                "provider": getattr(event, "source", "Unknown"),
+                "source": getattr(event, "source", "Unknown"),
+                "event_id": getattr(event, "event_id", 0),
+                "level": getattr(event, "level", "Information"),
+                "message": getattr(event, "message", ""),
+                "time_created": (
+                    getattr(event, "timestamp", "").isoformat()
+                    if hasattr(getattr(event, "timestamp", None), "isoformat")
+                    else str(getattr(event, "timestamp", ""))
+                ),
+            }
+
+            worker.signals.heartbeat.emit(worker_id)
+
+            # Get explanation
+            explanation = self._event_explainer.explain_event(event_dict)
+
+            return (str(event_index), explanation)
+
+        def on_success(wid: str, result: tuple) -> None:
+            """Explanation completed."""
+            event_id, explanation = result
+            import json
+
+            try:
+                explanation_json = json.dumps(explanation)
+                self.eventExplanationReady.emit(event_id, explanation_json)
+            except Exception as e:
+                logger.error(f"Failed to serialize explanation: {e}")
+                self.toast.emit("error", "Failed to process AI explanation")
+            finally:
+                self._watchdog.unregister_worker(worker_id)
+                if worker_id in self._active_workers:
+                    del self._active_workers[worker_id]
+
+        def on_error(wid: str, error_msg: str) -> None:
+            """Explanation failed."""
+            logger.error(f"AI explanation failed: {error_msg}")
+            self.toast.emit("error", f"AI explanation failed: {error_msg}")
+            self._watchdog.unregister_worker(worker_id)
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+
+        # Create and start worker
+        worker = CancellableWorker(worker_id, explain_task, timeout_ms=30000)
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+
+        self._active_workers[worker_id] = worker
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+
+        logger.info(f"AI explanation requested for event {event_index}")
+
+    @Slot(str)
+    def sendChatMessage(self, user_text: str) -> None:
+        """
+        Send a message to the security chatbot.
+
+        Args:
+            user_text: User's message text
+        """
+        if not user_text or not user_text.strip():
+            return
+
+        user_text = user_text.strip()
+
+        if self._security_chatbot is None:
+            self.toast.emit("error", "AI chatbot not available")
+            # Still emit user message so UI shows it
+            self.chatMessageAdded.emit("user", user_text)
+            self.chatMessageAdded.emit(
+                "assistant", "I'm sorry, the AI assistant is not available right now."
+            )
+            return
+
+        # Add user message to conversation
+        self._chat_conversation.append({"role": "user", "content": user_text})
+        self.chatMessageAdded.emit("user", user_text)
+
+        worker_id = f"ai-chat-{len(self._chat_conversation)}"
+
+        def chat_task(worker):
+            """Background chat task."""
+            worker.signals.heartbeat.emit(worker_id)
+
+            # Get response from chatbot
+            response = self._security_chatbot.answer(
+                self._chat_conversation[
+                    :-1
+                ],  # Exclude current message (already in prompt)
+                user_text,
+            )
+
+            return response
+
+        def on_success(wid: str, response: str) -> None:
+            """Chat response ready."""
+            # Add assistant response to conversation
+            self._chat_conversation.append({"role": "assistant", "content": response})
+            self.chatMessageAdded.emit("assistant", response)
+
+            self._watchdog.unregister_worker(worker_id)
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+
+        def on_error(wid: str, error_msg: str) -> None:
+            """Chat failed."""
+            logger.error(f"AI chat failed: {error_msg}")
+            error_response = (
+                "I encountered an error processing your request. Please try again."
+            )
+            self._chat_conversation.append(
+                {"role": "assistant", "content": error_response}
+            )
+            self.chatMessageAdded.emit("assistant", error_response)
+
+            self._watchdog.unregister_worker(worker_id)
+            if worker_id in self._active_workers:
+                del self._active_workers[worker_id]
+
+        # Create and start worker
+        worker = CancellableWorker(worker_id, chat_task, timeout_ms=60000)
+        worker.signals.finished.connect(on_success)
+        worker.signals.error.connect(on_error)
+
+        self._active_workers[worker_id] = worker
+        self._watchdog.register_worker(worker_id)
+        self._thread_pool.start(worker)
+
+        logger.debug(f"AI chat message sent: {user_text[:50]}...")
+
+    @Slot()
+    def clearChatHistory(self) -> None:
+        """Clear the chat conversation history."""
+        self._chat_conversation.clear()
+        logger.info("Chat history cleared")

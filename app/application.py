@@ -171,6 +171,10 @@ class DesktopSecurityApplication:
                 print(
                     f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
                 )
+
+                # Connect snapshot service to backend for AI chatbot context
+                if self.backend:
+                    self.backend.set_snapshot_service(self.snapshot_service)
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] System Snapshot service failed: {e}")
                 self.snapshot_service = None

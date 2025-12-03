@@ -68,3 +68,23 @@ def configure() -> None:
         DI.register(IUrlScanner, _raise_disabled)
 
     DI.register(INetworkScanner, lambda: NmapCli())
+
+    # Register AI services (100% local, no network calls)
+    try:
+        from ..ai.local_llm_engine import LocalLLMEngine, get_llm_engine
+        from ..ai.event_explainer import EventExplainer, get_event_explainer
+        from ..ai.security_chatbot import SecurityChatbot, get_security_chatbot
+
+        # Register LLM engine singleton
+        DI.register(LocalLLMEngine, get_llm_engine)
+
+        # Register Event Explainer (uses LLM engine)
+        DI.register(EventExplainer, lambda: get_event_explainer(get_llm_engine()))
+
+        # Security Chatbot will be initialized with services in application.py
+        # since it needs snapshot_service which isn't available at container config time
+        DI.register(SecurityChatbot, lambda: None)  # Placeholder
+
+        print("[OK] Local AI services registered (no network calls)")
+    except Exception as e:
+        print(f"[SKIP] AI services not available: {e}")

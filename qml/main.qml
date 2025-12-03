@@ -201,6 +201,25 @@ ApplicationWindow {
                     onClicked: loadRoute("dlp")
                 }
                 
+                // Separator before AI section
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    Layout.topMargin: 8
+                    Layout.bottomMargin: 8
+                    color: ThemeManager.border()
+                    opacity: 0.5
+                }
+                
+                SidebarItem {
+                    Layout.fillWidth: true
+                    icon: "🤖"
+                    label: "AI Assistant"
+                    isActive: currentRoute === "ai-assistant"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("ai-assistant")
+                }
+                
                 SidebarItem {
                     Layout.fillWidth: true
                     icon: "⚙️"
@@ -330,6 +349,11 @@ ApplicationWindow {
                 DataLossPrevention {
                     anchors.fill: parent
                     visible: currentRoute === "dlp"
+                }
+                
+                SecurityAssistant {
+                    anchors.fill: parent
+                    visible: currentRoute === "ai-assistant"
                 }
                 
                 SettingsPage {

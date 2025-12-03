@@ -12,6 +12,9 @@ Item {
     property string filterLevel: "All"
     property string searchText: ""
     property int themeUpdateTrigger: 0  // Dummy property to trigger redraws
+    property int selectedEventIndex: -1  // Selected event for AI explanation
+    property var aiExplanation: null  // Current AI explanation
+    property bool isExplaining: false  // AI is processing
     
     // Listen to theme changes to trigger UI updates
     Connections {
@@ -28,6 +31,8 @@ Item {
         function onEventsLoaded(events) {
             eventsList = events
             eventModel.clear()
+            selectedEventIndex = -1
+            aiExplanation = null
             // Apply filters and populate model
             for (var i = 0; i < events.length; i++) {
                 var evt = events[i]
@@ -38,6 +43,18 @@ Item {
                     (searchText === "" || (evt.message && evt.message.indexOf(searchText) >= 0) || (evt.source && evt.source.indexOf(searchText) >= 0))) {
                     eventModel.append(evt)
                 }
+            }
+        }
+        
+        function onEventExplanationReady(eventId, explanationJson) {
+            isExplaining = false
+            try {
+                var explanation = JSON.parse(explanationJson)
+                if (parseInt(eventId) === selectedEventIndex) {
+                    aiExplanation = explanation
+                }
+            } catch (e) {
+                console.error("Failed to parse AI explanation:", e)
             }
         }
     }
@@ -251,18 +268,35 @@ Item {
                     Layout.fillHeight: true
                     
                     ListView {
+                        id: eventListView
                         width: parent.width
                         model: eventModel
                         spacing: 2
+                        currentIndex: selectedEventIndex
 
                         delegate: Rectangle {
                             width: ListView.view ? ListView.view.width : 500
                             height: 50
                             color: {
+                                if (index === selectedEventIndex) {
+                                    return ThemeManager.accent + "30"  // Selected highlight
+                                }
                                 var isDark = ThemeManager ? ThemeManager.isDark() : true
                                 return isDark ? 
                                        (index % 2 === 0 ? "#0B1020" : "#050814") : 
                                        (index % 2 === 0 ? "#F3F4F6" : "#FFFFFF")
+                            }
+                            border.color: index === selectedEventIndex ? ThemeManager.accent : "transparent"
+                            border.width: index === selectedEventIndex ? 1 : 0
+                            radius: 4
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    selectedEventIndex = index
+                                    aiExplanation = null
+                                }
                             }
 
                             RowLayout {
@@ -306,7 +340,7 @@ Item {
                 }
 
                 Text {
-                    text: eventModel.count === 0 ? "No events" : "Total: " + eventModel.count
+                    text: eventModel.count === 0 ? "No events" : "Total: " + eventModel.count + (selectedEventIndex >= 0 ? " • Selected: " + (selectedEventIndex + 1) : "")
                     color: ThemeManager.muted()
                     font.pixelSize: 10
                     Layout.alignment: Qt.AlignRight
@@ -315,7 +349,255 @@ Item {
                 }
             }
         }
-    }
+        
+        // AI Explanation Panel (shown when event is selected)
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: selectedEventIndex >= 0 ? 280 : 0
+            color: ThemeManager.panel()
+            radius: 12
+            border.color: ThemeManager.border()
+            border.width: 1
+            visible: selectedEventIndex >= 0
+            clip: true
+            
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            }
+            
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
+                
+                // Header with AI button
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    
+                    Text {
+                        text: "🔍 Event Details"
+                        color: ThemeManager.foreground()
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+                    
+                    Item { Layout.fillWidth: true }
+                    
+                    // AI Explain button
+                    Rectangle {
+                        width: explainButtonContent.implicitWidth + 24
+                        height: 32
+                        radius: 8
+                        color: explainMouse.containsMouse && !isExplaining ? 
+                               Qt.darker(ThemeManager.accent, 1.1) : 
+                               ThemeManager.accent
+                        opacity: isExplaining ? 0.6 : 1.0
+                        
+                        Row {
+                            id: explainButtonContent
+                            anchors.centerIn: parent
+                            spacing: 6
+                            
+                            Text {
+                                text: isExplaining ? "⏳" : "🤖"
+                                font.pixelSize: 12
+                            }
+                            
+                            Text {
+                                text: isExplaining ? "Analyzing..." : "Explain with AI"
+                                color: "white"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+                        
+                        MouseArea {
+                            id: explainMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: isExplaining ? Qt.WaitCursor : Qt.PointingHandCursor
+                            onClicked: {
+                                if (!isExplaining && Backend && selectedEventIndex >= 0) {
+                                    isExplaining = true
+                                    aiExplanation = null
+                                    Backend.requestEventExplanation(selectedEventIndex)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Close button
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        radius: 6
+                        color: closeMouse.containsMouse ? ThemeManager.surface() : "transparent"
+                        
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 12
+                        }
+                        
+                        MouseArea {
+                            id: closeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                selectedEventIndex = -1
+                                aiExplanation = null
+                            }
+                        }
+                    }
+                }
+                
+                // Content area
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 12
+                        
+                        // Event info
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: eventInfoCol.implicitHeight + 16
+                            color: ThemeManager.surface()
+                            radius: 8
+                            
+                            Column {
+                                id: eventInfoCol
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 4
+                                
+                                Text {
+                                    text: selectedEventIndex >= 0 && eventModel.get(selectedEventIndex) ? 
+                                          eventModel.get(selectedEventIndex).message || "No message" : ""
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                    width: parent.width
+                                }
+                            }
+                        }
+                        
+                        // AI Explanation (if available)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            visible: aiExplanation !== null
+                            height: visible ? aiExplanationCol.implicitHeight + 20 : 0
+                            color: ThemeManager.accent + "15"
+                            radius: 8
+                            border.color: ThemeManager.accent + "40"
+                            border.width: 1
+                            
+                            Column {
+                                id: aiExplanationCol
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 8
+                                
+                                // Summary
+                                Row {
+                                    spacing: 8
+                                    Text {
+                                        text: "🤖"
+                                        font.pixelSize: 14
+                                    }
+                                    Text {
+                                        text: aiExplanation ? aiExplanation.short_summary || "" : ""
+                                        color: ThemeManager.foreground()
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        wrapMode: Text.Wrap
+                                        width: parent.parent.width - 30
+                                    }
+                                }
+                                
+                                // Severity badge
+                                Rectangle {
+                                    width: severityText.implicitWidth + 16
+                                    height: 22
+                                    radius: 11
+                                    color: {
+                                        if (!aiExplanation) return ThemeManager.surface()
+                                        var label = aiExplanation.severity_label || "Info"
+                                        if (label === "Critical") return "#DC2626"
+                                        if (label === "High") return "#EA580C"
+                                        if (label === "Medium") return "#CA8A04"
+                                        if (label === "Low") return "#2563EB"
+                                        return "#6B7280"
+                                    }
+                                    
+                                    Text {
+                                        id: severityText
+                                        anchors.centerIn: parent
+                                        text: aiExplanation ? 
+                                              (aiExplanation.severity_label || "Info") + " (" + (aiExplanation.severity_score || 0) + "/10)" : ""
+                                        color: "white"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                    }
+                                }
+                                
+                                // What it means
+                                Text {
+                                    text: aiExplanation ? ("💡 " + (aiExplanation.what_it_means || "")) : ""
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                    width: parent.width
+                                    visible: aiExplanation && aiExplanation.what_it_means
+                                }
+                                
+                                // Recommended actions
+                                Column {
+                                    width: parent.width
+                                    spacing: 4
+                                    visible: aiExplanation && aiExplanation.recommended_actions && aiExplanation.recommended_actions.length > 0
+                                    
+                                    Text {
+                                        text: "📋 Recommended Actions:"
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                    }
+                                    
+                                    Repeater {
+                                        model: aiExplanation ? aiExplanation.recommended_actions || [] : []
+                                        
+                                        Text {
+                                            text: "• " + modelData
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 10
+                                            wrapMode: Text.Wrap
+                                            width: parent.width
+                                            leftPadding: 8
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Prompt to use AI
+                        Text {
+                            visible: aiExplanation === null && !isExplaining
+                            text: "💡 Click 'Explain with AI' to get a detailed analysis of this event"
+                            color: ThemeManager.muted()
+                            font.pixelSize: 11
+                            font.italic: true
+                        }
+                    }
+                }
+            }
+        }
 
     // Data model
     ListModel {
