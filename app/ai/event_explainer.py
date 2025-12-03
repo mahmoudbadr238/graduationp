@@ -39,9 +39,8 @@ class EventExplainer(QObject):
         super().__init__(parent)
         self._llm = llm_engine
         self._cache: dict[str, dict[str, Any]] = {}
-        logger.info(
-            f"EventExplainer initialized (LLM mode: {'transformers' if llm_engine.is_available else 'fallback'})"
-        )
+        # Don't check llm.is_available here - triggers lazy model loading
+        logger.info("EventExplainer initialized (model loads on first use)")
 
     def _make_cache_key(self, event: dict) -> str:
         """Create a cache key for an event."""

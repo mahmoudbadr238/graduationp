@@ -29,6 +29,7 @@ class LocalLLMEngine(QObject):
 
     Attempts to use HuggingFace transformers with a local model.
     Falls back to rule-based responses if unavailable.
+    Uses LAZY initialization - model only loads when first needed.
     """
 
     def __init__(self, parent: Optional[QObject] = None):
@@ -39,8 +40,17 @@ class LocalLLMEngine(QObject):
         self._model_name = os.environ.get("SENTINEL_LOCAL_MODEL", DEFAULT_MODEL)
         self._use_transformers = False
         self._fallback_mode = True
+        self._initialized = False  # Lazy init flag
 
-        # Try to initialize transformers
+        # DON'T load model here - wait until first use
+        # This speeds up app startup significantly
+        logger.info("LocalLLMEngine created (lazy init - model loads on first use)")
+
+    def _ensure_initialized(self) -> None:
+        """Lazy initialization - load model on first use."""
+        if self._initialized:
+            return
+        self._initialized = True
         self._initialize_model()
 
     def _initialize_model(self) -> None:
@@ -104,11 +114,13 @@ class LocalLLMEngine(QObject):
     @property
     def is_available(self) -> bool:
         """Check if the LLM is available (transformers loaded successfully)."""
+        self._ensure_initialized()
         return self._use_transformers and self._model is not None
 
     @property
     def is_fallback_mode(self) -> bool:
         """Check if using fallback rule-based mode."""
+        self._ensure_initialized()
         return self._fallback_mode
 
     @property
@@ -127,6 +139,8 @@ class LocalLLMEngine(QObject):
         Returns:
             Generated response text
         """
+        self._ensure_initialized()
+        
         if self._fallback_mode:
             return self._fallback_generate(prompt)
 

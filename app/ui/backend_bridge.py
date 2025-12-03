@@ -126,8 +126,9 @@ class BackendBridge(QObject):
                 event_repo=self.event_repo,
             )
 
-            mode = "transformers" if llm_engine.is_available else "fallback"
-            logger.info(f"AI services initialized (mode: {mode})")
+            # Don't check is_available here - it triggers lazy model loading
+            # Model will load on first actual AI use
+            logger.info("AI services initialized (lazy loading - model loads on first use)")
         except Exception as e:
             logger.warning(f"AI services not available: {e}")
             self._event_explainer = None

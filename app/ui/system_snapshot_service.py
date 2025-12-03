@@ -104,9 +104,11 @@ class SystemSnapshotService(QObject):
         # Notification service reference (set by application.py)
         self._notification_service = None
 
-        # Initial update
+        # Initial update (fast metrics only - security info deferred)
         self._update_metrics()
-        self._update_security_info()  # Security info updated once at startup
+        # Defer security info update to avoid blocking startup
+        # Security info involves slow PowerShell commands
+        QTimer.singleShot(500, self._update_security_info)
         print("[SnapshotService] Initial metrics updated")
 
     def set_notification_service(self, service):

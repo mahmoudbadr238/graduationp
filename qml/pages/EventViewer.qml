@@ -598,6 +598,7 @@ Item {
                 }
             }
         }
+    }
 
     // Data model
     ListModel {

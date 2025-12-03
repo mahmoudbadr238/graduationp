@@ -36,9 +36,8 @@ class SecurityChatbot(QObject):
         self._llm = llm_engine
         self._snapshot_service = snapshot_service
         self._event_repo = event_repo
-        logger.info(
-            f"SecurityChatbot initialized (LLM: {'transformers' if llm_engine.is_available else 'fallback'})"
-        )
+        # Don't check llm.is_available here - triggers lazy model loading
+        logger.info("SecurityChatbot initialized (model loads on first use)")
 
     def build_context(self) -> str:
         """

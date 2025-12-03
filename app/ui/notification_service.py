@@ -29,6 +29,7 @@ class NotificationService(QObject):
         self._unread_count = 0
         logger.info("NotificationService initialized")
 
+    @Slot(str, str, str, result=str)
     def push(self, title: str, message: str, notification_type: str = "info") -> str:
         """
         Push a new notification.
