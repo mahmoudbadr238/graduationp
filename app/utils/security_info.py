@@ -46,8 +46,6 @@ class SecurityInfo:
             )
 
             if result.returncode == 0:
-                import json
-
                 data = json.loads(result.stdout)
                 return {
                     "enabled": data.get("AntivirusEnabled", False),
@@ -94,8 +92,6 @@ class SecurityInfo:
             )
 
             if result.returncode == 0:
-                import json
-
                 data = json.loads(result.stdout)
 
                 # data is either a single object or list of objects

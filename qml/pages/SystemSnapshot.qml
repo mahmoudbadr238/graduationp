@@ -1440,10 +1440,10 @@ Item {
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: "Antivirus"
-                                        value: securityColumn.raw.antivirusEnabled ? "On" : "Off"
-                                        subtitle: securityColumn.raw.antivirusRealtime ? "Real-time active" : "Real-time off"
-                                        isGood: securityColumn.raw.antivirusEnabled === true
-                                        isWarning: securityColumn.raw.antivirusEnabled && !securityColumn.raw.antivirusRealtime
+                                        value: (securityColumn.raw.antivirusEnabled === true) ? "On" : "Off"
+                                        subtitle: (securityColumn.raw.antivirusRealtime === true) ? "Real-time active" : "Real-time off"
+                                        isGood: (securityColumn.raw.antivirusEnabled === true)
+                                        isWarning: (securityColumn.raw.antivirusEnabled === true) && (securityColumn.raw.antivirusRealtime !== true)
                                     }
 
                                     // Secure Boot
@@ -1471,8 +1471,8 @@ Item {
                                             return "Not found"
                                         }
                                         subtitle: securityColumn.tpmData.detail || ""
-                                        isGood: securityColumn.tpmData.present && securityColumn.tpmData.enabled
-                                        isWarning: securityColumn.tpmData.present && !securityColumn.tpmData.enabled
+                                        isGood: (securityColumn.tpmData.present === true) && (securityColumn.tpmData.enabled === true)
+                                        isWarning: (securityColumn.tpmData.present === true) && (securityColumn.tpmData.enabled !== true)
                                     }
 
                                     // Disk Encryption
@@ -1517,11 +1517,11 @@ Item {
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: "Remote Desktop"
-                                        value: securityColumn.raw.remoteDesktopEnabled ? "On" : "Off"
-                                        subtitle: securityColumn.raw.remoteDesktopEnabled ? 
-                                                  (securityColumn.raw.remoteDesktopNla ? "NLA enabled" : "NLA off") : ""
-                                        isGood: !securityColumn.raw.remoteDesktopEnabled
-                                        isWarning: securityColumn.raw.remoteDesktopEnabled && securityColumn.raw.remoteDesktopNla
+                                        value: (securityColumn.raw.remoteDesktopEnabled === true) ? "On" : "Off"
+                                        subtitle: (securityColumn.raw.remoteDesktopEnabled === true) ? 
+                                                  ((securityColumn.raw.remoteDesktopNla === true) ? "NLA enabled" : "NLA off") : ""
+                                        isGood: (securityColumn.raw.remoteDesktopEnabled !== true)
+                                        isWarning: (securityColumn.raw.remoteDesktopEnabled === true) && (securityColumn.raw.remoteDesktopNla === true)
                                     }
 
                                     // Local Admins

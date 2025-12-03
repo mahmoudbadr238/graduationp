@@ -18,6 +18,7 @@ from .ui.gpu_service import get_gpu_service
 from .ui.system_snapshot_service import SystemSnapshotService
 from .ui.settings_service import SettingsService
 from .ui.notification_service import NotificationService
+from .core.perf_monitor import start_perf_monitor
 
 
 class DesktopSecurityApplication:
@@ -27,6 +28,9 @@ class DesktopSecurityApplication:
         # Initialize logging first (before any imports)
         setup_logging("Sentinel")
         setup_crash_handlers("Sentinel")
+
+        # Start lightweight performance monitoring (logs to sentinel.log)
+        start_perf_monitor(interval_seconds=3)
 
         # Load configuration
         self.config = get_config()

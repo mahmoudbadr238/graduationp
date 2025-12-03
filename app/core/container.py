@@ -73,6 +73,7 @@ def configure() -> None:
     try:
         from ..ai.local_llm_engine import LocalLLMEngine, get_llm_engine
         from ..ai.event_explainer import EventExplainer, get_event_explainer
+        from ..ai.event_summarizer import EventSummarizer, get_event_summarizer
         from ..ai.security_chatbot import SecurityChatbot, get_security_chatbot
 
         # Register LLM engine singleton
@@ -80,6 +81,9 @@ def configure() -> None:
 
         # Register Event Explainer (uses LLM engine)
         DI.register(EventExplainer, lambda: get_event_explainer(get_llm_engine()))
+        
+        # Register Event Summarizer (uses LLM engine)
+        DI.register(EventSummarizer, lambda: get_event_summarizer(get_llm_engine()))
 
         # Security Chatbot will be initialized with services in application.py
         # since it needs snapshot_service which isn't available at container config time

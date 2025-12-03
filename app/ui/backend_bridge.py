@@ -1,9 +1,14 @@
 """QObject bridge connecting QML frontend to Python backend."""
 
+import hashlib
+import json
 import logging
+import sys
+import threading
 from datetime import datetime
+from pathlib import Path
 
-from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import QMetaObject, QObject, QProcess, Qt, QThreadPool, QTimer, Signal, Slot
 
 from ..core.container import DI
 from ..core.errors import ExternalToolMissing, IntegrationDisabled
@@ -50,10 +55,19 @@ class BackendBridge(QObject):
 
     # AI signals (100% local, no network)
     eventExplanationReady = Signal(str, str)  # eventId, explanationJson
+    eventExplanationFailed = Signal(str, str)  # eventId, errorMessage
     chatMessageAdded = Signal(str, str)  # role ("user"|"assistant"), content
+    
+    # Internal signals for thread-safe communication (background thread -> main thread)
+    _eventsLoadedInternal = Signal(list)
+    _toastInternal = Signal(str, str)
 
     def __init__(self):
         super().__init__()
+        
+        # Connect internal signals for thread-safe communication
+        self._eventsLoadedInternal.connect(self.eventsLoaded.emit)
+        self._toastInternal.connect(self.toast.emit)
 
         # Check nmap availability on init
         from ..infra.nmap_cli import check_nmap_installed
@@ -107,17 +121,34 @@ class BackendBridge(QObject):
         self._event_explainer = None
         self._security_chatbot = None
         self._chat_conversation: list[dict[str, str]] = []
+        
+        # Cache of loaded events (for AI explanation lookup)
+        self._loaded_events: list = []
+        
+        # AI Worker process (separate process for AI to never block UI)
+        self._ai_process: QProcess | None = None
+        self._ai_request_id = 0
+        self._pending_ai_requests: dict[str, int] = {}  # request_id -> event_index
+        self._current_ai_request: str | None = None  # Track current request to cancel old ones
+        self._ai_ready = False
+        
+        # Event summarizer for friendly messages
+        self._event_summarizer = None
+        
         self._init_ai_services()
+        self._start_ai_worker()
 
     def _init_ai_services(self):
         """Initialize local AI services (no network calls)."""
         try:
             from ..ai.local_llm_engine import get_llm_engine
             from ..ai.event_explainer import get_event_explainer
+            from ..ai.event_summarizer import get_event_summarizer
             from ..ai.security_chatbot import get_security_chatbot
 
             llm_engine = get_llm_engine()
             self._event_explainer = get_event_explainer(llm_engine)
+            self._event_summarizer = get_event_summarizer(llm_engine)
 
             # Chatbot needs event_repo for context
             self._security_chatbot = get_security_chatbot(
@@ -133,6 +164,127 @@ class BackendBridge(QObject):
             logger.warning(f"AI services not available: {e}")
             self._event_explainer = None
             self._security_chatbot = None
+
+    def _start_ai_worker(self):
+        """Start the AI worker process."""
+        try:
+            # Find the ai_worker.py script
+            ai_worker_path = Path(__file__).parent.parent / "ai" / "ai_worker.py"
+            
+            if not ai_worker_path.exists():
+                logger.warning(f"AI worker script not found: {ai_worker_path}")
+                return
+            
+            self._ai_process = QProcess(self)
+            self._ai_process.readyReadStandardOutput.connect(self._on_ai_output)
+            self._ai_process.readyReadStandardError.connect(self._on_ai_error)
+            self._ai_process.finished.connect(self._on_ai_finished)
+            
+            # Start the process
+            self._ai_process.start(sys.executable, [str(ai_worker_path)])
+            
+            if self._ai_process.waitForStarted(5000):
+                logger.info("AI worker process started")
+            else:
+                logger.warning("Failed to start AI worker process")
+                self._ai_process = None
+                
+        except Exception as e:
+            logger.error(f"Failed to start AI worker: {e}")
+            self._ai_process = None
+
+    def _on_ai_output(self):
+        """Handle output from AI worker process."""
+        if not self._ai_process:
+            return
+            
+        while self._ai_process.canReadLine():
+            line = self._ai_process.readLine().data().decode("utf-8").strip()
+            if not line:
+                continue
+            
+            logger.debug(f"AI worker output: {line[:200]}...")  # Log first 200 chars
+                
+            try:
+                response = json.loads(line)
+                request_id = response.get("id", "")
+                
+                # Handle init response
+                if request_id == "init":
+                    if response.get("ok"):
+                        self._ai_ready = True
+                        logger.info("AI worker ready")
+                    continue
+                
+                # Log response handling
+                logger.debug(f"Processing AI response id={request_id}, current={self._current_ai_request}")
+                
+                # Check if this is the current request (ignore old cancelled ones)
+                if request_id != self._current_ai_request:
+                    logger.debug(f"Ignoring stale AI response: {request_id}")
+                    continue
+                
+                # Get event index for this request
+                event_index = self._pending_ai_requests.pop(request_id, None)
+                if event_index is None:
+                    logger.warning(f"No pending request found for id={request_id}")
+                    continue
+                
+                if response.get("ok"):
+                    result = response.get("result", {})
+                    explanation_json = json.dumps(result)
+                    logger.info(f"Emitting AI explanation for event {event_index}")
+                    self.eventExplanationReady.emit(str(event_index), explanation_json)
+                else:
+                    error_msg = response.get("error", "Unknown error")
+                    logger.warning(f"AI explanation failed: {error_msg}")
+                    self.eventExplanationFailed.emit(str(event_index), error_msg)
+                    
+            except json.JSONDecodeError as e:
+                logger.warning(f"Invalid JSON from AI worker: {e} - line: {line[:100]}")
+            except Exception as e:
+                logger.error(f"Error processing AI response: {e}")
+
+    def _on_ai_error(self):
+        """Handle stderr from AI worker (logs)."""
+        if not self._ai_process:
+            return
+        error_output = self._ai_process.readAllStandardError().data().decode("utf-8")
+        for line in error_output.strip().split("\n"):
+            if line:
+                logger.debug(f"AI Worker: {line}")
+
+    def _on_ai_finished(self, exit_code, exit_status):
+        """Handle AI worker process termination."""
+        logger.warning(f"AI worker process finished: code={exit_code}, status={exit_status}")
+        self._ai_ready = False
+        
+        # Fail any pending requests
+        for request_id, event_index in list(self._pending_ai_requests.items()):
+            self.eventExplanationFailed.emit(str(event_index), "AI service stopped")
+        self._pending_ai_requests.clear()
+        
+        # Attempt restart after 2 seconds
+        QTimer.singleShot(2000, self._start_ai_worker)
+
+    def _send_ai_request(self, request: dict) -> str:
+        """Send a request to the AI worker process."""
+        self._ai_request_id += 1
+        request_id = f"req_{self._ai_request_id}"
+        request["id"] = request_id
+        
+        if self._ai_process and self._ai_process.state() == QProcess.Running:
+            request_json = json.dumps(request) + "\n"
+            self._ai_process.write(request_json.encode("utf-8"))
+            return request_id
+        else:
+            logger.warning("AI worker not running")
+            return ""
+
+    def _cancel_current_ai_request(self):
+        """Cancel the current AI request (by marking it stale)."""
+        # We don't actually cancel the work, but we ignore the response
+        self._current_ai_request = None
 
     def set_snapshot_service(self, snapshot_service):
         """Set snapshot service for chatbot context (called from application.py)."""
@@ -164,55 +316,109 @@ class BackendBridge(QObject):
             logger.exception(f"Monitoring error: {e}")
             self.toast.emit("error", f"Monitoring error: {e!s}")
 
+    def _compute_event_signature(self, event: dict) -> str:
+        """
+        Compute a signature for an event based on source, event_id, and message hash.
+        This allows us to cache explanations for events with the same signature.
+        """
+        source = str(event.get("source", event.get("provider", "")))
+        event_id = str(event.get("event_id", 0))
+        message = str(event.get("message", ""))
+        
+        raw = f"{source}|{event_id}|{message}"
+        return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
     @Slot()
     def loadRecentEvents(self):
-        """Load recent Windows event log entries (async)."""
-        worker_id = "load-events"
+        """Load recent Windows event log entries with friendly summaries (async, never blocks UI)."""
+        # Run in background thread to never block the UI
+        def load_in_thread():
+            try:
+                events = list(self.event_reader.tail(limit=300))
+                
+                # Cache the loaded events for AI explanation lookup
+                self._loaded_events = events
+                
+                # Store in database
+                self.event_repo.add_many(events)
 
-        def load_task(worker):
-            """Background task to load events"""
-            worker.signals.heartbeat.emit(worker_id)
-            events = self.event_reader.tail(limit=300)
-            worker.signals.heartbeat.emit(worker_id)
+                # Convert EventItem objects to dicts for QML with friendly messages
+                event_dicts = []
+                events_needing_summary = []
+                
+                for idx, evt in enumerate(events):
+                    event_dict = {
+                        "timestamp": evt.timestamp.isoformat() if hasattr(evt.timestamp, "isoformat") else str(evt.timestamp),
+                        "time_created": evt.timestamp.isoformat() if hasattr(evt.timestamp, "isoformat") else str(evt.timestamp),
+                        "level": evt.level,
+                        "source": evt.source,
+                        "provider": evt.source,
+                        "message": evt.message,
+                        "event_id": getattr(evt, "event_id", 0),
+                        "log_name": getattr(evt, "log_name", "Windows"),
+                    }
+                    
+                    # Compute signature for caching
+                    signature = self._compute_event_signature(event_dict)
+                    event_dict["_signature"] = signature
+                    
+                    # Try to get cached summary from SQLite
+                    source = event_dict["source"]
+                    event_id = event_dict["event_id"]
+                    
+                    # Check if we have a cached summary in the database
+                    cached = None
+                    try:
+                        # Use the scan_repo which is SqliteRepo
+                        if hasattr(self.scan_repo, 'get_event_summary'):
+                            cached = self.scan_repo.get_event_summary(source, event_id, signature)
+                    except Exception as e:
+                        logger.debug(f"Cache lookup error: {e}")
+                    
+                    if cached:
+                        # Use cached friendly message
+                        event_dict["friendly_message"] = cached.get("table_summary", event_dict["message"])
+                        event_dict["_has_summary"] = True
+                    else:
+                        # Generate summary using EventSummarizer (rule-based, fast)
+                        if self._event_summarizer:
+                            try:
+                                summary = self._event_summarizer.summarize(event_dict)
+                                event_dict["friendly_message"] = summary.table_summary
+                                event_dict["_has_summary"] = True
+                                
+                                # Save to database cache for future use
+                                if hasattr(self.scan_repo, 'save_event_summary'):
+                                    try:
+                                        self.scan_repo.save_event_summary(
+                                            source, event_id, signature, summary.to_dict()
+                                        )
+                                    except Exception as e:
+                                        logger.debug(f"Cache save error: {e}")
+                            except Exception as e:
+                                logger.debug(f"Summary generation error: {e}")
+                                # Fallback to truncated message
+                                event_dict["friendly_message"] = event_dict["message"][:100] + "..." if len(event_dict["message"]) > 100 else event_dict["message"]
+                                event_dict["_has_summary"] = False
+                        else:
+                            # No summarizer available - use truncated message
+                            event_dict["friendly_message"] = event_dict["message"][:100] + "..." if len(event_dict["message"]) > 100 else event_dict["message"]
+                            event_dict["_has_summary"] = False
+                    
+                    event_dicts.append(event_dict)
 
-            # Store in database
-            self.event_repo.add_many(events)
-
-            return events
-
-        def on_success(wid, events):
-            """Event loading completed"""
-            # Convert EventItem objects to dicts for QML
-            event_dicts = [
-                {
-                    "timestamp": evt.timestamp.isoformat(),
-                    "level": evt.level,
-                    "source": evt.source,
-                    "message": evt.message,
-                }
-                for evt in events
-            ]
-
-            self.eventsLoaded.emit(event_dicts)
-            self.toast.emit("success", f"Loaded {len(events)} events")
-            self._watchdog.unregister_worker(worker_id)
-
-        def on_error(wid, error_msg):
-            """Event loading failed"""
-            logger.error(f"Failed to load events: {error_msg}")
-            self.toast.emit("error", f"Failed to load events: {error_msg}")
-            self.eventsLoaded.emit([])
-            self._watchdog.unregister_worker(worker_id)
-
-        # Create and start worker
-        worker = CancellableWorker(worker_id, load_task, timeout_ms=10000)
-        worker.signals.finished.connect(on_success)
-        worker.signals.error.connect(on_error)
-
-        self._watchdog.register_worker(worker_id)
-        self._thread_pool.start(worker)
-
-        logger.info("Loading events asynchronously...")
+                # Emit signals via thread-safe internal signals
+                self._eventsLoadedInternal.emit(event_dicts)
+                self._toastInternal.emit("success", f"Loaded {len(events)} events")
+                
+            except Exception as e:
+                logger.error(f"Failed to load events: {e}")
+                self._toastInternal.emit("error", f"Failed to load events: {e}")
+                self._eventsLoadedInternal.emit([])
+        
+        # Start background thread
+        thread = threading.Thread(target=load_in_thread, daemon=True)
+        thread.start()
 
     @Slot(str, bool)
     def runNetworkScan(self, target: str, fast: bool = True):
@@ -960,12 +1166,69 @@ class BackendBridge(QObject):
     def requestEventExplanation(self, event_index: int) -> None:
         """
         Request AI explanation for an event by its index in the loaded events.
+        Uses separate AI worker process to never block UI.
 
         Args:
             event_index: Index of the event in the current events list
         """
-        if self._event_explainer is None:
-            self.toast.emit("error", "AI services not available")
+        # Cancel any previous pending request
+        self._cancel_current_ai_request()
+        
+        # Check if AI worker is available
+        if not self._ai_process or self._ai_process.state() != QProcess.Running:
+            # Fallback to thread-based if AI worker not running
+            self._request_explanation_fallback(event_index)
+            return
+
+        try:
+            # Use cached events (same as what user sees in UI)
+            events = self._loaded_events
+            if not events:
+                self.eventExplanationFailed.emit(str(event_index), "No events loaded. Please refresh.")
+                return
+                
+            if event_index < 0 or event_index >= len(events):
+                self.eventExplanationFailed.emit(str(event_index), f"Event index {event_index} out of range (0-{len(events)-1})")
+                return
+
+            event = events[event_index]
+
+            # Build event dict for AI worker
+            event_dict = {
+                "log_name": getattr(event, "log_name", "Windows"),
+                "provider": getattr(event, "source", "Unknown"),
+                "source": getattr(event, "source", "Unknown"),
+                "event_id": getattr(event, "event_id", 0),
+                "level": getattr(event, "level", "Information"),
+                "message": getattr(event, "message", ""),
+                "time_created": (
+                    getattr(event, "timestamp", "").isoformat()
+                    if hasattr(getattr(event, "timestamp", None), "isoformat")
+                    else str(getattr(event, "timestamp", ""))
+                ),
+            }
+            
+            logger.debug(f"Requesting AI explanation for event {event_index}: {event_dict.get('source')} - {event_dict.get('message')[:50]}...")
+
+            # Send request to AI worker
+            request = {"type": "explain_event", "data": event_dict}
+            request_id = self._send_ai_request(request)
+            
+            if request_id:
+                self._current_ai_request = request_id
+                self._pending_ai_requests[request_id] = event_index
+                logger.info(f"AI explanation requested via worker: event {event_index}")
+            else:
+                self.eventExplanationFailed.emit(str(event_index), "AI service unavailable")
+
+        except Exception as e:
+            logger.error(f"Failed to request AI explanation: {e}")
+            self.eventExplanationFailed.emit(str(event_index), str(e))
+
+    def _request_explanation_fallback(self, event_index: int) -> None:
+        """Fallback: use thread pool if AI worker is not available."""
+        if self._event_summarizer is None and self._event_explainer is None:
+            self.eventExplanationFailed.emit(str(event_index), "AI services not available")
             return
 
         worker_id = f"ai-explain-{event_index}"
@@ -978,10 +1241,13 @@ class BackendBridge(QObject):
             """Background AI explanation task."""
             worker.signals.heartbeat.emit(worker_id)
 
-            # Get events from repo
-            events = self.event_reader.tail(limit=300)
+            # Use cached events (same as what user sees in UI)
+            events = self._loaded_events
+            if not events:
+                raise ValueError("No events loaded. Please refresh.")
+                
             if event_index < 0 or event_index >= len(events):
-                raise ValueError(f"Event index {event_index} out of range")
+                raise ValueError(f"Event index {event_index} out of range (0-{len(events)-1})")
 
             event = events[event_index]
 
@@ -1001,23 +1267,109 @@ class BackendBridge(QObject):
             }
 
             worker.signals.heartbeat.emit(worker_id)
-
-            # Get explanation
-            explanation = self._event_explainer.explain_event(event_dict)
-
-            return (str(event_index), explanation)
+            
+            # Check cache first
+            signature = self._compute_event_signature(event_dict)
+            source = event_dict["source"]
+            evt_id = event_dict["event_id"]
+            
+            cached = None
+            try:
+                if hasattr(self.scan_repo, 'get_event_summary'):
+                    cached = self.scan_repo.get_event_summary(source, evt_id, signature)
+            except Exception as e:
+                logger.debug(f"Cache lookup error: {e}")
+            
+            if cached:
+                # Return cached explanation in the new 5-section format
+                return (str(event_index), {
+                    "title": cached.get("title", cached.get("short_title", "Event information")),
+                    "severity": cached.get("severity", cached.get("severity_label", "Safe")),
+                    "severity_label": cached.get("severity", cached.get("severity_label", "Safe")),
+                    "what_happened": cached.get("what_happened", ""),
+                    "why_it_happens": cached.get("why_it_happens", ""),
+                    "what_to_do": cached.get("what_to_do", cached.get("what_you_can_do", "")),
+                    "tech_notes": cached.get("tech_notes", ""),
+                    "event_id": evt_id,
+                    "source": source,
+                    # Legacy fields for compatibility
+                    "short_title": cached.get("title", cached.get("short_title", "Event information")),
+                    "explanation": cached.get("what_happened", ""),
+                    "recommendation": cached.get("what_to_do", cached.get("what_you_can_do", "")),
+                    "what_you_can_do": cached.get("what_to_do", cached.get("what_you_can_do", "")),
+                })
+            
+            # Generate using EventExplainer (preferred - detailed 5-section format)
+            if self._event_explainer:
+                explanation = self._event_explainer.explain_event(event_dict)
+                
+                # Build result dict in 5-section format
+                result_dict = {
+                    "title": explanation.get("short_title", "Event information"),
+                    "severity": explanation.get("severity", "Safe"),
+                    "severity_label": explanation.get("severity", "Safe"),
+                    "what_happened": explanation.get("what_happened", explanation.get("explanation", "")),
+                    "why_it_happens": explanation.get("why_it_happens", ""),
+                    "what_to_do": explanation.get("what_to_do", explanation.get("recommendation", "")),
+                    "tech_notes": explanation.get("tech_notes", f"Event ID: {evt_id} | Source: {source}"),
+                    "event_id": evt_id,
+                    "source": source,
+                    # Legacy fields for compatibility
+                    "short_title": explanation.get("short_title", "Event information"),
+                    "explanation": explanation.get("what_happened", explanation.get("explanation", "")),
+                    "recommendation": explanation.get("what_to_do", explanation.get("recommendation", "")),
+                    "what_you_can_do": explanation.get("what_to_do", explanation.get("recommendation", "")),
+                }
+                
+                # Save to cache for future use
+                try:
+                    if hasattr(self.scan_repo, 'save_event_summary'):
+                        self.scan_repo.save_event_summary(source, evt_id, signature, result_dict)
+                except Exception as e:
+                    logger.debug(f"Cache save error: {e}")
+                
+                return (str(event_index), result_dict)
+            
+            # Fallback to EventSummarizer if EventExplainer unavailable
+            if self._event_summarizer:
+                summary = self._event_summarizer.summarize(event_dict)
+                
+                # Save to cache
+                try:
+                    if hasattr(self.scan_repo, 'save_event_summary'):
+                        self.scan_repo.save_event_summary(source, evt_id, signature, summary.to_dict())
+                except Exception as e:
+                    logger.debug(f"Cache save error: {e}")
+                
+                return (str(event_index), {
+                    "title": summary.title,
+                    "severity": summary.severity_label,
+                    "severity_label": summary.severity_label,
+                    "what_happened": summary.what_happened,
+                    "why_it_happens": "",
+                    "what_to_do": summary.what_you_can_do,
+                    "tech_notes": summary.tech_notes,
+                    "event_id": summary.event_id,
+                    "source": summary.source,
+                    # Legacy fields for compatibility
+                    "short_title": summary.title,
+                    "explanation": summary.what_happened,
+                    "recommendation": summary.what_you_can_do,
+                    "what_you_can_do": summary.what_you_can_do,
+                })
+            
+            raise ValueError("No AI services available")
 
         def on_success(wid: str, result: tuple) -> None:
             """Explanation completed."""
             event_id, explanation = result
-            import json
 
             try:
                 explanation_json = json.dumps(explanation)
                 self.eventExplanationReady.emit(event_id, explanation_json)
             except Exception as e:
                 logger.error(f"Failed to serialize explanation: {e}")
-                self.toast.emit("error", "Failed to process AI explanation")
+                self.eventExplanationFailed.emit(event_id, "Failed to process response")
             finally:
                 self._watchdog.unregister_worker(worker_id)
                 if worker_id in self._active_workers:
@@ -1026,13 +1378,13 @@ class BackendBridge(QObject):
         def on_error(wid: str, error_msg: str) -> None:
             """Explanation failed."""
             logger.error(f"AI explanation failed: {error_msg}")
-            self.toast.emit("error", f"AI explanation failed: {error_msg}")
+            self.eventExplanationFailed.emit(str(event_index), error_msg)
             self._watchdog.unregister_worker(worker_id)
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
 
-        # Create and start worker
-        worker = CancellableWorker(worker_id, explain_task, timeout_ms=30000)
+        # Create and start worker with 8 second timeout
+        worker = CancellableWorker(worker_id, explain_task, timeout_ms=8000)
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
 
@@ -1040,7 +1392,7 @@ class BackendBridge(QObject):
         self._watchdog.register_worker(worker_id)
         self._thread_pool.start(worker)
 
-        logger.info(f"AI explanation requested for event {event_index}")
+        logger.info(f"AI explanation requested (fallback): event {event_index}")
 
     @Slot(str)
     def sendChatMessage(self, user_text: str) -> None:

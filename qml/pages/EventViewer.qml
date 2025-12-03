@@ -1,934 +1,960 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../components"
+import "../theme"
 import "../ui"
 
 Item {
     id: root
     anchors.fill: parent
     
-    // State
-    property var eventsList: []
-    property string filterLevel: "All"
+    // ===========================================
+    // STATE PROPERTIES
+    // ===========================================
+    property var selectedEvent: null
+    property int selectedEventIndex: -1  // Index in eventModel (not filteredModel)
+    property var eventModel: []
+    property var filteredModel: []
+    property bool isLoading: false
+    property string errorMessage: ""
     property string searchText: ""
-    property int themeUpdateTrigger: 0
-    property int selectedEventIndex: -1
-    property var aiExplanation: null
-    property bool isExplaining: false
-    property bool technicalDetailsExpanded: false
+    property string levelFilter: "All"
     
-    // ============================================================
-    // HELPER FUNCTIONS for user-friendly text
-    // ============================================================
+    // AI State
+    property bool aiBusy: false
+    property var aiData: null
+    property string aiError: ""
     
-    function getSelectedEvent() {
-        if (selectedEventIndex >= 0 && eventModel.get(selectedEventIndex)) {
-            return eventModel.get(selectedEventIndex)
-        }
-        return null
-    }
+    // ===========================================
+    // HELPER FUNCTIONS
+    // ===========================================
     
-    // SUMMARY: What happened?
-    function getFriendlySummary() {
-        if (aiExplanation && aiExplanation.short_summary) {
-            return aiExplanation.short_summary
-        }
-        // Fallback based on event level
-        var evt = getSelectedEvent()
-        if (!evt) return ""
-        var level = evt.level || "Information"
-        var source = evt.source || "Windows"
-        if (source.length > 25) source = source.substring(0, 22) + "..."
-        
-        if (level === "Critical") {
-            return "Something serious happened with " + source + "."
-        } else if (level === "Error") {
-            return "Something went wrong with " + source + "."
-        } else if (level === "Warning") {
-            return "Windows noticed something unusual from " + source + "."
-        }
-        return "Windows recorded a normal message from " + source + "."
-    }
-    
-    // SEVERITY INFO: Is this a problem?
-    function getSeverityInfo() {
-        // Returns: { label, color, description }
-        if (aiExplanation && aiExplanation.severity_label) {
-            var label = aiExplanation.severity_label
-            var meaning = aiExplanation.what_it_means || ""
+    function filterEvents() {
+        var result = []
+        for (var i = 0; i < eventModel.length; i++) {
+            var event = eventModel[i]
             
-            if (label === "Critical") {
-                return { 
-                    label: "Critical", 
-                    color: "#DC2626", 
-                    description: meaning || "Yes, this needs immediate attention."
-                }
-            } else if (label === "High") {
-                return { 
-                    label: "High", 
-                    color: "#EA580C", 
-                    description: meaning || "Yes, this could affect your computer."
-                }
-            } else if (label === "Medium") {
-                return { 
-                    label: "Medium", 
-                    color: "#CA8A04", 
-                    description: meaning || "This might cause small issues. Keep using your PC, but watch for problems."
-                }
-            } else if (label === "Low") {
-                return { 
-                    label: "Low", 
-                    color: "#2563EB", 
-                    description: meaning || "This is minor. You can safely ignore it unless it happens often."
+            // Level filter - backend uses uppercase: INFO, WARNING, ERROR, SUCCESS, FAILURE
+            if (levelFilter !== "All") {
+                var eventLevel = (event.level || "").toUpperCase()
+                var filterLevel = levelFilter.toUpperCase()
+                // Handle aliases
+                if (filterLevel === "INFORMATION") filterLevel = "INFO"
+                if (eventLevel !== filterLevel) continue
+            }
+            
+            // Search filter
+            if (searchText.length > 0) {
+                var searchLower = searchText.toLowerCase()
+                var source = (event.source || event.provider || "").toLowerCase()
+                var message = (event.message || "").toLowerCase()
+                var eventId = String(event.event_id || "")
+                
+                if (!source.includes(searchLower) && 
+                    !message.includes(searchLower) && 
+                    !eventId.includes(searchLower)) {
+                    continue
                 }
             }
-            return { 
-                label: "Info", 
-                color: "#22C55E", 
-                description: meaning || "No, this is just a normal system message."
+            
+            result.push(event)
+        }
+        filteredModel = result
+    }
+    
+    function getLevelColor(level) {
+        if (!level) return ThemeManager.muted()
+        var l = level.toLowerCase()
+        if (l === "error" || l === "critical") return ThemeManager.danger
+        if (l === "warning") return ThemeManager.warning
+        return ThemeManager.info  // INFO and others
+    }
+    
+    function severityColor(severity) {
+        switch(severity) {
+            case "Safe": return ThemeManager.success
+            case "Minor": return ThemeManager.info
+            case "Warning": return ThemeManager.warning
+            case "Critical": return ThemeManager.danger
+            default: return ThemeManager.foreground()
+        }
+    }
+    
+    function formatTimestamp(ts) {
+        if (!ts) return ""
+        try {
+            var date = new Date(ts)
+            return date.toLocaleString()
+        } catch (e) {
+            return ts
+        }
+    }
+    
+    function requestExplanation() {
+        if (!selectedEvent || selectedEventIndex < 0) {
+            if (typeof Backend !== "undefined" && Backend.toast) {
+                Backend.toast("warning", "Please select an event first.")
             }
+            return
         }
         
-        // Fallback based on event level
-        var evt = getSelectedEvent()
-        if (!evt) return { label: "Unknown", color: ThemeManager.muted(), description: "" }
-        var level = evt.level || "Information"
+        // Cancel any previous request by resetting state
+        aiData = null
+        aiError = ""
+        aiBusy = true
         
-        if (level === "Critical") {
-            return { label: "Critical", color: "#DC2626", description: "This is a serious issue that needs attention." }
-        } else if (level === "Error") {
-            return { label: "Medium", color: "#EA580C", description: "Something went wrong, but your PC should still work." }
-        } else if (level === "Warning") {
-            return { label: "Low", color: "#CA8A04", description: "Windows noticed something, but it's probably fine." }
+        // Use the stored original index
+        if (typeof Backend !== "undefined" && Backend.requestEventExplanation) {
+            Backend.requestEventExplanation(selectedEventIndex)
+        } else {
+            aiBusy = false
+            aiError = "Backend not available"
         }
-        return { label: "Info", color: "#22C55E", description: "This is just a normal system message." }
     }
     
-    // CAUSE: Possible cause
-    function getLikelyCause() {
-        if (aiExplanation && aiExplanation.likely_cause) {
-            var cause = aiExplanation.likely_cause
-            if (cause.toLowerCase() === "unknown" || cause.toLowerCase() === "unknown.") {
-                return "The exact cause is not clear from this message."
-            }
-            return cause
-        }
-        return "The exact cause is not clear from this message."
-    }
-    
-    // ACTIONS: What should I do?
-    function getRecommendedActions() {
-        if (aiExplanation && aiExplanation.recommended_actions && aiExplanation.recommended_actions.length > 0) {
-            return aiExplanation.recommended_actions
-        }
-        // Fallback based on event level
-        var evt = getSelectedEvent()
-        if (!evt) return ["No action needed."]
-        var level = evt.level || "Information"
-        
-        if (level === "Critical" || level === "Error") {
-            return [
-                "If this keeps happening, restart your computer.",
-                "If the problem continues, contact a technician."
-            ]
-        } else if (level === "Warning") {
-            return ["Keep an eye on this. If it happens often, restart your PC."]
-        }
-        return ["No action needed."]
-    }
-    
-    // ============================================================
-    // CONNECTIONS
-    // ============================================================
+    // ===========================================
+    // BACKEND CONNECTIONS
+    // ===========================================
     
     Connections {
-        target: ThemeManager
-        function onThemeModeChanged() {
-            themeUpdateTrigger++
-        }
-    }
-    
-    Connections {
-        target: Backend || null
-        enabled: target !== null
+        target: typeof Backend !== "undefined" ? Backend : null
         
         function onEventsLoaded(events) {
-            eventsList = events
-            eventModel.clear()
-            selectedEventIndex = -1
-            aiExplanation = null
-            technicalDetailsExpanded = false
+            eventModel = events || []
+            filterEvents()
+            isLoading = false
+            errorMessage = ""
+        }
+        
+        function onEventExplanationReady(eventId, explanation) {
+            console.log("[EventViewer] AI explanation received for event", eventId)
+            aiBusy = false
+            aiError = ""
             
-            for (var i = 0; i < events.length; i++) {
-                var evt = events[i]
-                var eventLevel = evt.level ? evt.level.toUpperCase() : ""
-                var filterLevelUpper = filterLevel.toUpperCase()
-                
-                if ((filterLevel === "All" || eventLevel === filterLevelUpper) &&
-                    (searchText === "" || 
-                     (evt.message && evt.message.indexOf(searchText) >= 0) || 
-                     (evt.source && evt.source.indexOf(searchText) >= 0))) {
-                    eventModel.append(evt)
+            try {
+                if (typeof explanation === "string") {
+                    aiData = JSON.parse(explanation)
+                    console.log("[EventViewer] Parsed AI data:", JSON.stringify(aiData))
+                } else {
+                    aiData = explanation
+                }
+            } catch (e) {
+                console.log("[EventViewer] JSON parse error, using fallback:", e)
+                aiData = {
+                    severity: "Safe",
+                    title: "Event Analysis",
+                    short_title: "Event Analysis",
+                    explanation: String(explanation),
+                    recommendation: "No action needed."
                 }
             }
         }
         
-        function onEventExplanationReady(eventId, explanationJson) {
-            isExplaining = false
-            try {
-                var explanation = JSON.parse(explanationJson)
-                // Only apply if still viewing the same event
-                if (parseInt(eventId) === selectedEventIndex) {
-                    aiExplanation = explanation
-                }
-            } catch (e) {
-                console.error("Failed to parse AI explanation:", e)
-                // Set a safe fallback
-                if (parseInt(eventId) === selectedEventIndex) {
-                    aiExplanation = {
-                        short_summary: "Windows recorded a system event.",
-                        what_it_means: "This is not usually serious unless it keeps happening.",
-                        likely_cause: "Unknown.",
-                        recommended_actions: ["If this message repeats many times, restart your PC."],
-                        severity_score: 0,
-                        severity_label: "Info"
-                    }
-                }
-            }
+        function onEventExplanationFailed(eventId, errorMsg) {
+            console.log("[EventViewer] AI explanation failed for event", eventId, ":", errorMsg)
+            aiBusy = false
+            aiData = null
+            aiError = errorMsg || "Analysis failed"
         }
     }
     
     Component.onCompleted: {
-        if (typeof Backend !== 'undefined' && Backend !== null) {
+        if (typeof Backend !== "undefined" && Backend.loadRecentEvents) {
+            isLoading = true
             Backend.loadRecentEvents()
         }
     }
     
-    function applyFilters() {
-        eventModel.clear()
-        for (var i = 0; i < eventsList.length; i++) {
-            var evt = eventsList[i]
-            var eventLevel = evt.level ? evt.level.toUpperCase() : ""
-            var filterLevelUpper = filterLevel.toUpperCase()
-            var levelMatch = (filterLevel === "All" || eventLevel === filterLevelUpper)
-            var searchMatch = (searchText === "" || 
-                              (evt.message && evt.message.indexOf(searchText) >= 0) || 
-                              (evt.source && evt.source.indexOf(searchText) >= 0))
-            if (levelMatch && searchMatch) {
-                eventModel.append(evt)
-            }
-        }
-    }
-
-    // ============================================================
+    // Watch for filter changes
+    onSearchTextChanged: filterEvents()
+    onLevelFilterChanged: filterEvents()
+    onEventModelChanged: filterEvents()
+    
+    // ===========================================
     // MAIN LAYOUT
-    // ============================================================
+    // ===========================================
+    
+    Rectangle {
+        anchors.fill: parent
+        color: ThemeManager.background()
+    }
     
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 20
-
-        // LEFT SIDE: Event list
+        anchors.margins: Theme.spacing_md
+        spacing: Theme.spacing_md
+        
+        // ===========================================
+        // LEFT: Table View Area
+        // ===========================================
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.preferredWidth: selectedEventIndex >= 0 ? parent.width * 0.55 : parent.width
-            spacing: 16
-
-            Text {
-                text: "Event Viewer"
-                font.pixelSize: 28
-                font.bold: true
-                color: ThemeManager.foreground()
-            }
-
-            // Filter controls
+            spacing: Theme.spacing_sm
+            
+            // -----------------------------------------
+            // TOP TOOLBAR
+            // -----------------------------------------
             Rectangle {
                 Layout.fillWidth: true
-                height: 56
+                height: 48
                 color: ThemeManager.panel()
-                radius: 12
-                border.color: ThemeManager.border()
-                border.width: 1
-
+                radius: Theme.radii_sm
+                
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 12
-
-                    Text {
-                        text: "Filter:"
-                        color: ThemeManager.foreground()
-                        font.pixelSize: 12
-                    }
-
-                    ComboBox {
-                        id: levelFilterCombo
-                        model: ["All", "Info", "Warning", "Error", "Critical"]
-                        currentIndex: 0
-                        onCurrentIndexChanged: {
-                            if (currentIndex >= 0) {
-                                filterLevel = model[currentIndex]
-                                root.applyFilters()
-                            }
-                        }
-                        background: Rectangle {
-                            color: ThemeManager.surface()
-                            radius: 6
-                            border.color: ThemeManager.border()
-                            border.width: 1
-                        }
-                        contentItem: Text {
-                            text: parent.currentText
-                            color: ThemeManager.foreground()
-                            font.pixelSize: 12
-                            leftPadding: 8
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        delegate: ItemDelegate {
-                            width: parent ? parent.width : 150
-                            text: modelData
-                            background: Rectangle {
-                                color: parent.highlighted ? ThemeManager.elevated() : ThemeManager.surface()
-                            }
-                            contentItem: Text {
-                                text: modelData
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 12
-                                leftPadding: 8
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 36
-                        color: ThemeManager.surface()
-                        radius: 6
-                        border.color: ThemeManager.border()
-                        border.width: 1
-
-                        TextField {
-                            id: searchField
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            color: ThemeManager.foreground()
-                            placeholderText: "Search events..."
-                            placeholderTextColor: ThemeManager.muted()
-                            background: Rectangle { color: "transparent" }
-                            onTextChanged: searchDebounceTimer.restart()
-                        }
-                        
-                        Timer {
-                            id: searchDebounceTimer
-                            interval: 200
-                            onTriggered: {
-                                searchText = searchField.text
-                                root.applyFilters()
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        width: 80
-                        height: 36
-                        radius: 6
-                        color: refreshMouse.containsMouse ? Qt.darker(ThemeManager.accent, 1.1) : ThemeManager.accent
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Refresh"
-                            color: "white"
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-                        
-                        MouseArea {
-                            id: refreshMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (Backend) Backend.loadRecentEvents()
-                        }
-                    }
-                }
-            }
-
-            // Events table
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: ThemeManager.panel()
-                radius: 12
-                border.color: ThemeManager.border()
-                border.width: 1
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 0
-
-                    // Header row
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 36
-                        color: ThemeManager.surface()
-                        radius: 6
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 12
-
-                            Text { text: "Time"; color: ThemeManager.muted(); font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 80 }
-                            Text { text: "Type"; color: ThemeManager.muted(); font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 70 }
-                            Text { text: "Source"; color: ThemeManager.muted(); font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 100 }
-                            Text { text: "Description"; color: ThemeManager.muted(); font.pixelSize: 10; font.bold: true; Layout.fillWidth: true }
-                        }
-                    }
-
-                    // Events list
-                    ScrollView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        
-                        ListView {
-                            id: eventListView
-                            width: parent.width
-                            model: eventModel
-                            spacing: 2
-                            currentIndex: selectedEventIndex
-
-                            delegate: Rectangle {
-                                width: ListView.view ? ListView.view.width : 500
-                                height: 44
-                                color: {
-                                    if (index === selectedEventIndex) {
-                                        return ThemeManager.accent + "30"
-                                    }
-                                    var isDark = ThemeManager ? ThemeManager.isDark() : true
-                                    return isDark ? 
-                                           (index % 2 === 0 ? "#0B1020" : "#050814") : 
-                                           (index % 2 === 0 ? "#F3F4F6" : "#FFFFFF")
-                                }
-                                border.color: index === selectedEventIndex ? ThemeManager.accent : "transparent"
-                                border.width: index === selectedEventIndex ? 1 : 0
-                                radius: 4
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        selectedEventIndex = index
-                                        aiExplanation = null
-                                        technicalDetailsExpanded = false
-                                        // Auto-request AI explanation
-                                        if (Backend && !isExplaining) {
-                                            isExplaining = true
-                                            Backend.requestEventExplanation(index)
-                                        }
-                                    }
-                                }
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 12
-
-                                    Text {
-                                        text: model.timestamp ? model.timestamp.substr(11, 8) : "--"
-                                        color: ThemeManager.muted()
-                                        font.pixelSize: 10
-                                        Layout.preferredWidth: 80
-                                    }
-
-                                    // Friendly level badge
-                                    Rectangle {
-                                        width: 60
-                                        height: 20
-                                        radius: 10
-                                        color: {
-                                            var lvl = model.level || "Info"
-                                            if (lvl === "Critical") return "#DC2626"
-                                            if (lvl === "Error") return "#EA580C"
-                                            if (lvl === "Warning") return "#CA8A04"
-                                            return "#6B7280"
-                                        }
-                                        Layout.preferredWidth: 70
-                                        
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: {
-                                                var lvl = model.level || "Info"
-                                                if (lvl === "Critical") return "⚠️ Bad"
-                                                if (lvl === "Error") return "❌ Issue"
-                                                if (lvl === "Warning") return "⚡ Notice"
-                                                return "ℹ️ Info"
-                                            }
-                                            color: "white"
-                                            font.pixelSize: 9
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    Text {
-                                        text: model.source || "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        Layout.preferredWidth: 100
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        text: model.message || "--"
-                                        color: ThemeManager.muted()
-                                        font.pixelSize: 10
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: eventModel.count === 0 ? "No events found" : eventModel.count + " events"
-                        color: ThemeManager.muted()
-                        font.pixelSize: 10
-                        Layout.alignment: Qt.AlignRight
-                        Layout.topMargin: 8
-                    }
-                }
-            }
-        }
-
-        // ============================================================
-        // RIGHT SIDE: Event explanation panel
-        // ============================================================
-        
-        Rectangle {
-            Layout.fillHeight: true
-            Layout.preferredWidth: selectedEventIndex >= 0 ? parent.width * 0.4 : 0
-            visible: selectedEventIndex >= 0
-            color: ThemeManager.panel()
-            radius: 12
-            border.color: ThemeManager.border()
-            border.width: 1
-            clip: true
-            
-            Behavior on Layout.preferredWidth {
-                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-            }
-
-            ScrollView {
-                anchors.fill: parent
-                anchors.margins: 20
-                clip: true
-                
-                ColumnLayout {
-                    width: parent.width - 8
-                    spacing: 16
-
-                    // Header with close button
+                    anchors.leftMargin: Theme.spacing_md
+                    anchors.rightMargin: Theme.spacing_md
+                    spacing: Theme.spacing_md
+                    
+                    // Level Filter Dropdown
                     RowLayout {
-                        Layout.fillWidth: true
+                        spacing: Theme.spacing_xs
                         
                         Text {
-                            text: "📋 Event Explanation"
+                            text: "Level:"
+                            font.pixelSize: Theme.typography.body.size
                             color: ThemeManager.foreground()
-                            font.pixelSize: 16
-                            font.bold: true
                         }
                         
-                        Item { Layout.fillWidth: true }
-                        
-                        Rectangle {
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: closeDetailsMouse.containsMouse ? ThemeManager.surface() : "transparent"
+                        ComboBox {
+                            id: levelCombo
+                            model: ["All", "INFO", "WARNING", "ERROR"]
+                            currentIndex: 0
+                            implicitWidth: 130
+                            implicitHeight: 32
                             
-                            Text {
-                                anchors.centerIn: parent
-                                text: "✕"
+                            onCurrentTextChanged: {
+                                levelFilter = currentText
+                            }
+                            
+                            background: Rectangle {
+                                color: ThemeManager.elevated()
+                                radius: Theme.radii_xs
+                                border.color: levelCombo.pressed ? ThemeManager.accent : ThemeManager.border()
+                                border.width: 1
+                            }
+                            
+                            contentItem: Text {
+                                text: levelCombo.displayText
+                                color: ThemeManager.foreground()
+                                font.pixelSize: Theme.typography.body.size
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: Theme.spacing_sm
+                                rightPadding: Theme.spacing_lg
+                            }
+                            
+                            indicator: Text {
+                                x: levelCombo.width - width - Theme.spacing_sm
+                                y: (levelCombo.height - height) / 2
+                                text: "▼"
+                                font.pixelSize: 10
                                 color: ThemeManager.muted()
-                                font.pixelSize: 14
                             }
                             
-                            MouseArea {
-                                id: closeDetailsMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    selectedEventIndex = -1
-                                    aiExplanation = null
-                                }
-                            }
-                        }
-                    }
-
-                    // Loading indicator
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 60
-                        radius: 8
-                        color: ThemeManager.surface()
-                        visible: isExplaining
-                        
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 12
-                            
-                            Text {
-                                text: "🔍"
-                                font.pixelSize: 20
+                            delegate: ItemDelegate {
+                                width: levelCombo.width
+                                height: 32
                                 
-                                SequentialAnimation on opacity {
-                                    loops: Animation.Infinite
-                                    running: isExplaining
-                                    NumberAnimation { to: 0.3; duration: 500 }
-                                    NumberAnimation { to: 1.0; duration: 500 }
-                                }
-                            }
-                            
-                            Text {
-                                text: "Analyzing this event..."
-                                color: ThemeManager.muted()
-                                font.pixelSize: 12
-                            }
-                        }
-                    }
-
-                    // SECTION 1: What happened?
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: whatHappenedContent.implicitHeight + 24
-                        radius: 10
-                        color: ThemeManager.surface()
-                        visible: !isExplaining
-                        
-                        ColumnLayout {
-                            id: whatHappenedContent
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 8
-                            
-                            Text {
-                                text: "💬 What happened?"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-                            
-                            Text {
-                                text: getFriendlySummary()
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 12
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                                lineHeight: 1.3
-                            }
-                        }
-                    }
-
-                    // SECTION 2: Is this a problem?
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: problemContent.implicitHeight + 24
-                        radius: 10
-                        color: ThemeManager.surface()
-                        visible: !isExplaining
-                        
-                        ColumnLayout {
-                            id: problemContent
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 10
-                            
-                            Text {
-                                text: "🔍 Is this a problem?"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-                            
-                            // Severity badge
-                            Rectangle {
-                                width: severityLabel.implicitWidth + 20
-                                height: 26
-                                radius: 13
-                                color: getSeverityInfo().color
-                                
-                                Text {
-                                    id: severityLabel
-                                    anchors.centerIn: parent
-                                    text: getSeverityInfo().label
-                                    color: "white"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                            }
-                            
-                            Text {
-                                text: getSeverityInfo().description
-                                color: ThemeManager.muted()
-                                font.pixelSize: 11
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                                lineHeight: 1.3
-                            }
-                        }
-                    }
-
-                    // SECTION 3: Possible cause
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: causeContent.implicitHeight + 24
-                        radius: 10
-                        color: ThemeManager.surface()
-                        visible: !isExplaining
-                        
-                        ColumnLayout {
-                            id: causeContent
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 8
-                            
-                            Text {
-                                text: "🔎 Possible cause"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-                            
-                            Text {
-                                text: getLikelyCause()
-                                color: ThemeManager.muted()
-                                font.pixelSize: 11
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                                lineHeight: 1.3
-                            }
-                        }
-                    }
-
-                    // SECTION 4: What should I do?
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: actionsContent.implicitHeight + 24
-                        radius: 10
-                        color: ThemeManager.surface()
-                        visible: !isExplaining
-                        
-                        ColumnLayout {
-                            id: actionsContent
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 8
-                            
-                            Text {
-                                text: "✅ What should I do?"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-                            
-                            Repeater {
-                                model: getRecommendedActions()
-                                
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-                                    
-                                    Rectangle {
-                                        width: 6
-                                        height: 6
-                                        radius: 3
-                                        color: ThemeManager.accent
-                                        Layout.alignment: Qt.AlignTop
-                                        Layout.topMargin: 5
-                                    }
-                                    
-                                    Text {
-                                        text: modelData
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 11
-                                        wrapMode: Text.Wrap
-                                        Layout.fillWidth: true
-                                        lineHeight: 1.3
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 5: Technical details (collapsible)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: technicalHeader.implicitHeight + (technicalDetailsExpanded ? technicalContent.implicitHeight + 12 : 0) + 24
-                        radius: 10
-                        color: ThemeManager.surface()
-                        visible: !isExplaining
-                        clip: true
-                        
-                        Behavior on implicitHeight {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                        }
-                        
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 12
-                            
-                            // Collapsible header
-                            Item {
-                                id: technicalHeader
-                                Layout.fillWidth: true
-                                implicitHeight: technicalHeaderRow.implicitHeight
-                                
-                                RowLayout {
-                                    id: technicalHeaderRow
-                                    anchors.fill: parent
-                                    
-                                    Text {
-                                        text: technicalDetailsExpanded ? "🔧 Technical details" : "🔧 Show technical details"
-                                        color: ThemeManager.muted()
-                                        font.pixelSize: 12
-                                    }
-                                    
-                                    Item { Layout.fillWidth: true }
-                                    
-                                    Text {
-                                        text: technicalDetailsExpanded ? "▲" : "▼"
-                                        color: ThemeManager.muted()
-                                        font.pixelSize: 10
-                                    }
+                                contentItem: Text {
+                                    text: modelData
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: Theme.typography.body.size
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: Theme.spacing_sm
                                 }
                                 
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: technicalDetailsExpanded = !technicalDetailsExpanded
+                                background: Rectangle {
+                                    color: highlighted ? ThemeManager.accent : ThemeManager.elevated()
                                 }
+                                
+                                highlighted: levelCombo.highlightedIndex === index
                             }
                             
-                            // Technical content
-                            ColumnLayout {
-                                id: technicalContent
-                                Layout.fillWidth: true
-                                spacing: 6
-                                visible: technicalDetailsExpanded
-                                opacity: technicalDetailsExpanded ? 1 : 0
+                            popup: Popup {
+                                y: levelCombo.height
+                                width: levelCombo.width
+                                implicitHeight: contentItem.implicitHeight + 2
+                                padding: 1
                                 
-                                Behavior on opacity {
-                                    NumberAnimation { duration: 150 }
+                                contentItem: ListView {
+                                    clip: true
+                                    implicitHeight: contentHeight
+                                    model: levelCombo.popup.visible ? levelCombo.delegateModel : null
+                                    currentIndex: levelCombo.highlightedIndex
+                                    ScrollIndicator.vertical: ScrollIndicator { }
                                 }
                                 
-                                // Event ID
-                                RowLayout {
-                                    spacing: 8
-                                    Text { text: "Event ID:"; color: ThemeManager.muted(); font.pixelSize: 10; Layout.preferredWidth: 80 }
-                                    Text { 
-                                        text: getSelectedEvent() ? (getSelectedEvent().event_id || "--") : "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        font.family: "Consolas"
-                                    }
-                                }
-                                
-                                // Level
-                                RowLayout {
-                                    spacing: 8
-                                    Text { text: "Level:"; color: ThemeManager.muted(); font.pixelSize: 10; Layout.preferredWidth: 80 }
-                                    Text { 
-                                        text: getSelectedEvent() ? (getSelectedEvent().level || "--") : "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        font.family: "Consolas"
-                                    }
-                                }
-                                
-                                // Source
-                                RowLayout {
-                                    spacing: 8
-                                    Text { text: "Source:"; color: ThemeManager.muted(); font.pixelSize: 10; Layout.preferredWidth: 80 }
-                                    Text { 
-                                        text: getSelectedEvent() ? (getSelectedEvent().source || "--") : "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        font.family: "Consolas"
-                                    }
-                                }
-                                
-                                // Log name
-                                RowLayout {
-                                    spacing: 8
-                                    Text { text: "Log:"; color: ThemeManager.muted(); font.pixelSize: 10; Layout.preferredWidth: 80 }
-                                    Text { 
-                                        text: getSelectedEvent() ? (getSelectedEvent().log_name || "--") : "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        font.family: "Consolas"
-                                    }
-                                }
-                                
-                                // Time
-                                RowLayout {
-                                    spacing: 8
-                                    Text { text: "Time:"; color: ThemeManager.muted(); font.pixelSize: 10; Layout.preferredWidth: 80 }
-                                    Text { 
-                                        text: getSelectedEvent() ? (getSelectedEvent().timestamp || "--") : "--"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: 10
-                                        font.family: "Consolas"
-                                    }
-                                }
-                                
-                                // Full message
-                                Text { 
-                                    text: "Full message:"
-                                    color: ThemeManager.muted()
-                                    font.pixelSize: 10
-                                    Layout.topMargin: 4
-                                }
-                                
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: Math.min(fullMessageText.implicitHeight + 16, 120)
+                                background: Rectangle {
                                     color: ThemeManager.panel()
-                                    radius: 6
-                                    
-                                    ScrollView {
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        clip: true
-                                        
-                                        Text {
-                                            id: fullMessageText
-                                            text: getSelectedEvent() ? (getSelectedEvent().message || "No message") : ""
-                                            color: ThemeManager.foreground()
-                                            font.pixelSize: 10
-                                            font.family: "Consolas"
-                                            wrapMode: Text.Wrap
-                                            width: parent.width - 16
-                                        }
-                                    }
+                                    border.color: ThemeManager.border()
+                                    border.width: 1
+                                    radius: Theme.radii_xs
                                 }
                             }
                         }
                     }
                     
-                    // Spacer
-                    Item { Layout.fillHeight: true }
+                    // Search Box
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: 300
+                        height: 32
+                        color: ThemeManager.elevated()
+                        radius: Theme.radii_xs
+                        border.color: searchInput.activeFocus ? ThemeManager.accent : ThemeManager.border()
+                        border.width: 1
+                        
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.spacing_sm
+                            anchors.rightMargin: Theme.spacing_sm
+                            spacing: Theme.spacing_xs
+                            
+                            Text {
+                                text: "🔍"
+                                font.pixelSize: 14
+                                color: ThemeManager.muted()
+                            }
+                            
+                            TextInput {
+                                id: searchInput
+                                Layout.fillWidth: true
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                clip: true
+                                
+                                Text {
+                                    anchors.fill: parent
+                                    text: "Search events..."
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: Theme.typography.body.size
+                                    visible: !searchInput.text && !searchInput.activeFocus
+                                }
+                                
+                                onTextChanged: {
+                                    searchText = text
+                                }
+                            }
+                        }
+                    }
+                    
+                    Item { Layout.fillWidth: true }
+                    
+                    // Explain Event Button
+                    Button {
+                        id: explainBtn
+                        text: "Explain Event"
+                        enabled: selectedEvent !== null && !aiBusy
+                        implicitWidth: 120
+                        implicitHeight: 32
+                        
+                        background: Rectangle {
+                            color: explainBtn.enabled ? 
+                                   (explainBtn.down ? Qt.darker(ThemeManager.accent, 1.2) : 
+                                    explainBtn.hovered ? Qt.lighter(ThemeManager.accent, 1.2) : ThemeManager.accent) :
+                                   ThemeManager.muted()
+                            radius: Theme.radii_xs
+                            opacity: explainBtn.enabled ? 1.0 : 0.5
+                        }
+                        
+                        contentItem: Text {
+                            text: explainBtn.text
+                            color: "#FFFFFF"
+                            font.pixelSize: Theme.typography.body.size
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        
+                        onClicked: {
+                            console.log("[EventViewer] Explain button clicked, selectedEventIndex:", selectedEventIndex)
+                            requestExplanation()
+                        }
+                    }
+                    
+                    // Refresh Button
+                    Button {
+                        id: refreshBtn
+                        text: isLoading ? "Loading..." : "Refresh"
+                        enabled: !isLoading
+                        implicitWidth: 100
+                        implicitHeight: 32
+                        
+                        background: Rectangle {
+                            color: refreshBtn.enabled ?
+                                   (refreshBtn.down ? Qt.darker(Theme.primary, 1.2) :
+                                    refreshBtn.hovered ? Qt.lighter(Theme.primary, 1.2) : Theme.primary) :
+                                   ThemeManager.muted()
+                            radius: Theme.radii_xs
+                            opacity: refreshBtn.enabled ? 1.0 : 0.5
+                        }
+                        
+                        contentItem: Text {
+                            text: refreshBtn.text
+                            color: "#FFFFFF"
+                            font.pixelSize: Theme.typography.body.size
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        
+                        onClicked: {
+                            console.log("[EventViewer] Refresh button clicked")
+                            if (typeof Backend !== "undefined" && Backend.loadRecentEvents) {
+                                isLoading = true
+                                selectedEvent = null
+                                selectedEventIndex = -1
+                                aiData = null
+                                aiError = ""
+                                Backend.loadRecentEvents()
+                            } else {
+                                console.log("[EventViewer] Backend not available!")
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // -----------------------------------------
+            // TABLE HEADER
+            // -----------------------------------------
+            Rectangle {
+                Layout.fillWidth: true
+                height: 40
+                color: ThemeManager.elevated()
+                radius: Theme.radii_xs
+                
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.spacing_md
+                    anchors.rightMargin: Theme.spacing_md
+                    spacing: 0
+                    
+                    // Timestamp column header
+                    Text {
+                        Layout.preferredWidth: 160
+                        text: "Timestamp"
+                        font.pixelSize: Theme.typography.body.size
+                        font.weight: Font.Bold
+                        color: ThemeManager.foreground()
+                    }
+                    
+                    // Event ID column header
+                    Text {
+                        Layout.preferredWidth: 70
+                        text: "ID"
+                        font.pixelSize: Theme.typography.body.size
+                        font.weight: Font.Bold
+                        color: ThemeManager.foreground()
+                    }
+                    
+                    // Level column header
+                    Text {
+                        Layout.preferredWidth: 90
+                        text: "Level"
+                        font.pixelSize: Theme.typography.body.size
+                        font.weight: Font.Bold
+                        color: ThemeManager.foreground()
+                    }
+                    
+                    // Source column header
+                    Text {
+                        Layout.preferredWidth: 140
+                        text: "Source"
+                        font.pixelSize: Theme.typography.body.size
+                        font.weight: Font.Bold
+                        color: ThemeManager.foreground()
+                    }
+                    
+                    // Message column header
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Summary"
+                        font.pixelSize: Theme.typography.body.size
+                        font.weight: Font.Bold
+                        color: ThemeManager.foreground()
+                    }
+                }
+            }
+            
+            // -----------------------------------------
+            // TABLE BODY (ListView)
+            // -----------------------------------------
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                color: ThemeManager.panel()
+                radius: Theme.radii_sm
+                clip: true
+                
+                ListView {
+                    id: eventListView
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    clip: true
+                    
+                    model: filteredModel
+                    
+                    delegate: Rectangle {
+                        width: eventListView.width
+                        height: 44
+                        
+                        // Alternating row colors
+                        color: {
+                            if (selectedEvent === modelData) {
+                                return Qt.lighter(ThemeManager.accent, 1.6)
+                            }
+                            return index % 2 === 0 ? ThemeManager.panel() : ThemeManager.elevated()
+                        }
+                        
+                        // Hover effect
+                        Rectangle {
+                            anchors.fill: parent
+                            color: ThemeManager.accent
+                            opacity: rowMouseArea.containsMouse && selectedEvent !== modelData ? 0.1 : 0
+                        }
+                        
+                        MouseArea {
+                            id: rowMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            
+                            onClicked: {
+                                selectedEvent = modelData
+                                // Find index in original eventModel
+                                for (var i = 0; i < eventModel.length; i++) {
+                                    var evt = eventModel[i]
+                                    if (evt.timestamp === modelData.timestamp && 
+                                        evt.source === modelData.source && 
+                                        evt.message === modelData.message) {
+                                        selectedEventIndex = i
+                                        break
+                                    }
+                                }
+                                // Clear previous AI data when selecting new event
+                                aiData = null
+                                aiError = ""
+                            }
+                        }
+                        
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.spacing_md
+                            anchors.rightMargin: Theme.spacing_md
+                            spacing: 0
+                            
+                            // Timestamp
+                            Text {
+                                Layout.preferredWidth: 160
+                                text: formatTimestamp(modelData.time_created || modelData.timestamp)
+                                font.pixelSize: Theme.typography.caption.size
+                                color: ThemeManager.foreground()
+                                elide: Text.ElideRight
+                            }
+                            
+                            // Event ID
+                            Text {
+                                Layout.preferredWidth: 70
+                                text: modelData.event_id || "-"
+                                font.pixelSize: Theme.typography.caption.size
+                                font.family: "Consolas, monospace"
+                                color: ThemeManager.muted()
+                                elide: Text.ElideRight
+                            }
+                            
+                            // Level (colored)
+                            Rectangle {
+                                Layout.preferredWidth: 90
+                                height: 24
+                                color: "transparent"
+                                
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    width: levelText.implicitWidth + Theme.spacing_sm * 2
+                                    height: 22
+                                    radius: 4
+                                    color: getLevelColor(modelData.level)
+                                    opacity: 0.2
+                                    
+                                    Text {
+                                        id: levelText
+                                        anchors.centerIn: parent
+                                        text: modelData.level || "Info"
+                                        font.pixelSize: Theme.typography.caption.size
+                                        font.weight: Font.Medium
+                                        color: getLevelColor(modelData.level)
+                                    }
+                                }
+                            }
+                            
+                            // Source
+                            Text {
+                                Layout.preferredWidth: 140
+                                text: modelData.source || modelData.provider || "Unknown"
+                                font.pixelSize: Theme.typography.caption.size
+                                color: ThemeManager.foreground()
+                                elide: Text.ElideRight
+                            }
+                            
+                            // Friendly Message (use friendly_message, fall back to message)
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.friendly_message || modelData.message || ""
+                                font.pixelSize: Theme.typography.caption.size
+                                color: ThemeManager.muted()
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                            }
+                        }
+                    }
+                    
+                    // Empty state
+                    Text {
+                        anchors.centerIn: parent
+                        text: isLoading ? "Loading events..." : (filteredModel.length === 0 ? "No events found" : "")
+                        font.pixelSize: Theme.typography.body.size
+                        color: ThemeManager.muted()
+                        visible: filteredModel.length === 0
+                    }
+                }
+            }
+            
+            // -----------------------------------------
+            // FOOTER: Total count
+            // -----------------------------------------
+            Rectangle {
+                Layout.fillWidth: true
+                height: 32
+                color: ThemeManager.panel()
+                radius: Theme.radii_xs
+                
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.spacing_md
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Total: " + filteredModel.length
+                    font.pixelSize: Theme.typography.body.size
+                    color: ThemeManager.muted()
                 }
             }
         }
-    }
-
-    // Data model
-    ListModel {
-        id: eventModel
+        
+        // ===========================================
+        // RIGHT: AI Explanation Panel
+        // ===========================================
+        Rectangle {
+            Layout.preferredWidth: 320
+            Layout.fillHeight: true
+            color: ThemeManager.panel()
+            radius: Theme.radii_sm
+            visible: selectedEvent !== null || aiBusy || aiData !== null || aiError !== ""
+            
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Theme.spacing_md
+                spacing: Theme.spacing_md
+                
+                // Panel Header
+                Text {
+                    text: "Event Explanation"
+                    font.pixelSize: Theme.typography.h3.size
+                    font.weight: Font.Bold
+                    color: ThemeManager.foreground()
+                }
+                
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: ThemeManager.border()
+                }
+                
+                // Loading state
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacing_sm
+                    visible: aiBusy
+                    
+                    BusyIndicator {
+                        Layout.alignment: Qt.AlignHCenter
+                        running: aiBusy
+                        implicitWidth: 40
+                        implicitHeight: 40
+                    }
+                    
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Analyzing this event in simple English…"
+                        font.pixelSize: Theme.typography.body.size
+                        color: ThemeManager.muted()
+                    }
+                }
+                
+                // Error state
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: errorContent.implicitHeight + Theme.spacing_md * 2
+                    color: "#7F1D1D"
+                    radius: Theme.radii_xs
+                    visible: aiError !== "" && !aiBusy
+                    
+                    ColumnLayout {
+                        id: errorContent
+                        anchors.fill: parent
+                        anchors.margins: Theme.spacing_md
+                        spacing: Theme.spacing_xs
+                        
+                        Text {
+                            text: "Analysis failed"
+                            font.pixelSize: Theme.typography.body.size
+                            font.weight: Font.Medium
+                            color: "#FCA5A5"
+                        }
+                        
+                        Text {
+                            text: aiError
+                            font.pixelSize: Theme.typography.caption.size
+                            color: "#FECACA"
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                        
+                        Button {
+                            text: "Try again"
+                            implicitHeight: 28
+                            
+                            background: Rectangle {
+                                color: parent.hovered ? "#DC2626" : "#B91C1C"
+                                radius: Theme.radii_xs
+                            }
+                            
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: Theme.typography.caption.size
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            
+                            onClicked: requestExplanation()
+                        }
+                    }
+                }
+                
+                // AI Result display - wrapped in Flickable for scrolling
+                Flickable {
+                    id: aiResultFlickable
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: aiData !== null && !aiBusy && aiError === ""
+                    clip: true
+                    
+                    contentWidth: width
+                    contentHeight: aiResultContent.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
+                    
+                    ColumnLayout {
+                        id: aiResultContent
+                        // Account for scrollbar width (typically 10-12px)
+                        width: aiResultFlickable.width - 12
+                        spacing: Theme.spacing_md
+                    
+                        // Title
+                        Text {
+                            text: aiData ? (aiData.title || aiData.short_title || "Event Analysis") : ""
+                            font.pixelSize: Theme.typography.h4 ? Theme.typography.h4.size : 18
+                            font.weight: Font.Bold
+                            color: ThemeManager.foreground()
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                        
+                        // Severity Badge
+                        Rectangle {
+                            implicitWidth: severityBadgeText.implicitWidth + Theme.spacing_md * 2
+                            implicitHeight: severityBadgeText.implicitHeight + Theme.spacing_xs * 2
+                            radius: height / 2
+                            color: aiData ? severityColor(aiData.severity_label || aiData.severity) : ThemeManager.muted()
+                            
+                            Text {
+                                id: severityBadgeText
+                                anchors.centerIn: parent
+                                text: "Severity: " + (aiData ? (aiData.severity_label || aiData.severity || "Unknown") : "Unknown")
+                                font.pixelSize: Theme.typography.caption.size
+                                font.weight: Font.Medium
+                                color: "#FFFFFF"
+                            }
+                        }
+                        
+                        // What happened section
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            
+                            Text {
+                                text: "📋 What happened:"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                color: ThemeManager.accent
+                            }
+                            
+                            Text {
+                                text: aiData ? (aiData.what_happened || aiData.explanation || "") : ""
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.4
+                            }
+                        }
+                        
+                        // Why this usually happens section
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: aiData && aiData.why_it_happens && aiData.why_it_happens.length > 0
+                            
+                            Text {
+                                text: "🔍 Why this usually happens:"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                color: ThemeManager.info
+                            }
+                            
+                            Text {
+                                text: aiData ? (aiData.why_it_happens || "") : ""
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.4
+                            }
+                        }
+                        
+                        // What you should do section (now includes "when to worry")
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: aiData && (aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation)
+                            
+                            Text {
+                                text: "✅ What you should do:"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                color: ThemeManager.success
+                            }
+                            
+                            Text {
+                                text: aiData ? (aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation || "") : ""
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.4
+                            }
+                        }
+                        
+                        // Tech notes (optional, subtle)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: aiData && aiData.tech_notes && aiData.tech_notes.length > 0
+                            
+                            Text {
+                                text: "🔧 Technical notes:"
+                                font.pixelSize: Theme.typography.caption.size
+                                font.weight: Font.Medium
+                                color: ThemeManager.muted()
+                            }
+                            
+                            Text {
+                                text: aiData ? (aiData.tech_notes || "") : ""
+                                font.pixelSize: Theme.typography.caption.size
+                                font.italic: true
+                                color: ThemeManager.muted()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                opacity: 0.8
+                            }
+                        }
+                        
+                        // Knowledge base indicator
+                        Text {
+                            visible: aiData && (aiData.used_knowledge_base || false) === true
+                            text: "ℹ Based on known Windows event documentation."
+                            font.pixelSize: Theme.typography.caption.size
+                            color: ThemeManager.info
+                            opacity: 0.8
+                            Layout.fillWidth: true
+                        }
+                        
+                        // Bottom spacing
+                        Item {
+                            Layout.fillWidth: true
+                            height: Theme.spacing_md
+                        }
+                    }
+                }
+                
+                // No event selected prompt
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: Theme.spacing_sm
+                    visible: selectedEvent !== null && aiData === null && !aiBusy && aiError === ""
+                    
+                    Item { Layout.fillHeight: true }
+                    
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Click 'Explain Event' to analyze"
+                        font.pixelSize: Theme.typography.body.size
+                        color: ThemeManager.muted()
+                    }
+                    
+                    Item { Layout.fillHeight: true }
+                }
+                
+                // Selected event info
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: selectedInfoCol.implicitHeight + Theme.spacing_sm * 2
+                    color: ThemeManager.elevated()
+                    radius: Theme.radii_xs
+                    visible: selectedEvent !== null
+                    
+                    ColumnLayout {
+                        id: selectedInfoCol
+                        anchors.fill: parent
+                        anchors.margins: Theme.spacing_sm
+                        spacing: 2
+                        
+                        Text {
+                            text: "Selected Event"
+                            font.pixelSize: Theme.typography.caption.size
+                            font.weight: Font.Medium
+                            color: ThemeManager.muted()
+                        }
+                        
+                        Text {
+                            text: selectedEvent ? (selectedEvent.source || selectedEvent.provider || "Unknown") : ""
+                            font.pixelSize: Theme.typography.caption.size
+                            color: ThemeManager.foreground()
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                        
+                        Text {
+                            text: selectedEvent ? ("ID: " + (selectedEvent.event_id || "N/A")) : ""
+                            font.pixelSize: Theme.typography.caption.size
+                            color: ThemeManager.muted()
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ import platform
 import socket
 import subprocess
 import sys
+import threading
 import time
 from typing import Dict, List, Optional
 
@@ -50,9 +51,15 @@ class SystemSnapshotService(QObject):
     cpuFrequencyChanged = Signal()
     systemUptimeChanged = Signal()
     cpuPerCoreChanged = Signal()
+    
+    # Internal signal for thread-safe security info updates
+    _securityInfoReadyInternal = Signal(dict)
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
+        
+        # Connect internal signal for thread-safe security info updates
+        self._securityInfoReadyInternal.connect(self._onSecurityInfoReady)
 
         # Detect platform once
         self._platform = platform.system()
@@ -106,9 +113,9 @@ class SystemSnapshotService(QObject):
 
         # Initial update (fast metrics only - security info deferred)
         self._update_metrics()
-        # Defer security info update to avoid blocking startup
-        # Security info involves slow PowerShell commands
-        QTimer.singleShot(500, self._update_security_info)
+        # Defer security info update significantly to avoid blocking startup
+        # Security info involves slow PowerShell commands (can take 5-10+ seconds)
+        QTimer.singleShot(3000, self._update_security_info)
         print("[SnapshotService] Initial metrics updated")
 
     def set_notification_service(self, service):
@@ -597,8 +604,23 @@ class SystemSnapshotService(QObject):
         """Per-core CPU usage percentages."""
         return self._cpu_per_core
 
+    def _onSecurityInfoReady(self, info: Dict):
+        """Handle security info ready from background thread (runs on main thread)."""
+        self._security_info = info
+        self.securityInfoChanged.emit()
+        self._push_security_notifications()
+
     def _update_security_info(self):
-        """Gather security information about the system."""
+        """Gather security information about the system (runs in background thread)."""
+        # Run in background thread to never block the UI
+        def gather_security_info():
+            self._do_update_security_info()
+        
+        thread = threading.Thread(target=gather_security_info, daemon=True)
+        thread.start()
+
+    def _do_update_security_info(self):
+        """Actually gather security information (called from background thread)."""
         info = {
             "firewallStatus": "Unknown",
             "antivirus": "Unknown",
@@ -733,11 +755,8 @@ class SystemSnapshotService(QObject):
         except Exception as e:
             print(f"[SystemSnapshot] Error gathering security info: {e}")
 
-        self._security_info = info
-        self.securityInfoChanged.emit()
-
-        # Push notifications for security issues
-        self._push_security_notifications()
+        # Emit signal via thread-safe internal signal (main thread will handle it)
+        self._securityInfoReadyInternal.emit(info)
 
     def _push_security_notifications(self):
         """Push notifications for any security issues detected."""

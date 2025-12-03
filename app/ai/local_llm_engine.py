@@ -128,13 +128,13 @@ class LocalLLMEngine(QObject):
         """Get the configured model name."""
         return self._model_name if not self._fallback_mode else "rule-based-fallback"
 
-    def generate_single_turn(self, prompt: str, max_tokens: int = 256) -> str:
+    def generate_single_turn(self, prompt: str, max_tokens: int = 400) -> str:
         """
         Generate a response for a single-turn prompt.
 
         Args:
             prompt: The input prompt text
-            max_tokens: Maximum tokens to generate
+            max_tokens: Maximum tokens to generate (default 400 for detailed explanations)
 
         Returns:
             Generated response text
@@ -155,13 +155,14 @@ class LocalLLMEngine(QObject):
                 max_length=512,  # Limit input size
             )
 
-            # Generate response
+            # Generate response with settings optimized for structured output
             with torch.no_grad():
                 outputs = self._model.generate(
                     inputs,
                     max_new_tokens=max_tokens,
                     num_return_sequences=1,
-                    temperature=0.7,
+                    temperature=0.4,       # Lower temperature for more consistent output
+                    top_p=0.9,             # Nucleus sampling for better quality
                     do_sample=True,
                     pad_token_id=self._tokenizer.pad_token_id,
                     eos_token_id=self._tokenizer.eos_token_id,

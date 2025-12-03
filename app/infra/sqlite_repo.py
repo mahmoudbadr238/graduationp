@@ -74,10 +74,23 @@ class SqliteRepo(IScanRepository, IEventRepository):
                     timestamp TEXT NOT NULL,
                     level TEXT NOT NULL,
                     source TEXT NOT NULL,
-                    message TEXT NOT NULL
+                    message TEXT NOT NULL,
+                    event_id INTEGER DEFAULT 0,
+                    friendly_message TEXT
                 )
             """
             )
+            
+            # Add event_id column if it doesn't exist (migration for existing DBs)
+            try:
+                cursor.execute("ALTER TABLE events ADD COLUMN event_id INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                cursor.execute("ALTER TABLE events ADD COLUMN friendly_message TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
             # Create optimized indexes (avoiding duplicates)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_scans_type ON scans(type)")
@@ -95,6 +108,32 @@ class SqliteRepo(IScanRepository, IEventRepository):
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)"
+            )
+
+            # Event summaries cache table (for AI-generated explanations)
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS event_summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source TEXT NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    signature TEXT NOT NULL,
+                    table_summary TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    severity_label TEXT NOT NULL,
+                    what_happened TEXT NOT NULL,
+                    what_you_can_do TEXT NOT NULL,
+                    tech_notes TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (source, event_id, signature)
+                )
+            """
+            )
+            
+            # Index for fast lookups
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_event_summaries_lookup "
+                "ON event_summaries(source, event_id, signature)"
             )
 
             conn.commit()
@@ -281,15 +320,17 @@ class SqliteRepo(IScanRepository, IEventRepository):
             try:
                 cursor.executemany(
                     """
-                    INSERT INTO events (timestamp, level, source, message)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO events (timestamp, level, source, message, event_id, friendly_message)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """,
                     [
                         (
-                            item.timestamp.isoformat(),
+                            item.timestamp.isoformat() if hasattr(item.timestamp, 'isoformat') else str(item.timestamp),
                             item.level,
                             item.source,
                             item.message,
+                            getattr(item, 'event_id', 0),
+                            getattr(item, 'friendly_message', None),
                         )
                         for item in items
                     ],
@@ -314,7 +355,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
             cursor.execute(
                 """
-                SELECT timestamp, level, source, message
+                SELECT timestamp, level, source, message, event_id, friendly_message
                 FROM events
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -331,6 +372,8 @@ class SqliteRepo(IScanRepository, IEventRepository):
                             level=row[1],
                             source=row[2],
                             message=row[3],
+                            event_id=row[4] if row[4] else 0,
+                            friendly_message=row[5] if len(row) > 5 else None,
                         )
                     )
                 except Exception as e:
@@ -351,7 +394,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT timestamp, level, source, message
+                SELECT timestamp, level, source, message, event_id, friendly_message
                 FROM events
                 WHERE level = ?
                 ORDER BY timestamp DESC
@@ -369,6 +412,8 @@ class SqliteRepo(IScanRepository, IEventRepository):
                             level=row[1],
                             source=row[2],
                             message=row[3],
+                            event_id=row[4] if row[4] else 0,
+                            friendly_message=row[5] if len(row) > 5 else None,
                         )
                     )
                 except Exception as e:
@@ -389,7 +434,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT timestamp, level, source, message
+                SELECT timestamp, level, source, message, event_id, friendly_message
                 FROM events
                 WHERE source = ?
                 ORDER BY timestamp DESC
@@ -407,6 +452,8 @@ class SqliteRepo(IScanRepository, IEventRepository):
                             level=row[1],
                             source=row[2],
                             message=row[3],
+                            event_id=row[4] if row[4] else 0,
+                            friendly_message=row[5] if len(row) > 5 else None,
                         )
                     )
                 except Exception as e:
@@ -417,6 +464,110 @@ class SqliteRepo(IScanRepository, IEventRepository):
         except Exception as e:
             logger.error(f"Error querying events by source: {e}")
             return []
+        finally:
+            conn.close()
+
+    # ============ Event Summary Cache ============
+
+    def get_event_summary(self, source: str, event_id: int, signature: str) -> Optional[dict]:
+        """
+        Get a cached event summary from the database.
+        
+        Args:
+            source: Event source/provider
+            event_id: Windows event ID
+            signature: SHA256 hash prefix of the event message
+            
+        Returns:
+            dict with summary fields if found, None otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT table_summary, title, severity_label, what_happened, 
+                       what_you_can_do, tech_notes
+                FROM event_summaries
+                WHERE source = ? AND event_id = ? AND signature = ?
+                LIMIT 1
+                """,
+                (source, event_id, signature),
+            )
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "table_summary": row[0],
+                    "title": row[1],
+                    "severity_label": row[2],
+                    "what_happened": row[3],
+                    "what_you_can_do": row[4],
+                    "tech_notes": row[5] or "",
+                    "event_id": event_id,
+                    "source": source,
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting event summary: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def save_event_summary(
+        self, 
+        source: str, 
+        event_id: int, 
+        signature: str, 
+        summary: dict
+    ) -> bool:
+        """
+        Save an event summary to the database cache.
+        
+        Args:
+            source: Event source/provider
+            event_id: Windows event ID
+            signature: SHA256 hash prefix of the event message
+            summary: dict or EventSummary with summary fields
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Handle both dict and EventSummary objects
+            if hasattr(summary, 'to_dict'):
+                data = summary.to_dict()
+            else:
+                data = summary
+            
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO event_summaries 
+                (source, event_id, signature, table_summary, title, severity_label,
+                 what_happened, what_you_can_do, tech_notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source,
+                    event_id,
+                    signature,
+                    data.get("table_summary", ""),
+                    data.get("title", ""),
+                    data.get("severity_label", "Minor"),
+                    data.get("what_happened", ""),
+                    data.get("what_you_can_do", ""),
+                    data.get("tech_notes", ""),
+                ),
+            )
+            conn.commit()
+            logger.debug(f"Saved event summary: source={source}, event_id={event_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving event summary: {e}")
+            return False
         finally:
             conn.close()
 

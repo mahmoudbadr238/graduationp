@@ -1,0 +1,247 @@
+{
+  "1000": {
+    "name": "Application Error",
+    "description": "A program crashed or encountered an error. The application's faulting module and exception code are recorded. Often caused by software bugs, corrupted files, or compatibility issues. Usually affects only the specific application that crashed.",
+    "typical_cause": "Software bugs, memory issues, corrupted application files, or conflicts with other software."
+  },
+  "1001": {
+    "name": "Windows Error Reporting",
+    "description": "Windows sent an error report to Microsoft after a crash or problem occurred. This is a follow-up event to help Microsoft improve their software. The report contains diagnostic information about what went wrong.",
+    "typical_cause": "Automatic follow-up after an application crash or system error."
+  },
+  "1002": {
+    "name": "Application Hang",
+    "description": "A program stopped responding to Windows for a period of time. The application became unresponsive, meaning it didn't respond to mouse clicks or keyboard input. Windows detected this and recorded it for diagnostic purposes.",
+    "typical_cause": "Heavy workload, buggy plugins, waiting on network or disk operations, insufficient system resources, or software bugs."
+  },
+  "1026": {
+    "name": ".NET Runtime Error",
+    "description": "An application built with Microsoft's .NET technology encountered an error. The error details include the exception type and stack trace. This is common in modern Windows applications.",
+    "typical_cause": "Application bugs, missing dependencies, or .NET framework issues."
+  },
+  "6005": {
+    "name": "Event Log Service Started",
+    "description": "The Windows Event Log service started. This typically happens when Windows boots up. It's a normal part of the Windows startup sequence.",
+    "typical_cause": "Normal Windows startup or restart of the Event Log service."
+  },
+  "6006": {
+    "name": "Event Log Service Stopped",
+    "description": "The Windows Event Log service stopped. This typically happens during a normal Windows shutdown. If you see this at unexpected times, it could indicate a problem.",
+    "typical_cause": "Normal Windows shutdown or manual service stop."
+  },
+  "6008": {
+    "name": "Unexpected Shutdown",
+    "description": "The previous system shutdown was unexpected. This means Windows didn't shut down properly - it crashed, lost power, or was forcibly turned off. This can lead to data loss or file corruption.",
+    "typical_cause": "Power outage, system crash, holding the power button, or hardware failure."
+  },
+  "6009": {
+    "name": "Windows Version Info",
+    "description": "This event records the Windows version information at startup. It's purely informational and shows the OS build number and processor type.",
+    "typical_cause": "Normal Windows startup - logged every boot."
+  },
+  "6013": {
+    "name": "System Uptime",
+    "description": "Records how long the system has been running since the last boot. This is useful for tracking system stability and determining when restarts occurred.",
+    "typical_cause": "Normal periodic logging of system uptime."
+  },
+  "7000": {
+    "name": "Service Start Failure",
+    "description": "A Windows service failed to start. Services are background programs that Windows and applications rely on. A failed service might affect related features or programs.",
+    "typical_cause": "Missing files, permission issues, dependencies not met, or service configuration problems."
+  },
+  "7001": {
+    "name": "Service Dependency Failure",
+    "description": "A service couldn't start because another service it depends on failed to start first. Services often rely on each other, so one failure can cascade.",
+    "typical_cause": "A required service failed to start, network issues, or misconfiguration."
+  },
+  "7009": {
+    "name": "Service Timeout",
+    "description": "A service took too long to start and Windows stopped waiting. This can happen if the system is under heavy load or if the service has problems.",
+    "typical_cause": "System overload, slow disk, or service hanging during startup."
+  },
+  "7011": {
+    "name": "Service Control Manager Timeout",
+    "description": "A service didn't respond to the Service Control Manager in time. Windows expected a response within a certain period but didn't receive one.",
+    "typical_cause": "Service hanging, system under heavy load, or software bugs."
+  },
+  "7023": {
+    "name": "Service Terminated with Error",
+    "description": "A service stopped running due to an error. The error code in the event details explains what went wrong. The affected functionality may not work until the service restarts.",
+    "typical_cause": "Software bugs, resource exhaustion, or external factors affecting the service."
+  },
+  "7024": {
+    "name": "Service Terminated Unexpectedly",
+    "description": "A service stopped unexpectedly and Windows recorded why. Unlike a controlled stop, this indicates the service crashed or was forcibly terminated.",
+    "typical_cause": "Service crash, out of memory, or unhandled exception in the service."
+  },
+  "7031": {
+    "name": "Service Crash with Recovery",
+    "description": "A service crashed and Windows is taking recovery actions. Windows can automatically restart services that fail, which is what's happening here.",
+    "typical_cause": "Service crash with automatic recovery configured."
+  },
+  "7034": {
+    "name": "Service Crashed Unexpectedly",
+    "description": "A service terminated unexpectedly without reporting an error. This is more serious than a normal error because it suggests a hard crash.",
+    "typical_cause": "Critical bug, memory corruption, or system instability."
+  },
+  "7036": {
+    "name": "Service State Change",
+    "description": "A service changed its running state (started or stopped). This is normal and happens frequently as Windows manages its services.",
+    "typical_cause": "Normal service operations, startup, shutdown, or on-demand services."
+  },
+  "7040": {
+    "name": "Service Startup Type Changed",
+    "description": "The startup type of a service was changed (e.g., from automatic to manual). This can affect whether the service runs at boot.",
+    "typical_cause": "User or administrator changed service settings, or software installation."
+  },
+  "7045": {
+    "name": "New Service Installed",
+    "description": "A new service was installed on the system. Services are background programs that can run automatically. New services often come from software installations.",
+    "typical_cause": "Software installation, driver installation, or malware (if unexpected)."
+  },
+  "10010": {
+    "name": "DCOM Server Start Failure",
+    "description": "A DCOM (Distributed Component Object Model) server couldn't start. DCOM allows programs to communicate with each other. This is often harmless but can affect specific features.",
+    "typical_cause": "Missing registration, permission issues, or the component is no longer installed."
+  },
+  "10016": {
+    "name": "DCOM Permission Error",
+    "description": "A program tried to access a DCOM component without the proper permissions. This is extremely common and almost always harmless. Microsoft has acknowledged this as a known issue.",
+    "typical_cause": "Windows permission quirks - very common and usually safe to ignore."
+  },
+  "10317": {
+    "name": "DCOM Activation Failure",
+    "description": "A DCOM component failed to activate (start) within the expected time. This is usually a minor issue that doesn't affect normal computer use.",
+    "typical_cause": "Component timeout, system load, or the component is no longer needed."
+  },
+  "1014": {
+    "name": "DNS Resolution Timeout",
+    "description": "Windows couldn't translate a website name to an IP address within the expected time. This can cause slow or failed connections to websites or network services.",
+    "typical_cause": "DNS server issues, network problems, or firewall blocking DNS."
+  },
+  "4624": {
+    "name": "Successful Logon",
+    "description": "Someone or something successfully logged into Windows. This includes user logins, service account logins, and network logins. It's normal to see many of these.",
+    "typical_cause": "User login, scheduled tasks, services starting, or network authentication."
+  },
+  "4625": {
+    "name": "Failed Logon",
+    "description": "A login attempt failed. This could be a typo, wrong password, or potentially someone trying to guess your password. A few of these are normal, many are concerning.",
+    "typical_cause": "Wrong password, locked account, or unauthorized access attempts."
+  },
+  "4634": {
+    "name": "Logoff",
+    "description": "A user or session logged off from Windows. This is a normal event that happens when you sign out, lock your computer, or a network session ends.",
+    "typical_cause": "User logoff, session timeout, or system process completing."
+  },
+  "4648": {
+    "name": "Explicit Credential Logon",
+    "description": "A logon was attempted using explicit credentials (not the currently logged in user's). This happens with 'Run as Administrator' or when connecting to network shares with different credentials.",
+    "typical_cause": "Run as Administrator, mapped drives with different credentials, or remote access."
+  },
+  "4672": {
+    "name": "Admin Privileges Assigned",
+    "description": "Special administrative privileges were assigned to a logon session. This happens when an administrator logs in or when a program runs with elevated privileges.",
+    "typical_cause": "Administrator login, UAC elevation, or privileged service starting."
+  },
+  "4688": {
+    "name": "New Process Created",
+    "description": "A new program or process was started. Windows can log every program that runs. This is normal and happens constantly.",
+    "typical_cause": "User launching programs, system processes, or scheduled tasks."
+  },
+  "4689": {
+    "name": "Process Exited",
+    "description": "A program or process ended. This is logged when any program closes, whether normally or due to a crash.",
+    "typical_cause": "Normal program exit, user closing program, or process termination."
+  },
+  "1116": {
+    "name": "Windows Defender Detection",
+    "description": "Windows Defender detected a potential threat (malware, virus, or suspicious file). Windows Defender has identified something that may be harmful to your computer.",
+    "typical_cause": "Malware detected, potentially unwanted program, or false positive."
+  },
+  "1117": {
+    "name": "Windows Defender Action Taken",
+    "description": "Windows Defender took action against a detected threat. This could be quarantine, removal, or blocking the threat. Your computer was protected.",
+    "typical_cause": "Automatic response to a detected threat."
+  },
+  "1118": {
+    "name": "Windows Defender Action Failed",
+    "description": "Windows Defender tried to take action against a threat but failed. The threat may still be present. Manual intervention might be needed.",
+    "typical_cause": "File in use, permission denied, or protected system file."
+  },
+  "1119": {
+    "name": "Windows Defender Critical Failure",
+    "description": "Windows Defender encountered a critical error while handling a threat. This is serious and may mean your computer isn't fully protected.",
+    "typical_cause": "Major malware interference, corrupted Defender files, or system issues."
+  },
+  "5007": {
+    "name": "Windows Defender Settings Changed",
+    "description": "Windows Defender's configuration was modified. This tracks changes to protection settings, exclusions, or scheduled scans.",
+    "typical_cause": "User changed settings, software installation, or policy changes."
+  },
+  "5010": {
+    "name": "Windows Defender Scan Disabled",
+    "description": "Scanning for malware was disabled in Windows Defender. Your computer is less protected when scanning is off.",
+    "typical_cause": "User disabled scanning, third-party antivirus installed, or malware interference."
+  },
+  "5012": {
+    "name": "Windows Defender Real-time Disabled",
+    "description": "Windows Defender's real-time protection was turned off. Your computer is actively less protected. Real-time protection catches threats as they appear.",
+    "typical_cause": "User disabled protection, third-party antivirus, or malware interference."
+  },
+  "19": {
+    "name": "Windows Update Installed",
+    "description": "A Windows update was successfully installed. Your system is now more secure and up to date. A restart might be required to complete the update.",
+    "typical_cause": "Automatic Windows Update or manual update installation."
+  },
+  "20": {
+    "name": "Windows Update Installation Failed",
+    "description": "A Windows update failed to install. Your system might be missing important security fixes. Windows will usually retry later.",
+    "typical_cause": "Disk space, conflicting software, corrupted update files, or network issues."
+  },
+  "41": {
+    "name": "Kernel Power Critical",
+    "description": "The system rebooted without cleanly shutting down first. This is recorded when Windows crashes (blue screen), loses power unexpectedly, or is forcibly restarted.",
+    "typical_cause": "System crash, power failure, hardware issues, or holding the power button."
+  },
+  "1074": {
+    "name": "System Shutdown Initiated",
+    "description": "The system is shutting down or restarting. This event records who or what initiated the shutdown and why. It's part of normal Windows operation.",
+    "typical_cause": "User initiated shutdown/restart, Windows Update, or scheduled task."
+  },
+  "6100": {
+    "name": "Network Diagnostics",
+    "description": "Windows Network Diagnostics recorded information about a network problem. This helps troubleshoot connectivity issues.",
+    "typical_cause": "Network troubleshooter ran, connectivity issues detected."
+  },
+  "129": {
+    "name": "Disk Reset",
+    "description": "A disk controller reset was issued. This can happen when the disk doesn't respond in time. If frequent, it may indicate disk problems.",
+    "typical_cause": "Disk timeout, cable issues, failing drive, or power management."
+  },
+  "153": {
+    "name": "Disk Retry",
+    "description": "A disk operation was retried. The disk didn't respond properly the first time. Occasional events are normal; frequent ones indicate problems.",
+    "typical_cause": "Disk busy, minor errors, or developing hardware issues."
+  },
+  "11": {
+    "name": "Disk Controller Error",
+    "description": "The disk controller reported an error during a disk operation. This may indicate problems with the disk, cable, or controller.",
+    "typical_cause": "Failing disk, bad sectors, loose cables, or driver issues."
+  },
+  "51": {
+    "name": "Disk Paging Error",
+    "description": "An error occurred during a paging operation (moving data between RAM and disk). This can cause system slowdowns or crashes.",
+    "typical_cause": "Disk errors, corrupted pagefile, or insufficient disk space."
+  },
+  "55": {
+    "name": "File System Corruption Detected",
+    "description": "The file system detected corruption on a disk. Data may be at risk. Running a disk check is recommended.",
+    "typical_cause": "Improper shutdown, disk errors, or hardware failure."
+  },
+  "98": {
+    "name": "Volume Shadow Copy Error",
+    "description": "The Volume Shadow Copy Service (used for backups and system restore) encountered an error. Backups or restore points may be affected.",
+    "typical_cause": "Disk space issues, disk errors, or service problems."
+  }
+}

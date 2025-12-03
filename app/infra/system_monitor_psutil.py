@@ -48,6 +48,7 @@ class PsutilSystemMonitor(ISystemMonitor):
         self._pnp_to_phys_cache = None  # Cache PNP to physical GPU index mapping
         self._security_cache = None  # Cache security info (updates every 30s)
         self._security_cache_time = 0
+        self._security_loading = False  # Flag to prevent multiple concurrent loads
 
         # Try to initialize NVIDIA ML once at startup (persistent)
         if HAS_NVIDIA:
@@ -746,7 +747,11 @@ class PsutilSystemMonitor(ISystemMonitor):
         return security_info
 
     def _get_security_info_cached(self) -> dict[str, Any]:
-        """Get security info with 30-second caching to avoid expensive subprocess calls."""
+        """Get security info with 30-second caching to avoid expensive subprocess calls.
+        
+        Returns placeholder on first call and loads in background thread.
+        """
+        import threading
         import time
 
         now = time.time()
@@ -755,7 +760,52 @@ class PsutilSystemMonitor(ISystemMonitor):
         if self._security_cache and (now - self._security_cache_time) < 30:
             return self._security_cache
 
-        # Refresh cache
-        self._security_cache = self._get_security_info()
-        self._security_cache_time = now
-        return self._security_cache
+        # Return placeholder immediately on first call, load in background
+        if not self._security_cache and not self._security_loading:
+            self._security_loading = True
+            
+            def load_security_info():
+                try:
+                    self._security_cache = self._get_security_info()
+                    self._security_cache_time = time.time()
+                finally:
+                    self._security_loading = False
+            
+            thread = threading.Thread(target=load_security_info, daemon=True)
+            thread.start()
+            
+            # Return placeholder while loading
+            return {
+                "windows_defender": {"status": "Loading...", "enabled": False},
+                "firewall": {"status": "Loading...", "enabled": False},
+                "antivirus": {"status": "Loading...", "enabled": False},
+                "uac": {"status": "Loading...", "enabled": False},
+                "bitlocker": {"status": "Loading...", "enabled": False},
+                "tpm": {"status": "Loading...", "enabled": False},
+                "secure_boot": {"status": "Loading...", "enabled": False},
+            }
+
+        # Refresh cache in background if expired
+        if not self._security_loading:
+            self._security_loading = True
+            
+            def refresh_security_info():
+                try:
+                    self._security_cache = self._get_security_info()
+                    self._security_cache_time = time.time()
+                finally:
+                    self._security_loading = False
+            
+            thread = threading.Thread(target=refresh_security_info, daemon=True)
+            thread.start()
+
+        # Return stale cache while refreshing (better than blocking)
+        return self._security_cache or {
+            "windows_defender": {"status": "Loading...", "enabled": False},
+            "firewall": {"status": "Loading...", "enabled": False},
+            "antivirus": {"status": "Loading...", "enabled": False},
+            "uac": {"status": "Loading...", "enabled": False},
+            "bitlocker": {"status": "Loading...", "enabled": False},
+            "tpm": {"status": "Loading...", "enabled": False},
+            "secure_boot": {"status": "Loading...", "enabled": False},
+        }
