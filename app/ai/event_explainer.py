@@ -20,9 +20,9 @@ from .local_llm_engine import LocalLLMEngine
 
 logger = logging.getLogger(__name__)
 
-# Maximum line length for any output
-MAX_LINE_LENGTH = 200
-# Maximum number of recommended actions
+# Maximum lengths for output fields
+MAX_SUMMARY_LENGTH = 160
+MAX_FIELD_LENGTH = 200
 MAX_ACTIONS = 3
 
 
@@ -30,15 +30,24 @@ class EventExplainer(QObject):
     """
     Explains Windows events using local AI in SIMPLE language.
 
-    Output format:
+    Output format (ALWAYS returned):
     {
-        "short_summary": str,           # One simple sentence
+        "short_summary": str,           # One simple sentence (max 160 chars)
         "what_it_means": str,           # Is this a problem? (one sentence)
+        "likely_cause": str,            # Possible cause (one sentence)
         "recommended_actions": [str],   # Up to 3 simple actions
         "severity_score": int,          # 0-10
         "severity_label": str           # Info/Low/Medium/High/Critical
     }
     """
+
+    # Default fallback values
+    DEFAULT_SUMMARY = "Windows recorded a system event."
+    DEFAULT_MEANING = "This is not usually serious unless it keeps happening."
+    DEFAULT_CAUSE = "Unknown."
+    DEFAULT_ACTIONS = [
+        "If this message appears many times, restart your PC or ask a technician."
+    ]
 
     def __init__(
         self,
@@ -51,7 +60,7 @@ class EventExplainer(QObject):
         logger.info("EventExplainer initialized (model loads on first use)")
 
     def _make_cache_key(self, event: dict) -> str:
-        """Create a cache key for an event."""
+        """Create a cache key for an event based on log_name, provider, event_id, level, hash(message)."""
         key_parts = [
             event.get("log_name", ""),
             event.get("provider", event.get("source", "")),
@@ -63,14 +72,19 @@ class EventExplainer(QObject):
         key_parts.append(msg_hash)
         return "|".join(key_parts)
 
-    def _truncate(self, text: str, max_len: int = MAX_LINE_LENGTH) -> str:
-        """Truncate text to max length."""
+    def _truncate(self, text: str, max_len: int = MAX_FIELD_LENGTH) -> str:
+        """Truncate text to max length, preserving word boundaries if possible."""
         if not text:
-            return text
+            return ""
         text = text.strip()
-        if len(text) > max_len:
-            return text[: max_len - 3] + "..."
-        return text
+        if len(text) <= max_len:
+            return text
+        # Try to cut at word boundary
+        truncated = text[: max_len - 3]
+        last_space = truncated.rfind(" ")
+        if last_space > max_len // 2:
+            truncated = truncated[:last_space]
+        return truncated.rstrip() + "..."
 
     def explain_event(self, event: dict) -> dict[str, Any]:
         """
@@ -78,81 +92,111 @@ class EventExplainer(QObject):
 
         Returns:
             Structured explanation dict with simple language.
+            ALWAYS contains all required keys with valid values.
         """
-        # Check cache first
-        cache_key = self._make_cache_key(event)
-        if cache_key in self._cache:
-            logger.debug(f"Event explanation cache hit: {cache_key[:30]}...")
-            return self._cache[cache_key]
-
-        # Build prompt
-        prompt = self._build_simple_prompt(event)
-
-        # Generate explanation
         try:
-            response = self._llm.generate_single_turn(prompt, max_tokens=300)
-            result = self._parse_simple_response(response, event)
+            # Check cache first
+            cache_key = self._make_cache_key(event)
+            if cache_key in self._cache:
+                logger.debug(f"Event explanation cache hit: {cache_key[:30]}...")
+                return self._cache[cache_key]
+
+            # Build prompt
+            prompt = self._build_prompt(event)
+
+            # Generate explanation
+            response = self._llm.generate_single_turn(prompt, max_tokens=350)
+            result = self._parse_response(response, event)
+
+            # Cache result
+            self._cache[cache_key] = result
+            return result
+
         except Exception as e:
             logger.error(f"Event explanation failed: {e}")
-            result = self._default_explanation(event)
+            return self._create_fallback_explanation(event)
 
-        # Cache result
-        self._cache[cache_key] = result
-        return result
+    def _build_prompt(self, event: dict) -> str:
+        """
+        Build a prompt that enforces simple, non-technical language.
 
-    def _build_simple_prompt(self, event: dict) -> str:
-        """Build a prompt that asks for SIMPLE, non-technical language."""
+        The prompt instructs the model to:
+        - Use simple language (like explaining to a 14-year-old)
+        - Base explanation on given fields only
+        - Not guess or invent information
+        - Not mention AI or model
+        - Use the exact FIXED STRUCTURE
+        """
         log_name = event.get("log_name", "Unknown")
         provider = event.get("provider", event.get("source", "Unknown"))
         event_id = event.get("event_id", "Unknown")
         level = event.get("level", "Information")
         message = event.get("message", "No message available")
+        time_created = event.get("time_created", "Unknown")
 
         # Truncate message if too long
         if len(message) > 400:
             message = message[:400] + "..."
 
-        return f"""You are explaining a computer message to someone who is NOT a computer expert.
-Use SIMPLE words. Imagine you're talking to a 14-year-old.
+        return f"""You are explaining a Windows computer message to a HOME USER who is NOT a computer expert.
 
-RULES:
-- NO technical words like "heap", "RPC", "exception", "registry", "thread"
-- If you must use a technical word, explain it in simple words
-- Keep sentences SHORT
-- Be reassuring - don't scare the user
+TARGET AUDIENCE: Non-technical person (like a 14-year-old).
 
-Windows event information:
+STYLE RULES:
+- Use VERY simple language
+- Short sentences only
+- NO low-level technical terms (no "heap", "registry", "thread", "RPC", "exception", "handle")
+- If you must use a technical word, explain it briefly in brackets
+- NEVER guess about the user's hardware, software, or actions
+- NEVER mention "AI" or "model" in your answer
+- Base your explanation ONLY on the information below
+- If the cause is not clear, say "Unknown" - do NOT invent reasons
+
+WINDOWS EVENT DATA:
 - Log: {log_name}
 - Source: {provider}
 - Event ID: {event_id}
 - Level: {level}
+- Time: {time_created}
 - Message: {message}
 
-Answer in EXACTLY this format:
+ANSWER IN EXACTLY THIS FORMAT (keep the labels exactly as shown):
 
 SUMMARY:
-<Write ONE simple sentence explaining what happened>
+<one sentence explaining what happened, max 120 characters>
 
 IS_IT_A_PROBLEM:
-<Write ONE sentence like: "No, this is normal." or "Yes, this may cause problems.">
+<one sentence like: "No, this is normal." or "Yes, this may cause problems.">
+
+CAUSE:
+<one short sentence explaining why this happened, or "Unknown" if not clear>
 
 ACTIONS:
-- <First action, or "No action needed.">
-- <Second action if needed>
-- <Third action if needed>
+- <first thing to do, or "No action needed.">
+- <optional second action>
+- <optional third action>
 
 SEVERITY:
-<A number from 0 to 10, where 0 is "totally fine" and 10 is "very serious">"""
+<integer from 0 to 10, where 0 = totally fine, 10 = very serious>"""
 
-    def _parse_simple_response(self, response: str, event: dict) -> dict[str, Any]:
-        """Parse the LLM response into the simplified format."""
+    def _parse_response(self, response: str, event: dict) -> dict[str, Any]:
+        """
+        Robustly parse the LLM response into the required structure.
+
+        Always returns a valid dict with all required keys.
+        Uses fallbacks for missing or invalid values.
+        """
         result = {
             "short_summary": "",
             "what_it_means": "",
+            "likely_cause": "",
             "recommended_actions": [],
             "severity_score": 0,
             "severity_label": "Info",
         }
+
+        if not response or not response.strip():
+            return self._create_fallback_explanation(event)
 
         try:
             lines = response.strip().split("\n")
@@ -160,96 +204,91 @@ SEVERITY:
             actions_buffer = []
 
             for line in lines:
-                line = line.strip()
-                if not line:
+                line_stripped = line.strip()
+                if not line_stripped:
                     continue
 
-                line_upper = line.upper()
+                line_upper = line_stripped.upper()
 
                 # Detect section headers
                 if line_upper.startswith("SUMMARY:"):
-                    content = line.split(":", 1)[-1].strip()
-                    result["short_summary"] = self._truncate(content)
+                    content = line_stripped.split(":", 1)[-1].strip()
+                    result["short_summary"] = self._truncate(
+                        content, MAX_SUMMARY_LENGTH
+                    )
                     current_section = "summary"
+
                 elif line_upper.startswith("IS_IT_A_PROBLEM:") or line_upper.startswith(
                     "IS IT A PROBLEM:"
                 ):
-                    content = line.split(":", 1)[-1].strip()
-                    result["what_it_means"] = self._truncate(content)
+                    content = line_stripped.split(":", 1)[-1].strip()
+                    result["what_it_means"] = self._truncate(content, MAX_FIELD_LENGTH)
                     current_section = "problem"
+
+                elif line_upper.startswith("CAUSE:"):
+                    content = line_stripped.split(":", 1)[-1].strip()
+                    result["likely_cause"] = self._truncate(content, MAX_FIELD_LENGTH)
+                    current_section = "cause"
+
                 elif line_upper.startswith("ACTIONS:"):
                     current_section = "actions"
+
                 elif line_upper.startswith("SEVERITY:"):
-                    # Extract number
-                    numbers = re.findall(r"\d+", line)
+                    # Extract integer
+                    numbers = re.findall(r"\d+", line_stripped)
                     if numbers:
                         score = int(numbers[0])
                         result["severity_score"] = min(10, max(0, score))
                     current_section = "severity"
-                elif line.startswith("-") or line.startswith("•"):
-                    # Action item
-                    action = line.lstrip("-•").strip()
-                    if action and len(actions_buffer) < MAX_ACTIONS:
-                        actions_buffer.append(self._truncate(action))
-                elif current_section == "summary" and not result["short_summary"]:
-                    result["short_summary"] = self._truncate(line)
-                elif current_section == "problem" and not result["what_it_means"]:
-                    result["what_it_means"] = self._truncate(line)
-                elif current_section == "actions" and len(actions_buffer) < MAX_ACTIONS:
-                    # Non-bulleted action line
-                    if line and not line.upper().startswith("SEVERITY"):
-                        actions_buffer.append(self._truncate(line))
 
-            # Set actions (limit to MAX_ACTIONS)
+                elif line_stripped.startswith("-") or line_stripped.startswith("•"):
+                    # Action item
+                    action = line_stripped.lstrip("-•").strip()
+                    if action and len(actions_buffer) < MAX_ACTIONS:
+                        actions_buffer.append(self._truncate(action, MAX_FIELD_LENGTH))
+
+                else:
+                    # Continuation line for current section
+                    if current_section == "summary" and not result["short_summary"]:
+                        result["short_summary"] = self._truncate(
+                            line_stripped, MAX_SUMMARY_LENGTH
+                        )
+                    elif current_section == "problem" and not result["what_it_means"]:
+                        result["what_it_means"] = self._truncate(
+                            line_stripped, MAX_FIELD_LENGTH
+                        )
+                    elif current_section == "cause" and not result["likely_cause"]:
+                        result["likely_cause"] = self._truncate(
+                            line_stripped, MAX_FIELD_LENGTH
+                        )
+
+            # Set actions
             if actions_buffer:
                 result["recommended_actions"] = actions_buffer[:MAX_ACTIONS]
 
-            # Set severity label based on score (new simpler thresholds)
+            # Apply severity label mapping
             result["severity_label"] = self._score_to_label(result["severity_score"])
 
-            # Fallback: use event level to infer severity if not extracted
-            if result["severity_score"] == 0 and not result["short_summary"]:
-                return self._default_explanation(event)
+            # Validate and apply fallbacks
+            result = self._apply_fallbacks(result, event)
 
-            # If severity is 0 but we got a summary, keep it but check level
-            if result["severity_score"] == 0:
-                level = event.get("level", "").upper()
-                if level in ("CRITICAL", "ERROR"):
-                    result["severity_score"] = 7
-                    result["severity_label"] = "High"
-                elif level == "WARNING":
-                    result["severity_score"] = 4
-                    result["severity_label"] = "Low"
-                else:
-                    result["severity_score"] = 1
-                    result["severity_label"] = "Info"
-
-            # Ensure we have content
-            if not result["short_summary"]:
-                result["short_summary"] = "Windows recorded a system message."
-
-            if not result["what_it_means"]:
-                result["what_it_means"] = (
-                    "This is probably fine unless it happens a lot."
-                )
-
-            if not result["recommended_actions"]:
-                if result["severity_score"] >= 5:
-                    result["recommended_actions"] = [
-                        "If this keeps happening, restart your computer.",
-                        "If the problem continues, ask someone for help.",
-                    ]
-                else:
-                    result["recommended_actions"] = ["No action needed."]
+            return result
 
         except Exception as e:
             logger.warning(f"Failed to parse LLM response: {e}")
-            return self._default_explanation(event)
-
-        return result
+            return self._create_fallback_explanation(event)
 
     def _score_to_label(self, score: int) -> str:
-        """Convert severity score to simple label using new thresholds."""
+        """
+        Convert severity score to label.
+
+        Mapping:
+        - 0-2 → Info
+        - 3-4 → Low
+        - 5-6 → Medium
+        - 7-8 → High
+        - 9-10 → Critical
+        """
         if score >= 9:
             return "Critical"
         elif score >= 7:
@@ -261,19 +300,68 @@ SEVERITY:
         else:
             return "Info"
 
-    def _default_explanation(self, event: dict) -> dict[str, Any]:
-        """Provide a simple default explanation when AI fails."""
+    def _apply_fallbacks(self, result: dict, event: dict) -> dict:
+        """
+        Ensure all required fields have valid values.
+
+        Uses event-level-based defaults when fields are missing.
+        """
+        level = event.get("level", "Information").upper()
+
+        # Fallback for short_summary
+        if not result["short_summary"]:
+            source = event.get("provider", event.get("source", "Windows"))
+            if len(source) > 25:
+                source = source[:22] + "..."
+            result["short_summary"] = f"Windows recorded a message from {source}."
+
+        # Fallback for what_it_means
+        if not result["what_it_means"]:
+            result["what_it_means"] = self.DEFAULT_MEANING
+
+        # Fallback for likely_cause
+        if not result["likely_cause"]:
+            result["likely_cause"] = self.DEFAULT_CAUSE
+
+        # Fallback for recommended_actions
+        if not result["recommended_actions"]:
+            result["recommended_actions"] = list(self.DEFAULT_ACTIONS)
+
+        # Adjust severity based on event level if score is 0 but we got a summary
+        if result["severity_score"] == 0:
+            if level in ("CRITICAL",):
+                result["severity_score"] = 9
+                result["severity_label"] = "Critical"
+            elif level == "ERROR":
+                result["severity_score"] = 6
+                result["severity_label"] = "Medium"
+            elif level == "WARNING":
+                result["severity_score"] = 4
+                result["severity_label"] = "Low"
+            else:
+                result["severity_score"] = 1
+                result["severity_label"] = "Info"
+
+        return result
+
+    def _create_fallback_explanation(self, event: dict) -> dict[str, Any]:
+        """
+        Create a safe fallback explanation when AI fails or returns invalid data.
+
+        Uses the event level to determine appropriate messaging.
+        """
         level = event.get("level", "Information").upper()
         source = event.get("provider", event.get("source", "Windows"))
 
-        # Make source user-friendly
-        if source and len(source) > 30:
-            source = source[:27] + "..."
+        # Truncate long source names
+        if source and len(source) > 25:
+            source = source[:22] + "..."
 
-        if level in ("CRITICAL",):
+        if level == "CRITICAL":
             return {
                 "short_summary": f"Something serious happened with {source}.",
                 "what_it_means": "Yes, this needs attention. Your computer might have a problem.",
+                "likely_cause": "Unknown.",
                 "recommended_actions": [
                     "Restart your computer.",
                     "If this keeps happening, contact a technician.",
@@ -285,6 +373,7 @@ SEVERITY:
             return {
                 "short_summary": f"Something went wrong with {source}.",
                 "what_it_means": "This might cause problems, but your PC should still work.",
+                "likely_cause": "Unknown.",
                 "recommended_actions": [
                     "If this keeps happening, restart your computer.",
                     "If the problem continues, ask someone for help.",
@@ -296,18 +385,20 @@ SEVERITY:
             return {
                 "short_summary": f"Windows noticed something unusual from {source}.",
                 "what_it_means": "This is probably fine, but keep an eye on it.",
+                "likely_cause": "Unknown.",
                 "recommended_actions": [
                     "No action needed right now.",
                     "If you see this message many times, restart your PC.",
                 ],
-                "severity_score": 3,
+                "severity_score": 4,
                 "severity_label": "Low",
             }
         else:
             return {
-                "short_summary": f"Windows recorded a normal message from {source}.",
-                "what_it_means": "No, this is just a normal system message.",
-                "recommended_actions": ["No action needed."],
+                "short_summary": self.DEFAULT_SUMMARY,
+                "what_it_means": self.DEFAULT_MEANING,
+                "likely_cause": self.DEFAULT_CAUSE,
+                "recommended_actions": list(self.DEFAULT_ACTIONS),
                 "severity_score": 1,
                 "severity_label": "Info",
             }

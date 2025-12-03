@@ -17,7 +17,10 @@ Item {
     property bool isExplaining: false
     property bool technicalDetailsExpanded: false
     
-    // Helper functions for user-friendly text
+    // ============================================================
+    // HELPER FUNCTIONS for user-friendly text
+    // ============================================================
+    
     function getSelectedEvent() {
         if (selectedEventIndex >= 0 && eventModel.get(selectedEventIndex)) {
             return eventModel.get(selectedEventIndex)
@@ -25,15 +28,21 @@ Item {
         return null
     }
     
+    // SUMMARY: What happened?
     function getFriendlySummary() {
         if (aiExplanation && aiExplanation.short_summary) {
             return aiExplanation.short_summary
         }
+        // Fallback based on event level
         var evt = getSelectedEvent()
         if (!evt) return ""
         var level = evt.level || "Information"
         var source = evt.source || "Windows"
-        if (level === "Error" || level === "Critical") {
+        if (source.length > 25) source = source.substring(0, 22) + "..."
+        
+        if (level === "Critical") {
+            return "Something serious happened with " + source + "."
+        } else if (level === "Error") {
             return "Something went wrong with " + source + "."
         } else if (level === "Warning") {
             return "Windows noticed something unusual from " + source + "."
@@ -41,58 +50,82 @@ Item {
         return "Windows recorded a normal message from " + source + "."
     }
     
+    // SEVERITY INFO: Is this a problem?
     function getSeverityInfo() {
         // Returns: { label, color, description }
         if (aiExplanation && aiExplanation.severity_label) {
             var label = aiExplanation.severity_label
             var meaning = aiExplanation.what_it_means || ""
-            if (label === "Critical" || label === "High") {
+            
+            if (label === "Critical") {
                 return { 
-                    label: "High impact", 
+                    label: "Critical", 
                     color: "#DC2626", 
-                    description: meaning || "This could affect your computer. You should take action."
+                    description: meaning || "Yes, this needs immediate attention."
+                }
+            } else if (label === "High") {
+                return { 
+                    label: "High", 
+                    color: "#EA580C", 
+                    description: meaning || "Yes, this could affect your computer."
                 }
             } else if (label === "Medium") {
                 return { 
-                    label: "Medium impact", 
+                    label: "Medium", 
                     color: "#CA8A04", 
                     description: meaning || "This might cause small issues. Keep using your PC, but watch for problems."
                 }
             } else if (label === "Low") {
                 return { 
-                    label: "Low impact", 
+                    label: "Low", 
                     color: "#2563EB", 
                     description: meaning || "This is minor. You can safely ignore it unless it happens often."
                 }
             }
             return { 
-                label: "No problem", 
+                label: "Info", 
                 color: "#22C55E", 
-                description: meaning || "This is just a normal system message."
+                description: meaning || "No, this is just a normal system message."
             }
         }
+        
         // Fallback based on event level
         var evt = getSelectedEvent()
         if (!evt) return { label: "Unknown", color: ThemeManager.muted(), description: "" }
         var level = evt.level || "Information"
+        
         if (level === "Critical") {
-            return { label: "High impact", color: "#DC2626", description: "This is a serious issue that needs attention." }
+            return { label: "Critical", color: "#DC2626", description: "This is a serious issue that needs attention." }
         } else if (level === "Error") {
-            return { label: "Medium impact", color: "#EA580C", description: "Something went wrong, but your PC should still work." }
+            return { label: "Medium", color: "#EA580C", description: "Something went wrong, but your PC should still work." }
         } else if (level === "Warning") {
-            return { label: "Low impact", color: "#CA8A04", description: "Windows noticed something, but it's probably fine." }
+            return { label: "Low", color: "#CA8A04", description: "Windows noticed something, but it's probably fine." }
         }
-        return { label: "No problem", color: "#22C55E", description: "This is just a normal system message." }
+        return { label: "Info", color: "#22C55E", description: "This is just a normal system message." }
     }
     
+    // CAUSE: Possible cause
+    function getLikelyCause() {
+        if (aiExplanation && aiExplanation.likely_cause) {
+            var cause = aiExplanation.likely_cause
+            if (cause.toLowerCase() === "unknown" || cause.toLowerCase() === "unknown.") {
+                return "The exact cause is not clear from this message."
+            }
+            return cause
+        }
+        return "The exact cause is not clear from this message."
+    }
+    
+    // ACTIONS: What should I do?
     function getRecommendedActions() {
         if (aiExplanation && aiExplanation.recommended_actions && aiExplanation.recommended_actions.length > 0) {
             return aiExplanation.recommended_actions
         }
-        // Fallback actions
+        // Fallback based on event level
         var evt = getSelectedEvent()
         if (!evt) return ["No action needed."]
         var level = evt.level || "Information"
+        
         if (level === "Critical" || level === "Error") {
             return [
                 "If this keeps happening, restart your computer.",
@@ -104,7 +137,10 @@ Item {
         return ["No action needed."]
     }
     
-    // Listen to theme changes
+    // ============================================================
+    // CONNECTIONS
+    // ============================================================
+    
     Connections {
         target: ThemeManager
         function onThemeModeChanged() {
@@ -112,22 +148,26 @@ Item {
         }
     }
     
-    // Backend connections
     Connections {
         target: Backend || null
         enabled: target !== null
+        
         function onEventsLoaded(events) {
             eventsList = events
             eventModel.clear()
             selectedEventIndex = -1
             aiExplanation = null
             technicalDetailsExpanded = false
+            
             for (var i = 0; i < events.length; i++) {
                 var evt = events[i]
                 var eventLevel = evt.level ? evt.level.toUpperCase() : ""
                 var filterLevelUpper = filterLevel.toUpperCase()
+                
                 if ((filterLevel === "All" || eventLevel === filterLevelUpper) &&
-                    (searchText === "" || (evt.message && evt.message.indexOf(searchText) >= 0) || (evt.source && evt.source.indexOf(searchText) >= 0))) {
+                    (searchText === "" || 
+                     (evt.message && evt.message.indexOf(searchText) >= 0) || 
+                     (evt.source && evt.source.indexOf(searchText) >= 0))) {
                     eventModel.append(evt)
                 }
             }
@@ -146,8 +186,9 @@ Item {
                 // Set a safe fallback
                 if (parseInt(eventId) === selectedEventIndex) {
                     aiExplanation = {
-                        short_summary: "Windows recorded a system message.",
-                        what_it_means: "This may not be serious unless it keeps happening.",
+                        short_summary: "Windows recorded a system event.",
+                        what_it_means: "This is not usually serious unless it keeps happening.",
+                        likely_cause: "Unknown.",
                         recommended_actions: ["If this message repeats many times, restart your PC."],
                         severity_score: 0,
                         severity_label: "Info"
@@ -170,19 +211,25 @@ Item {
             var eventLevel = evt.level ? evt.level.toUpperCase() : ""
             var filterLevelUpper = filterLevel.toUpperCase()
             var levelMatch = (filterLevel === "All" || eventLevel === filterLevelUpper)
-            var searchMatch = (searchText === "" || (evt.message && evt.message.indexOf(searchText) >= 0) || (evt.source && evt.source.indexOf(searchText) >= 0))
+            var searchMatch = (searchText === "" || 
+                              (evt.message && evt.message.indexOf(searchText) >= 0) || 
+                              (evt.source && evt.source.indexOf(searchText) >= 0))
             if (levelMatch && searchMatch) {
                 eventModel.append(evt)
             }
         }
     }
 
+    // ============================================================
+    // MAIN LAYOUT
+    // ============================================================
+    
     RowLayout {
         anchors.fill: parent
         anchors.margins: 24
         spacing: 20
 
-        // Left side: Event list
+        // LEFT SIDE: Event list
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -322,7 +369,7 @@ Item {
                     anchors.margins: 12
                     spacing: 0
 
-                    // Header
+                    // Header row
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
@@ -396,7 +443,7 @@ Item {
                                         Layout.preferredWidth: 80
                                     }
 
-                                    // Friendly level indicator
+                                    // Friendly level badge
                                     Rectangle {
                                         width: 60
                                         height: 20
@@ -456,7 +503,10 @@ Item {
             }
         }
 
-        // Right side: Event details panel (only visible when event selected)
+        // ============================================================
+        // RIGHT SIDE: Event explanation panel
+        // ============================================================
+        
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: selectedEventIndex >= 0 ? parent.width * 0.4 : 0
@@ -478,7 +528,7 @@ Item {
                 
                 ColumnLayout {
                     width: parent.width - 8
-                    spacing: 20
+                    spacing: 16
 
                     // Header with close button
                     RowLayout {
@@ -532,7 +582,7 @@ Item {
                             spacing: 12
                             
                             Text {
-                                text: "🤖"
+                                text: "🔍"
                                 font.pixelSize: 20
                                 
                                 SequentialAnimation on opacity {
@@ -544,7 +594,7 @@ Item {
                             }
                             
                             Text {
-                                text: "Analyzing this event for you..."
+                                text: "Analyzing this event..."
                                 color: ThemeManager.muted()
                                 font.pixelSize: 12
                             }
@@ -554,7 +604,7 @@ Item {
                     // SECTION 1: What happened?
                     Rectangle {
                         Layout.fillWidth: true
-                        height: whatHappenedContent.implicitHeight + 24
+                        implicitHeight: whatHappenedContent.implicitHeight + 24
                         radius: 10
                         color: ThemeManager.surface()
                         visible: !isExplaining
@@ -586,7 +636,7 @@ Item {
                     // SECTION 2: Is this a problem?
                     Rectangle {
                         Layout.fillWidth: true
-                        height: problemContent.implicitHeight + 24
+                        implicitHeight: problemContent.implicitHeight + 24
                         radius: 10
                         color: ThemeManager.surface()
                         visible: !isExplaining
@@ -632,10 +682,42 @@ Item {
                         }
                     }
 
-                    // SECTION 3: What should I do?
+                    // SECTION 3: Possible cause
                     Rectangle {
                         Layout.fillWidth: true
-                        height: actionsContent.implicitHeight + 24
+                        implicitHeight: causeContent.implicitHeight + 24
+                        radius: 10
+                        color: ThemeManager.surface()
+                        visible: !isExplaining
+                        
+                        ColumnLayout {
+                            id: causeContent
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 8
+                            
+                            Text {
+                                text: "🔎 Possible cause"
+                                color: ThemeManager.foreground()
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            
+                            Text {
+                                text: getLikelyCause()
+                                color: ThemeManager.muted()
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.3
+                            }
+                        }
+                    }
+
+                    // SECTION 4: What should I do?
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: actionsContent.implicitHeight + 24
                         radius: 10
                         color: ThemeManager.surface()
                         visible: !isExplaining
@@ -682,16 +764,16 @@ Item {
                         }
                     }
 
-                    // SECTION 4: Technical details (collapsible)
+                    // SECTION 5: Technical details (collapsible)
                     Rectangle {
                         Layout.fillWidth: true
-                        height: technicalHeader.implicitHeight + (technicalDetailsExpanded ? technicalContent.implicitHeight + 12 : 0) + 24
+                        implicitHeight: technicalHeader.implicitHeight + (technicalDetailsExpanded ? technicalContent.implicitHeight + 12 : 0) + 24
                         radius: 10
                         color: ThemeManager.surface()
                         visible: !isExplaining
                         clip: true
                         
-                        Behavior on height {
+                        Behavior on implicitHeight {
                             NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
                         }
                         
