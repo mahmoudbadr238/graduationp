@@ -37,16 +37,19 @@ pyadl>=0.1                      # AMD GPU monitoring (AMD GPUs on Windows)
 # AI / LOCAL LLM (Optional - falls back to rule-based if unavailable)
 # ─────────────────────────────────────────────────────────────────────────────────
 transformers>=4.35.0            # HuggingFace transformers for local LLM
-onnxruntime-gpu>=1.16.0         # ONNX Runtime with GPU support (CUDA)
-optimum>=1.14.0                 # HuggingFace Optimum for ONNX integration
+onnxruntime-gpu>=1.16.0         # ONNX Runtime with GPU support (CUDA/TensorRT)
+optimum[onnxruntime-gpu]>=1.14.0  # HuggingFace Optimum with ONNX GPU support
+numpy>=1.24.0                   # Required for ONNX Runtime tensor operations
 # Note: For smaller footprint, these can be omitted (rule-based fallback used)
-# Note: Requires CUDA toolkit installed for GPU acceleration
+# Note: Requires CUDA toolkit and cuDNN installed for GPU acceleration
+# Note: For TensorRT support, install TensorRT SDK from NVIDIA
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION & UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0            # Environment variable management (.env files)
 colorama>=0.4.6                 # Cross-platform colored terminal output
+
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # DATABASE
