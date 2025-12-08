@@ -74,22 +74,26 @@ class LocalLLMEngine(QObject):
             available_providers = ort.get_available_providers()
             logger.info(f"Available ONNX Runtime providers: {available_providers}")
             
-            # Determine which providers to use (TensorRT > CUDA > CPU)
+            # Determine which provider to use
+            # TensorRT requires pre-optimized models, so use CUDA by default
+            # Set SENTINEL_USE_TENSORRT=1 to force TensorRT (requires TensorRT-optimized model)
+            use_tensorrt = os.environ.get("SENTINEL_USE_TENSORRT", "").lower() in ("1", "true", "yes")
+            
             providers_to_use = []
             self._provider_name = "CPU"
             
-            if "TensorrtExecutionProvider" in available_providers:
+            if use_tensorrt and "TensorrtExecutionProvider" in available_providers:
                 providers_to_use.append("TensorrtExecutionProvider")
                 self._using_gpu = True
                 self._provider_name = "TensorRT"
-                logger.info("TensorRT GPU acceleration available (fastest)")
+                logger.info("TensorRT GPU acceleration enabled (requires optimized model)")
             
             if "CUDAExecutionProvider" in available_providers:
                 providers_to_use.append("CUDAExecutionProvider")
                 if not self._using_gpu:
                     self._using_gpu = True
                     self._provider_name = "CUDA"
-                    logger.info("CUDA GPU acceleration available")
+                    logger.info("CUDA GPU acceleration enabled")
             
             providers_to_use.append("CPUExecutionProvider")
 
