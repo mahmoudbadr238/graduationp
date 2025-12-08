@@ -37,8 +37,10 @@ pyadl>=0.1                      # AMD GPU monitoring (AMD GPUs on Windows)
 # AI / LOCAL LLM (Optional - falls back to rule-based if unavailable)
 # ─────────────────────────────────────────────────────────────────────────────────
 transformers>=4.35.0            # HuggingFace transformers for local LLM
-torch>=2.0.0                    # PyTorch backend for transformers
+onnxruntime-gpu>=1.16.0         # ONNX Runtime with GPU support (CUDA)
+optimum>=1.14.0                 # HuggingFace Optimum for ONNX integration
 # Note: For smaller footprint, these can be omitted (rule-based fallback used)
+# Note: Requires CUDA toolkit installed for GPU acceleration
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION & UTILITIES

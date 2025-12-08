@@ -58,6 +58,7 @@ class AIWorker:
     AI Worker that processes requests from the main application.
     
     Runs in a separate process to never block the UI.
+    Uses ONNX Runtime with GPU acceleration for inference.
     """
 
     def __init__(self):
@@ -67,18 +68,32 @@ class AIWorker:
         self._use_transformers = False
         self._cache: dict[str, dict[str, Any]] = {}
         self._initialized = False
+        self._using_gpu = False
 
     def _initialize_model(self) -> None:
-        """Load the AI model (called once at startup)."""
+        """Load the AI model using ONNX Runtime (called once at startup)."""
         if self._initialized:
             return
 
         self._initialized = True
 
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from optimum.onnxruntime import ORTModelForCausalLM
+            from transformers import AutoTokenizer
+            import onnxruntime as ort
 
-            logger.info(f"Loading local model: {self._model_name}")
+            logger.info(f"Loading local model with ONNX Runtime: {self._model_name}")
+
+            # Check available ONNX Runtime providers
+            available_providers = ort.get_available_providers()
+            logger.info(f"Available ONNX Runtime providers: {available_providers}")
+            
+            # Determine which providers to use (prefer GPU)
+            provider = "CPUExecutionProvider"
+            if "CUDAExecutionProvider" in available_providers:
+                provider = "CUDAExecutionProvider"
+                self._using_gpu = True
+                logger.info("CUDA GPU acceleration available")
 
             # Try local first, then download if needed
             try:
@@ -86,24 +101,36 @@ class AIWorker:
                     self._model_name, local_files_only=True
                 )
             except OSError:
-                logger.info("Model not cached, downloading...")
+                logger.info("Tokenizer not cached, downloading...")
                 self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
 
             try:
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    self._model_name, local_files_only=True
+                self._model = ORTModelForCausalLM.from_pretrained(
+                    self._model_name, local_files_only=True, provider=provider
                 )
             except OSError:
-                self._model = AutoModelForCausalLM.from_pretrained(self._model_name)
+                logger.info("ONNX model not cached, exporting from transformers...")
+                self._model = ORTModelForCausalLM.from_pretrained(
+                    self._model_name, export=True, provider=provider
+                )
+                # Cache the ONNX model
+                try:
+                    cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "sentinel_onnx", self._model_name.replace("/", "_"))
+                    os.makedirs(cache_dir, exist_ok=True)
+                    self._model.save_pretrained(cache_dir)
+                    logger.info(f"ONNX model cached to: {cache_dir}")
+                except Exception as save_err:
+                    logger.warning(f"Could not cache ONNX model: {save_err}")
 
             if self._tokenizer.pad_token is None:
                 self._tokenizer.pad_token = self._tokenizer.eos_token
 
             self._use_transformers = True
-            logger.info("Model loaded successfully")
+            gpu_status = "with GPU acceleration" if self._using_gpu else "CPU only"
+            logger.info(f"ONNX model loaded successfully ({gpu_status})")
 
         except Exception as e:
-            logger.warning(f"Transformers not available, using fallback: {e}")
+            logger.warning(f"ONNX Runtime not available, using fallback: {e}")
             self._use_transformers = False
 
     def _make_cache_key(self, event: dict) -> str:
@@ -169,17 +196,20 @@ Rules:
 JSON response:"""
 
     def _generate_with_model(self, prompt: str, max_tokens: int = 300) -> str:
-        """Generate response using the loaded model."""
+        """Generate response using ONNX Runtime model."""
         if not self._use_transformers or self._model is None:
             return ""
 
         try:
-            inputs = self._tokenizer.encode(
-                prompt, return_tensors="pt", truncation=True, max_length=512
+            import numpy as np
+            
+            # Tokenize with numpy tensors for ONNX Runtime
+            inputs = self._tokenizer(
+                prompt, return_tensors="np", truncation=True, max_length=512
             )
 
             outputs = self._model.generate(
-                inputs,
+                **inputs,
                 max_new_tokens=max_tokens,
                 num_return_sequences=1,
                 pad_token_id=self._tokenizer.pad_token_id,
@@ -197,7 +227,7 @@ JSON response:"""
             return response.strip()
 
         except Exception as e:
-            logger.error(f"Model generation failed: {e}")
+            logger.error(f"ONNX model generation failed: {e}")
             return ""
 
     def _parse_json_response(self, response: str, event: dict) -> dict[str, Any]:

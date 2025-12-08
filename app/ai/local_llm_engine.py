@@ -1,14 +1,15 @@
 """
-Local LLM Engine - 100% offline AI processing.
+Local LLM Engine - 100% offline AI processing with ONNX Runtime GPU.
 
 This module provides a local language model wrapper that:
-1. Tries to load a small local model using transformers (if available)
-2. Falls back to rule-based responses if transformers/model not available
+1. Tries to load a small local model using ONNX Runtime with GPU acceleration
+2. Falls back to rule-based responses if ONNX/model not available
 3. NEVER makes any HTTP/network calls
 
 Configuration:
 - Set SENTINEL_LOCAL_MODEL env var to specify model name
 - Default: "microsoft/DialoGPT-small" (small, fast, works offline once downloaded)
+- Uses ONNX Runtime with CUDA for GPU acceleration
 """
 
 import logging
@@ -22,12 +23,15 @@ logger = logging.getLogger(__name__)
 # Default small model that works well for simple explanations
 DEFAULT_MODEL = "microsoft/DialoGPT-small"
 
+# ONNX Runtime execution providers (GPU first, then CPU fallback)
+ONNX_PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
 
 class LocalLLMEngine(QObject):
     """
     Local LLM wrapper for 100% offline AI processing.
 
-    Attempts to use HuggingFace transformers with a local model.
+    Attempts to use HuggingFace Optimum with ONNX Runtime GPU acceleration.
     Falls back to rule-based responses if unavailable.
     Uses LAZY initialization - model only loads when first needed.
     """
@@ -41,10 +45,11 @@ class LocalLLMEngine(QObject):
         self._use_transformers = False
         self._fallback_mode = True
         self._initialized = False  # Lazy init flag
+        self._using_gpu = False  # Track if GPU acceleration is active
 
         # DON'T load model here - wait until first use
         # This speeds up app startup significantly
-        logger.info("LocalLLMEngine created (lazy init - model loads on first use)")
+        logger.info("LocalLLMEngine created (lazy init - ONNX model loads on first use)")
 
     def _ensure_initialized(self) -> None:
         """Lazy initialization - load model on first use."""
@@ -54,24 +59,36 @@ class LocalLLMEngine(QObject):
         self._initialize_model()
 
     def _initialize_model(self) -> None:
-        """Attempt to load the local model using transformers."""
+        """Attempt to load the local model using ONNX Runtime with GPU."""
         try:
-            # Import transformers - will fail if not installed
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            # Import optimum for ONNX model loading
+            from optimum.onnxruntime import ORTModelForCausalLM
+            from transformers import AutoTokenizer
+            import onnxruntime as ort
 
-            logger.info(f"Loading local model: {self._model_name}")
+            logger.info(f"Loading local model with ONNX Runtime: {self._model_name}")
+            
+            # Check available ONNX Runtime providers
+            available_providers = ort.get_available_providers()
+            logger.info(f"Available ONNX Runtime providers: {available_providers}")
+            
+            # Determine which providers to use (prefer GPU)
+            providers_to_use = []
+            if "CUDAExecutionProvider" in available_providers:
+                providers_to_use.append("CUDAExecutionProvider")
+                self._using_gpu = True
+                logger.info("CUDA GPU acceleration available")
+            providers_to_use.append("CPUExecutionProvider")
 
-            # Try to load tokenizer and model
-            # Setting local_files_only=True after first download ensures offline use
+            # Try to load tokenizer (local first, then download)
             try:
                 self._tokenizer = AutoTokenizer.from_pretrained(
                     self._model_name,
-                    local_files_only=True,  # Only use cached/local files
+                    local_files_only=True,
                 )
             except OSError:
-                # Model not cached locally, try downloading (one-time)
                 logger.info(
-                    f"Model not cached, attempting download: {self._model_name}"
+                    f"Tokenizer not cached, attempting download: {self._model_name}"
                 )
                 try:
                     self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
@@ -79,16 +96,32 @@ class LocalLLMEngine(QObject):
                     logger.warning(f"Failed to download tokenizer: {e}")
                     raise
 
+            # Try to load ONNX model (local first, then export/download)
             try:
-                self._model = AutoModelForCausalLM.from_pretrained(
+                self._model = ORTModelForCausalLM.from_pretrained(
                     self._model_name,
                     local_files_only=True,
+                    provider=providers_to_use[0] if providers_to_use else "CPUExecutionProvider",
                 )
             except OSError:
+                logger.info(f"ONNX model not cached, exporting from transformers: {self._model_name}")
                 try:
-                    self._model = AutoModelForCausalLM.from_pretrained(self._model_name)
+                    # Export the model to ONNX format
+                    self._model = ORTModelForCausalLM.from_pretrained(
+                        self._model_name,
+                        export=True,  # Export to ONNX if not already
+                        provider=providers_to_use[0] if providers_to_use else "CPUExecutionProvider",
+                    )
+                    # Save the ONNX model for future use
+                    try:
+                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "sentinel_onnx", self._model_name.replace("/", "_"))
+                        os.makedirs(cache_dir, exist_ok=True)
+                        self._model.save_pretrained(cache_dir)
+                        logger.info(f"ONNX model cached to: {cache_dir}")
+                    except Exception as save_err:
+                        logger.warning(f"Could not cache ONNX model: {save_err}")
                 except Exception as e:
-                    logger.warning(f"Failed to download model: {e}")
+                    logger.warning(f"Failed to export/load ONNX model: {e}")
                     raise
 
             # Set pad token if not set
@@ -97,7 +130,8 @@ class LocalLLMEngine(QObject):
 
             self._use_transformers = True
             self._fallback_mode = False
-            logger.info(f"Local LLM initialized successfully: {self._model_name}")
+            gpu_status = "with GPU acceleration" if self._using_gpu else "CPU only"
+            logger.info(f"Local LLM (ONNX) initialized successfully: {self._model_name} ({gpu_status})")
 
         except ImportError:
             logger.warning(
@@ -113,7 +147,7 @@ class LocalLLMEngine(QObject):
 
     @property
     def is_available(self) -> bool:
-        """Check if the LLM is available (transformers loaded successfully)."""
+        """Check if the LLM is available (ONNX model loaded successfully)."""
         self._ensure_initialized()
         return self._use_transformers and self._model is not None
 
@@ -124,13 +158,30 @@ class LocalLLMEngine(QObject):
         return self._fallback_mode
 
     @property
+    def is_gpu_enabled(self) -> bool:
+        """Check if GPU acceleration is active."""
+        self._ensure_initialized()
+        return self._using_gpu
+
+    @property
     def model_name(self) -> str:
         """Get the configured model name."""
         return self._model_name if not self._fallback_mode else "rule-based-fallback"
 
+    @property
+    def backend_info(self) -> str:
+        """Get information about the current backend (ONNX GPU/CPU or fallback)."""
+        self._ensure_initialized()
+        if self._fallback_mode:
+            return "rule-based-fallback"
+        elif self._using_gpu:
+            return "onnxruntime-gpu (CUDA)"
+        else:
+            return "onnxruntime-cpu"
+
     def generate_single_turn(self, prompt: str, max_tokens: int = 400) -> str:
         """
-        Generate a response for a single-turn prompt.
+        Generate a response for a single-turn prompt using ONNX Runtime.
 
         Args:
             prompt: The input prompt text
@@ -145,28 +196,28 @@ class LocalLLMEngine(QObject):
             return self._fallback_generate(prompt)
 
         try:
-            import torch
+            import numpy as np
 
-            # Tokenize input
-            inputs = self._tokenizer.encode(
+            # Tokenize input - ONNX models work with numpy arrays
+            inputs = self._tokenizer(
                 prompt,
-                return_tensors="pt",
+                return_tensors="np",  # Use numpy for ONNX Runtime
                 truncation=True,
                 max_length=512,  # Limit input size
             )
 
-            # Generate response with settings optimized for structured output
-            with torch.no_grad():
-                outputs = self._model.generate(
-                    inputs,
-                    max_new_tokens=max_tokens,
-                    num_return_sequences=1,
-                    temperature=0.4,       # Lower temperature for more consistent output
-                    top_p=0.9,             # Nucleus sampling for better quality
-                    do_sample=True,
-                    pad_token_id=self._tokenizer.pad_token_id,
-                    eos_token_id=self._tokenizer.eos_token_id,
-                )
+            # Generate response with ONNX Runtime
+            # ORTModelForCausalLM.generate() handles the inference
+            outputs = self._model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                num_return_sequences=1,
+                temperature=0.4,       # Lower temperature for more consistent output
+                top_p=0.9,             # Nucleus sampling for better quality
+                do_sample=True,
+                pad_token_id=self._tokenizer.pad_token_id,
+                eos_token_id=self._tokenizer.eos_token_id,
+            )
 
             # Decode and return
             response = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -178,7 +229,7 @@ class LocalLLMEngine(QObject):
             return response if response else self._fallback_generate(prompt)
 
         except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
+            logger.error(f"ONNX LLM generation failed: {e}")
             return self._fallback_generate(prompt)
 
     def _fallback_generate(self, prompt: str) -> str:
