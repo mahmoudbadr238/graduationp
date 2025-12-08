@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 # Default small model that works well for simple explanations
 DEFAULT_MODEL = "microsoft/DialoGPT-small"
 
-# ONNX Runtime execution providers (GPU first, then CPU fallback)
-ONNX_PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+# ONNX Runtime execution providers (TensorRT > CUDA > CPU)
+# TensorRT provides the fastest inference on NVIDIA GPUs
+ONNX_PROVIDERS = ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
 
 
 class LocalLLMEngine(QObject):
@@ -46,6 +47,7 @@ class LocalLLMEngine(QObject):
         self._fallback_mode = True
         self._initialized = False  # Lazy init flag
         self._using_gpu = False  # Track if GPU acceleration is active
+        self._provider_name = "CPU"  # Track which ONNX provider is used (TensorRT/CUDA/CPU)
 
         # DON'T load model here - wait until first use
         # This speeds up app startup significantly
@@ -72,12 +74,23 @@ class LocalLLMEngine(QObject):
             available_providers = ort.get_available_providers()
             logger.info(f"Available ONNX Runtime providers: {available_providers}")
             
-            # Determine which providers to use (prefer GPU)
+            # Determine which providers to use (TensorRT > CUDA > CPU)
             providers_to_use = []
+            self._provider_name = "CPU"
+            
+            if "TensorrtExecutionProvider" in available_providers:
+                providers_to_use.append("TensorrtExecutionProvider")
+                self._using_gpu = True
+                self._provider_name = "TensorRT"
+                logger.info("TensorRT GPU acceleration available (fastest)")
+            
             if "CUDAExecutionProvider" in available_providers:
                 providers_to_use.append("CUDAExecutionProvider")
-                self._using_gpu = True
-                logger.info("CUDA GPU acceleration available")
+                if not self._using_gpu:
+                    self._using_gpu = True
+                    self._provider_name = "CUDA"
+                    logger.info("CUDA GPU acceleration available")
+            
             providers_to_use.append("CPUExecutionProvider")
 
             # Try to load tokenizer (local first, then download)
@@ -130,7 +143,7 @@ class LocalLLMEngine(QObject):
 
             self._use_transformers = True
             self._fallback_mode = False
-            gpu_status = "with GPU acceleration" if self._using_gpu else "CPU only"
+            gpu_status = f"with {self._provider_name} acceleration" if self._using_gpu else "CPU only"
             logger.info(f"Local LLM (ONNX) initialized successfully: {self._model_name} ({gpu_status})")
 
         except ImportError:
@@ -170,12 +183,13 @@ class LocalLLMEngine(QObject):
 
     @property
     def backend_info(self) -> str:
-        """Get information about the current backend (ONNX GPU/CPU or fallback)."""
+        """Get information about the current backend (TensorRT/CUDA/CPU or fallback)."""
         self._ensure_initialized()
         if self._fallback_mode:
             return "rule-based-fallback"
         elif self._using_gpu:
-            return "onnxruntime-gpu (CUDA)"
+            provider = getattr(self, '_provider_name', 'GPU')
+            return f"onnxruntime-{provider.lower()}"
         else:
             return "onnxruntime-cpu"
 

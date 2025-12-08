@@ -69,6 +69,7 @@ class AIWorker:
         self._cache: dict[str, dict[str, Any]] = {}
         self._initialized = False
         self._using_gpu = False
+        self._provider_name = "CPU"  # Track which ONNX provider is used (TensorRT/CUDA/CPU)
 
     def _initialize_model(self) -> None:
         """Load the AI model using ONNX Runtime (called once at startup)."""
@@ -88,11 +89,19 @@ class AIWorker:
             available_providers = ort.get_available_providers()
             logger.info(f"Available ONNX Runtime providers: {available_providers}")
             
-            # Determine which providers to use (prefer GPU)
+            # Determine which providers to use (TensorRT > CUDA > CPU)
             provider = "CPUExecutionProvider"
-            if "CUDAExecutionProvider" in available_providers:
+            self._provider_name = "CPU"
+            
+            if "TensorrtExecutionProvider" in available_providers:
+                provider = "TensorrtExecutionProvider"
+                self._using_gpu = True
+                self._provider_name = "TensorRT"
+                logger.info("TensorRT GPU acceleration available (fastest)")
+            elif "CUDAExecutionProvider" in available_providers:
                 provider = "CUDAExecutionProvider"
                 self._using_gpu = True
+                self._provider_name = "CUDA"
                 logger.info("CUDA GPU acceleration available")
 
             # Try local first, then download if needed
@@ -126,7 +135,7 @@ class AIWorker:
                 self._tokenizer.pad_token = self._tokenizer.eos_token
 
             self._use_transformers = True
-            gpu_status = "with GPU acceleration" if self._using_gpu else "CPU only"
+            gpu_status = f"with {self._provider_name} acceleration" if self._using_gpu else "CPU only"
             logger.info(f"ONNX model loaded successfully ({gpu_status})")
 
         except Exception as e:
