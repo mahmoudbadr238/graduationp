@@ -268,7 +268,14 @@ class ClaudeProvider(OnlineProvider):
             
             self._record_success()
             
-            content = message.content[0].text
+            # Extract text from TextBlock (response may contain other block types)
+            content = ""
+            for block in message.content:
+                text = getattr(block, "text", None)
+                if text is not None:
+                    content = text
+                    break
+            
             response = self._parse_response(content, query)
             response.latency_ms = int((time.monotonic() - start) * 1000)
             return response
@@ -319,7 +326,14 @@ Provide your response in the exact JSON format specified."""
             
             self._record_success()
             
-            content = message.content[0].text
+            # Extract text from TextBlock (response may contain other block types)
+            content = ""
+            for block in message.content:
+                text = getattr(block, "text", None)
+                if text is not None:
+                    content = text
+                    break
+            
             response = self._parse_response(content, str(event.get("event_id", "")))
             response.latency_ms = int((time.monotonic() - start) * 1000)
             return response
@@ -403,7 +417,7 @@ class OpenAIProvider(OnlineProvider):
             
             self._record_success()
             
-            content = response.choices[0].message.content
+            content = response.choices[0].message.content or ""
             result = self._parse_response(content, query)
             result.latency_ms = int((time.monotonic() - start) * 1000)
             return result
@@ -453,7 +467,7 @@ Respond in the exact JSON format specified."""
             
             self._record_success()
             
-            content = response.choices[0].message.content
+            content = response.choices[0].message.content or ""
             result = self._parse_response(content, str(event.get("event_id", "")))
             result.latency_ms = int((time.monotonic() - start) * 1000)
             return result
