@@ -44,6 +44,10 @@ Item {
     property bool sandboxAvailable: false
     property var sandboxMethods: []
     
+    // Report content for preview
+    property string currentReportContent: ""
+    property string currentReportFileName: ""
+    
     // ============================================
     // LIFECYCLE
     // ============================================
@@ -106,6 +110,11 @@ Item {
             fileScanningInProgress = false
             fileScanStage = ""
             fileScanResult = result
+            // Store report content for preview
+            if (result && result.report_content) {
+                currentReportContent = result.report_content
+                currentReportFileName = "scan_report_" + (result.file_name || "file") + ".txt"
+            }
         }
         
         // Integrated sandbox signals (new)
@@ -122,6 +131,11 @@ Item {
             fileScanningInProgress = false
             fileScanStage = ""
             fileScanResult = result
+            // Store report content for preview
+            if (result && result.report_content) {
+                currentReportContent = result.report_content
+                currentReportFileName = "scan_report_" + (result.file_name || "file") + ".txt"
+            }
         }
         
         // URL scan signals (VirusTotal-like)
@@ -142,11 +156,21 @@ Item {
             urlScanStage = ""
             urlScanProgressValue = 100
             urlCheckResult = result
+            // Store report content for preview
+            if (result && result.report_content) {
+                currentReportContent = result.report_content
+                currentReportFileName = "url_report.txt"
+            }
         }
         
         function onLocalUrlCheckFinished(result) {
             urlCheckingInProgress = false
             urlCheckResult = result
+            // Store report content for preview
+            if (result && result.report_content) {
+                currentReportContent = result.report_content
+                currentReportFileName = "url_report.txt"
+            }
         }
     }
     
@@ -836,43 +860,76 @@ Item {
                                     Item { Layout.fillWidth: true }
                                 }
                                 
-                                // Report button
+                                // Report buttons
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 12
                                     
                                     Button {
-                                        text: "📄 Open Report"
-                                        Layout.preferredHeight: 36
+                                        text: "📄 View Full Report"
+                                        Layout.preferredHeight: 40
+                                        Layout.preferredWidth: 150
                                         
                                         onClicked: {
-                                            if (fileScanResult && fileScanResult.report_path) {
-                                                openReport(fileScanResult.report_path)
+                                            if (currentReportContent) {
+                                                reportPreviewDialog.showReport(
+                                                    "Security Scan Report",
+                                                    currentReportContent,
+                                                    currentReportFileName,
+                                                    true
+                                                )
                                             }
                                         }
                                         
                                         background: Rectangle {
-                                            color: parent.hovered ? Qt.lighter(ThemeManager.accent, 1.1) : ThemeManager.accent
-                                            radius: 6
+                                            color: parent.hovered ? Qt.lighter(ThemeManager.primary, 1.1) : ThemeManager.primary
+                                            radius: 8
                                         }
                                         
                                         contentItem: Text {
                                             text: parent.text
                                             color: "#FFFFFF"
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
+                                            font.bold: true
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                         }
                                     }
                                     
+                                    Button {
+                                        text: "🔄 Scan Another"
+                                        Layout.preferredHeight: 40
+                                        Layout.preferredWidth: 130
+                                        
+                                        onClicked: {
+                                            fileScanResult = null
+                                            currentReportContent = ""
+                                            selectedFilePath = ""
+                                            filePathInput.text = ""
+                                        }
+                                        
+                                        background: Rectangle {
+                                            color: parent.hovered ? ThemeManager.surface() : "transparent"
+                                            radius: 8
+                                            border.color: ThemeManager.border()
+                                            border.width: 1
+                                        }
+                                        
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 13
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    
+                                    Item { Layout.fillWidth: true }
+                                    
                                     Text {
-                                        text: fileScanResult && fileScanResult.report_path 
-                                            ? "Saved: " + fileScanResult.report_path 
-                                            : ""
+                                        text: "💡 Click 'View Full Report' for detailed results"
                                         font.pixelSize: 11
                                         color: ThemeManager.muted()
-                                        elide: Text.ElideMiddle
-                                        Layout.fillWidth: true
                                     }
                                 }
                             }
@@ -1694,10 +1751,10 @@ Item {
                                     }
                                 }
                                 
-                                // Technical summary and report button
+                                // Technical summary and report buttons
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 16
+                                    spacing: 12
                                     
                                     Text {
                                         text: urlCheckResult && urlCheckResult.explanation 
@@ -1709,26 +1766,59 @@ Item {
                                     }
                                     
                                     Button {
-                                        text: "📄 Open Report"
-                                        Layout.preferredHeight: 36
-                                        Layout.preferredWidth: 120
-                                        visible: urlCheckResult && urlCheckResult.report_path
+                                        text: "📄 View Full Report"
+                                        Layout.preferredHeight: 40
+                                        Layout.preferredWidth: 150
+                                        visible: currentReportContent && urlCheckResult
                                         
                                         onClicked: {
-                                            if (urlCheckResult && urlCheckResult.report_path) {
-                                                openReport(urlCheckResult.report_path)
+                                            if (currentReportContent) {
+                                                reportPreviewDialog.showReport(
+                                                    "URL Safety Report",
+                                                    currentReportContent,
+                                                    currentReportFileName,
+                                                    false
+                                                )
                                             }
                                         }
                                         
                                         background: Rectangle {
-                                            color: parent.hovered ? Qt.lighter(ThemeManager.accent, 1.1) : ThemeManager.accent
-                                            radius: 6
+                                            color: parent.hovered ? Qt.lighter(ThemeManager.primary, 1.1) : ThemeManager.primary
+                                            radius: 8
                                         }
                                         
                                         contentItem: Text {
                                             text: parent.text
                                             color: "#FFFFFF"
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
+                                            font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    
+                                    Button {
+                                        text: "🔄 Check Another"
+                                        Layout.preferredHeight: 40
+                                        Layout.preferredWidth: 130
+                                        
+                                        onClicked: {
+                                            urlCheckResult = null
+                                            currentReportContent = ""
+                                            urlInput.text = ""
+                                        }
+                                        
+                                        background: Rectangle {
+                                            color: parent.hovered ? ThemeManager.surface() : "transparent"
+                                            radius: 8
+                                            border.color: ThemeManager.border()
+                                            border.width: 1
+                                        }
+                                        
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 13
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                         }
@@ -1852,6 +1942,26 @@ Item {
                         Item { Layout.fillHeight: true }
                     }
                 }
+            }
+        }
+    }
+    
+    // ============================================
+    // REPORT PREVIEW DIALOG
+    // ============================================
+    ReportPreviewDialog {
+        id: reportPreviewDialog
+        parent: Overlay.overlay
+        
+        onSaveRequested: function(filePath) {
+            if (Backend && currentReportContent) {
+                Backend.saveReportToFile(currentReportContent, filePath)
+            }
+        }
+        
+        onCopyRequested: {
+            if (Backend && currentReportContent) {
+                Backend.copyToClipboard(currentReportContent)
             }
         }
     }

@@ -38,3 +38,4 @@ SecurityCard 1.0 SecurityCard.qml
 SecurityTriangle 1.0 SecurityTriangle.qml
 SidebarItem 1.0 SidebarItem.qml
 NotificationCenter 1.0 NotificationCenter.qml
+ReportPreviewDialog 1.0 ReportPreviewDialog.qml

@@ -152,14 +152,20 @@ class SqliteRepo(IScanRepository, IEventRepository):
         try:
             cursor = conn.cursor()
 
+            # Handle both datetime objects and ISO strings for started_at/finished_at
+            started_str = rec.started_at.isoformat() if hasattr(rec.started_at, 'isoformat') else str(rec.started_at)
+            finished_str = None
+            if rec.finished_at:
+                finished_str = rec.finished_at.isoformat() if hasattr(rec.finished_at, 'isoformat') else str(rec.finished_at)
+
             cursor.execute(
                 """
                 INSERT INTO scans (started_at, finished_at, type, target, status, findings, meta)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
                 (
-                    rec.started_at.isoformat(),
-                    rec.finished_at.isoformat() if rec.finished_at else None,
+                    started_str,
+                    finished_str,
                     rec.type.value,
                     rec.target,
                     rec.status,

@@ -1573,7 +1573,7 @@ class BackendBridge(QObject):
             from ..scanning.static_scanner import StaticScanner, ScanResult
             from ..scanning.integrated_sandbox import get_integrated_sandbox
             from ..scanning.scoring import score_scan_results
-            from ..scanning.report_writer import write_combined_scan_report
+            from ..scanning.friendly_report import get_friendly_report_generator
             from dataclasses import asdict, is_dataclass
             
             def result_to_dict(result):
@@ -1666,22 +1666,23 @@ class BackendBridge(QObject):
                 logger.error(f"Scoring error: {e}")
                 scoring_result = None
             
-            # Step 4: Report generation
+            # Step 4: Report generation (friendly, user-readable)
             self._integrated_sandbox_stage = "Report Generation"
             self.integratedSandboxProgress.emit("Generating report...")
             
+            report_content = ""
             try:
-                report_path = write_combined_scan_report(
+                report_gen = get_friendly_report_generator()
+                report_content = report_gen.generate_file_report(
                     file_path,
                     static_result,
                     sandbox_result,
                     scoring_result
                 )
-                report_path = str(report_path)
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.warning(f"Report generation error: {e}")
-                report_path = ""
+                report_content = f"Error generating report: {e}"
             
             # Build final result dict for QML
             result = {
@@ -1689,6 +1690,7 @@ class BackendBridge(QObject):
                 "file_path": str(file_path),
                 "file_size": static_result.get("file_size", 0) if static_result else 0,
                 "sha256": static_result.get("sha256", "") if static_result else "",
+                "mime_type": static_result.get("mime_type", "") if static_result else "",
                 
                 # Scoring
                 "score": scoring_result.score if scoring_result else 0,
@@ -1712,8 +1714,9 @@ class BackendBridge(QObject):
                 "sandbox_timed_out": sandbox_result.get("timed_out", False) if sandbox_result else False,
                 "sandbox_error": sandbox_result.get("error_message", "") if sandbox_result else "",
                 
-                # Report
-                "report_path": report_path,
+                # Report content (for preview dialog)
+                "report_content": report_content,
+                "report_path": "",  # Empty - user chooses to save
                 
                 # Breakdown for UI
                 "score_breakdown": scoring_result.breakdown if scoring_result else {},
@@ -1793,6 +1796,52 @@ class BackendBridge(QObject):
     def _emitIntegratedSandboxProgress(self, stage: str):
         """Thread-safe progress emission (called via QMetaObject.invokeMethod)."""
         self.integratedSandboxProgress.emit(stage)
+
+    @Slot(str, str, result=bool)
+    def saveReportToFile(self, content: str, file_path: str) -> bool:
+        """
+        Save report content to a file chosen by user.
+        
+        Args:
+            content: Report text content
+            file_path: Destination file path
+            
+        Returns:
+            True if saved successfully
+        """
+        try:
+            path = Path(file_path)
+            # Ensure .txt extension
+            if not path.suffix:
+                path = path.with_suffix(".txt")
+            
+            # Create parent directories if needed
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write content
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            logger.info(f"Report saved to: {path}")
+            self.toast.emit("success", f"Report saved: {path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save report: {e}")
+            self.toast.emit("error", f"Failed to save report: {e}")
+            return False
+    
+    @Slot(str)
+    def copyToClipboard(self, text: str):
+        """Copy text to system clipboard."""
+        try:
+            from PySide6.QtGui import QGuiApplication
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(text)
+            self.toast.emit("success", "Copied to clipboard")
+        except Exception as e:
+            logger.error(f"Failed to copy to clipboard: {e}")
+            self.toast.emit("error", "Failed to copy to clipboard")
 
     # ============ URL Scanning (VirusTotal-like, 100% Local) ============
     
@@ -1925,14 +1974,14 @@ class BackendBridge(QObject):
             from app.scanning.url_scanner import UrlScanner
             from app.scanning.url_scoring import score_url_scan
             from app.ai.url_explainer import explain_url_scan, explanation_to_dict
-            from app.scanning.report_writer_url import write_url_scan_report, write_url_scan_json
+            from app.scanning.friendly_report import get_friendly_report_generator
             
             worker.signals.heartbeat.emit(worker_id)
             
             scan_result = None
             scoring_result = None
             explanation = None
-            report_path = ""
+            report_content = ""
             
             # Step 1: Run URL scan
             # Note: Progress updates happen via signals from main thread after task completes
@@ -1978,15 +2027,25 @@ class BackendBridge(QObject):
             except Exception as e:
                 logger.warning(f"URL explanation error: {e}")
             
-            # Step 4: Generate report
+            # Step 4: Generate friendly report content
             if generate_report:
                 try:
-                    report_path = str(write_url_scan_report(scan_result, explanation))
-                    # Also save JSON
-                    write_url_scan_json(scan_result, explanation)
+                    report_gen = get_friendly_report_generator()
+                    # Build a simple result dict for the friendly report
+                    url_result = {
+                        "url": url,
+                        "score": scan_result.score if scan_result else 0,
+                        "verdict": scan_result.verdict if scan_result else "unknown",
+                        "reasons": [
+                            {"title": e.title, "severity": e.severity, "detail": e.detail}
+                            for e in scan_result.evidence
+                        ] if scan_result and scan_result.evidence else [],
+                    }
+                    report_content = report_gen.generate_url_report(url, url_result)
                     worker.signals.heartbeat.emit(worker_id)
                 except Exception as e:
                     logger.warning(f"Report generation error: {e}")
+                    report_content = f"Error generating report: {e}"
             
             # Build result dict for QML
             result = {
@@ -2042,8 +2101,9 @@ class BackendBridge(QObject):
                 # Explanation
                 "explanation": explanation_to_dict(explanation) if explanation else None,
                 
-                # Report
-                "report_path": report_path,
+                # Report content (for preview dialog)
+                "report_content": report_content,
+                "report_path": "",  # Empty - user chooses to save
                 
                 # Scoring breakdown
                 "scoring": {
@@ -2064,7 +2124,6 @@ class BackendBridge(QObject):
                 self._url_scan_stage = ""
                 self._url_scan_progress = 100
                 self._url_scan_result = result
-                self._last_url_report_path = result.get("report_path", "")
                 
                 # Save to scan history
                 scan_rec = ScanRecord(
