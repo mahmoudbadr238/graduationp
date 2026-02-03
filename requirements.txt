@@ -52,6 +52,15 @@ colorama>=0.4.6                 # Cross-platform colored terminal output
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
+# SECURITY SCANNING (Optional - enhanced analysis if available)
+# ─────────────────────────────────────────────────────────────────────────────────
+pefile>=2023.2.7                # PE file parsing for Windows executables (optional)
+yara-python>=4.3.0              # YARA rule matching for malware detection (optional)
+pywebview>=4.0                  # WebView2 bindings for URL sandbox detonation (optional)
+# Note: yara-python requires Visual C++ Build Tools on Windows
+# Note: These are optional - the app works without them but with reduced analysis
+
+# ─────────────────────────────────────────────────────────────────────────────────
 # DATABASE
 # ─────────────────────────────────────────────────────────────────────────────────
 # sqlite3 is included in Python standard library - no external dependency needed

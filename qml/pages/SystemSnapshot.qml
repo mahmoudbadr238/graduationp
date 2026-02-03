@@ -12,6 +12,17 @@ Item {
     // Track current tab index
     property int currentTabIndex: 0
     
+    // Check if GPUService is available
+    property bool gpuServiceAvailable: typeof GPUService !== 'undefined' && GPUService !== null
+    
+    // Start GPU service when switching to GPU tab (index 1)
+    onCurrentTabIndexChanged: {
+        if (currentTabIndex === 1 && gpuServiceAvailable && !GPUService.isRunning()) {
+            console.log("[SystemSnapshot] Starting GPU monitoring for GPU tab")
+            GPUService.start(5000)  // 5 second interval
+        }
+    }
+    
     // Helper function to create a transparent version of a color
     function transparentColor(baseColor, alpha) {
         return Qt.rgba(baseColor.r, baseColor.g, baseColor.b, alpha)
@@ -1114,6 +1125,61 @@ Item {
                                         text: advancedSection.expanded ? "▲" : "▼"
                                         color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
                                         font.pixelSize: 16
+                                    }
+                                }
+                            }
+
+                            // ===== ADMIN PRIVILEGE INDICATOR =====
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 60
+                                radius: 12
+                                color: SnapshotService && SnapshotService.isAdmin 
+                                       ? Qt.rgba(ThemeManager.success.r, ThemeManager.success.g, ThemeManager.success.b, 0.12)
+                                       : Qt.rgba(ThemeManager.warning.r, ThemeManager.warning.g, ThemeManager.warning.b, 0.12)
+                                border.color: SnapshotService && SnapshotService.isAdmin ? ThemeManager.success : ThemeManager.warning
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 12
+
+                                    Rectangle {
+                                        width: 32
+                                        height: 32
+                                        radius: 16
+                                        color: SnapshotService && SnapshotService.isAdmin ? ThemeManager.success : ThemeManager.warning
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: SnapshotService && SnapshotService.isAdmin ? "✓" : "!"
+                                            color: "#FFFFFF"
+                                            font.pixelSize: 16
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    Column {
+                                        spacing: 2
+                                        Layout.fillWidth: true
+
+                                        Text {
+                                            text: SnapshotService && SnapshotService.isAdmin 
+                                                  ? "Administrator Privileges Active" 
+                                                  : "Limited Privileges"
+                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            font.pixelSize: 13
+                                            font.bold: true
+                                        }
+
+                                        Text {
+                                            text: SnapshotService && SnapshotService.isAdmin 
+                                                  ? "All security features available" 
+                                                  : "Some features may be limited. Run as administrator for full access."
+                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            font.pixelSize: 11
+                                        }
                                     }
                                 }
                             }

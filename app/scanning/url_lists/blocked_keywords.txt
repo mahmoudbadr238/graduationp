@@ -1,0 +1,56 @@
+# Sentinel URL Blocklist - Suspicious Keywords in URLs
+# Format: one keyword/pattern per line
+# These trigger increased suspicion score
+
+# Account/credential phishing keywords
+-login-
+-signin-
+-verify-
+-confirm-
+-secure-
+-update-account
+-suspended
+-locked
+-urgent
+-action-required
+-password-reset
+-credential
+-authenticate
+
+# Financial scam keywords
+-payment-
+-billing-
+-invoice-
+-refund-
+-prize-
+-winner-
+-lottery-
+-inheritance
+-bitcoin-
+-crypto-
+-wallet-
+
+# Tech support scam keywords
+-virus-detected
+-malware-found
+-computer-infected
+-security-alert
+-windows-error
+-microsoft-support
+-apple-support
+-tech-help
+
+# Generic suspicious patterns
+-free-
+-download-now
+-click-here
+-limited-time
+-act-now
+-expires-
+.exe
+.scr
+.bat
+.cmd
+.ps1
+.vbs
+.js.download

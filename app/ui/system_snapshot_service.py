@@ -12,6 +12,7 @@ import psutil
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
 
 from app.utils.security_info import SecurityInfo
+from app.utils.admin import check_admin
 
 # Subprocess flags - CREATE_NO_WINDOW only works on Windows
 _IS_WINDOWS = platform.system() == "Windows"
@@ -527,6 +528,11 @@ class SystemSnapshotService(QObject):
     @Property(bool, constant=True)
     def isMacOS(self) -> bool:
         return self._is_macos
+
+    @Property(bool, constant=True)
+    def isAdmin(self) -> bool:
+        """Whether the application is running with administrator privileges."""
+        return check_admin()
 
     @Property("QVariantList", notify=networkInterfacesChanged)
     def networkInterfaces(self) -> List[Dict]:

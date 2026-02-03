@@ -14,6 +14,17 @@ Item {
     // Check if GPUService is available
     property bool gpuServiceAvailable: typeof GPUService !== 'undefined' && GPUService !== null
     
+    // Start GPU monitoring when page becomes visible (not on Component.onCompleted)
+    onVisibleChanged: {
+        if (visible && gpuServiceAvailable && !GPUService.isRunning()) {
+            console.log("[GPUMonitor] Starting GPU monitoring (page visible)")
+            GPUService.start(5000)  // 5 second interval for efficiency
+        }
+    }
+    
+    // Don't stop on destruction - keep running for quick return to page
+    // The service will be cleaned up when the app exits
+    
     // Get current GPU data
     property var currentGpu: gpuServiceAvailable && GPUService.metrics && GPUService.metrics.length > selectedGpuIndex ? 
                              GPUService.metrics[selectedGpuIndex] : null
@@ -183,7 +194,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth  // Prevents horizontal scroll
                 
                 Flickable {
                     contentWidth: width

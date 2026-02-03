@@ -1,0 +1,68 @@
+# Sentinel URL Allowlist - Known Safe Domains
+# Format: one domain per line
+# These domains get reduced suspicion scores
+
+# Major tech companies
+microsoft.com
+google.com
+apple.com
+amazon.com
+facebook.com
+twitter.com
+github.com
+gitlab.com
+bitbucket.org
+
+# Security vendors
+virustotal.com
+malwarebytes.com
+kaspersky.com
+norton.com
+mcafee.com
+avast.com
+avg.com
+bitdefender.com
+sophos.com
+trendmicro.com
+eset.com
+
+# Cloud services
+azure.com
+aws.amazon.com
+cloud.google.com
+digitalocean.com
+cloudflare.com
+
+# Software distribution
+python.org
+nodejs.org
+npmjs.com
+pypi.org
+rubygems.org
+nuget.org
+
+# Operating systems
+ubuntu.com
+debian.org
+fedoraproject.org
+archlinux.org
+manjaro.org
+
+# Development tools
+visualstudio.com
+jetbrains.com
+sublimetext.com
+atom.io
+code.visualstudio.com
+
+# Documentation/Reference
+stackoverflow.com
+docs.microsoft.com
+developer.mozilla.org
+w3schools.com
+
+# News/Updates
+cnn.com
+bbc.com
+reuters.com
+wikipedia.org

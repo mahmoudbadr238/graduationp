@@ -1,0 +1,57 @@
+# Sentinel URL Blocklist - Known Malicious Domains
+# Format: one domain per line, # for comments
+# This list is checked locally - no network required
+
+# Phishing domains (examples - extend as needed)
+login-microsoft-verify.com
+secure-paypal-update.com
+amazon-account-verify.net
+google-security-alert.com
+apple-id-suspended.com
+netflix-payment-update.com
+bank-secure-login.com
+account-verify-now.com
+password-reset-urgent.com
+security-alert-action.com
+
+# Known malware distribution domains
+malware-download.com
+trojan-server.net
+ransomware-host.com
+botnet-c2.net
+exploit-kit.com
+drive-by-download.net
+
+# Cryptocurrency scam domains
+free-bitcoin-generator.com
+crypto-doubler.net
+wallet-verify-eth.com
+mining-reward-claim.com
+
+# Tech support scam domains
+microsoft-support-alert.com
+windows-error-fix.net
+computer-virus-detected.com
+security-warning-alert.com
+tech-support-help.net
+
+# Typosquatting examples
+micros0ft.com
+g00gle.com
+amaz0n.com
+paypa1.com
+faceb00k.com
+app1e.com
+netfl1x.com
+
+# Fake/impersonator domains
+fitgirl-repacks.site
+fitgirl-repacks.co
+fitgirl-repacks.xyz
+fitgirl-repack.site
+fitgirls-repack.com
+steamunlocked.net
+igg-games.com
+oceanofgames.com
+skidrow-games.com
+nosteam.ro

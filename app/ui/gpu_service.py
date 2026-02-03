@@ -53,9 +53,9 @@ class GPUServiceBridge(QObject):
         self._proc.finished.connect(self._on_finished)
         self._proc.errorOccurred.connect(self._on_error)
 
-        # Heartbeat watchdog (30s timeout - GPU metrics can be slow, especially on first poll)
+        # Heartbeat watchdog (60s timeout - WMI queries can be very slow on some systems)
         self._hb_timer = QTimer(self)
-        self._hb_timer.setInterval(30000)
+        self._hb_timer.setInterval(60000)  # Increased from 30s to 60s for WMI stability
         self._hb_timer.timeout.connect(self._on_missed_heartbeat)
 
         # Circuit breaker (track failures)
@@ -286,6 +286,11 @@ class GPUServiceBridge(QObject):
                         # Update metrics cache
                         gpus = msg.get("gpus", [])
                         self._metrics_cache = gpus
+
+                        # Debug: Log received metrics for AMD GPUs
+                        for g in gpus:
+                            if g.get("vendor") == "AMD":
+                                logger.debug(f"AMD GPU received: {g.get('name')}, usage={g.get('usage')}, mem={g.get('memUsedMB')}/{g.get('memTotalMB')}MB, driver={g.get('driverVersion')}")
 
                         new_count = len(gpus)
                         if new_count != self._gpu_count:

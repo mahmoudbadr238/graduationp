@@ -1,0 +1,22 @@
+{
+    "exclude": [
+        "archive_unused",
+        "_cleanup_archive",
+        "archive",
+        "build",
+        "dist",
+        "build_artifacts",
+        "artifacts",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "tools",
+        "scripts"
+    ],
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": false,
+    "reportOptionalMemberAccess": false,
+    "reportGeneralTypeIssues": false,
+    "pythonVersion": "3.13",
+    "typeCheckingMode": "basic"
+}

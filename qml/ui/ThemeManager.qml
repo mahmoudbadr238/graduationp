@@ -103,6 +103,7 @@ QtObject {
     
     // Color palette
     readonly property color accent: "#7C3AED"
+    readonly property color primary: accent  // Alias for accent
     readonly property color darkBg: "#050814"
     readonly property color lightBg: "#f6f8fc"
     readonly property color darkText: "#F9FAFB"

@@ -5,9 +5,14 @@ import "../ui"
 import "../components"
 
 /**
- * SecurityAssistant - Local AI Security Chatbot Page
+ * SecurityAssistant - Smart Local AI Security Chatbot Page
  * 
- * Provides a conversational interface for security assistance.
+ * Provides a conversational interface for security assistance with:
+ * - Conversation memory and context
+ * - Intent-based routing
+ * - Structured responses with sources and confidence
+ * - Technical details collapsible
+ * 
  * 100% local - no network calls, all AI runs on the user's machine.
  */
 Item {
@@ -17,6 +22,7 @@ Item {
     // State
     property bool isThinking: false
     property int themeUpdateTrigger: 0
+    property var lastStructuredResponse: null  // Store last smart response for details
 
     // Listen to theme changes
     Connections {
@@ -36,16 +42,43 @@ Item {
             chatModel.append({
                 "role": role,
                 "content": content,
-                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm")
+                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
+                "hasStructuredData": false,
+                "structuredData": ""
             })
 
             // Stop thinking indicator when assistant responds
+            // Use Qt.callLater to defer this to avoid binding loops
             if (role === "assistant") {
-                isThinking = false
+                Qt.callLater(function() { isThinking = false })
             }
 
-            // Scroll to bottom
-            chatListView.positionViewAtEnd()
+            // Scroll is handled by ListView.onCountChanged, no need to call here
+        }
+        
+        function onSmartAssistantResponse(responseJson) {
+            // Parse JSON string response
+            try {
+                var response = JSON.parse(responseJson)
+                // Store structured response for last message
+                lastStructuredResponse = response
+                
+                // Update the last assistant message with structured data
+                if (chatModel.count > 0) {
+                    var lastIndex = chatModel.count - 1
+                    if (chatModel.get(lastIndex).role === "assistant") {
+                        chatModel.setProperty(lastIndex, "hasStructuredData", true)
+                        chatModel.setProperty(lastIndex, "structuredData", responseJson)
+                    }
+                }
+            } catch (e) {
+                console.log("[SecurityAssistant] Failed to parse response:", e)
+            }
+        }
+        
+        function onSmartAssistantError(errorMsg) {
+            console.log("[SecurityAssistant] Smart assistant error:", errorMsg)
+            isThinking = false
         }
     }
 
@@ -54,12 +87,14 @@ Item {
         id: chatModel
     }
 
-    // Initial welcome message
+    // Initial welcome message - Sentinel tone
     Component.onCompleted: {
         chatModel.append({
             "role": "assistant",
-            "content": "Hello! I'm your local security assistant. I can help you understand your system's security status, explain Windows events, and provide security guidance.\n\nAll processing happens locally on your machine - no data is sent anywhere.\n\nWhat would you like to know?",
-            "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm")
+            "content": "**Hello! I'm Sentinel, your local security assistant.** 🛡️\n\nThink of me as a junior security analyst sitting on your machine. I can:\n\n• **Check your security status** - Defender, Firewall, real-time protection\n• **Explain Windows events** - What happened, why, and should you worry\n• **Answer security questions** - Best practices, threats, how to stay safe\n• **Guide you through the app** - How to use any Sentinel feature\n\nI remember our conversation, so ask follow-up questions anytime.\n\n*Everything I do is 100% local - I never connect to the internet.*",
+            "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
+            "hasStructuredData": false,
+            "structuredData": ""
         })
     }
 
@@ -74,7 +109,7 @@ Item {
             spacing: 16
 
             Text {
-                text: "🤖"
+                text: "🧠"
                 font.pixelSize: 32
             }
 
@@ -82,14 +117,14 @@ Item {
                 spacing: 4
 
                 Text {
-                    text: "Security Assistant"
+                    text: "Smart Security Assistant"
                     font.pixelSize: 28
                     font.bold: true
                     color: ThemeManager.foreground()
                 }
 
                 Text {
-                    text: "Local AI • No Cloud • 100% Private"
+                    text: "Context-Aware • Memory • Local-Only"
                     font.pixelSize: 12
                     color: ThemeManager.muted()
                 }
@@ -118,6 +153,39 @@ Item {
                     font.bold: true
                 }
             }
+            
+            // Explain Recent Events button
+            Rectangle {
+                width: explainEventsLabel.implicitWidth + 24
+                height: 32
+                radius: 8
+                color: explainMouse.containsMouse ? ThemeManager.accent : ThemeManager.elevated()
+                
+                Text {
+                    id: explainEventsLabel
+                    anchors.centerIn: parent
+                    text: "📋 Explain Events"
+                    color: explainMouse.containsMouse ? "white" : ThemeManager.foreground()
+                    font.pixelSize: 12
+                }
+                
+                MouseArea {
+                    id: explainMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (Backend && !isThinking) {
+                            Backend.explainRecentEvents("5")
+                            isThinking = true
+                        }
+                    }
+                }
+                
+                ToolTip.visible: explainMouse.containsMouse
+                ToolTip.text: "Ask assistant to explain recent events"
+                ToolTip.delay: 500
+            }
 
             // Clear chat button
             Rectangle {
@@ -140,11 +208,14 @@ Item {
                     onClicked: {
                         chatModel.clear()
                         if (Backend) Backend.clearChatHistory()
+                        lastStructuredResponse = null
                         // Re-add welcome message
                         chatModel.append({
                             "role": "assistant",
-                            "content": "Chat cleared. How can I help you?",
-                            "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm")
+                            "content": "Chat cleared. How can I help you with security?",
+                            "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
+                            "hasStructuredData": false,
+                            "structuredData": ""
                         })
                     }
                 }
@@ -182,14 +253,18 @@ Item {
                         spacing: 12
 
                         delegate: Item {
+                            id: delegateItem
                             width: chatListView.width
                             height: messageBubble.height + 8
+
+                            // SIMPLIFIED DELEGATE FOR DEBUGGING
+                            // Remove all structured data parsing - just show messages
 
                             // Message bubble
                             Rectangle {
                                 id: messageBubble
-                                width: Math.min(messageText.implicitWidth + 32, parent.width * 0.75)
-                                height: messageContent.implicitHeight + 24
+                                width: Math.min(messageColumn.implicitWidth + 32, parent.width * 0.85)
+                                height: messageColumn.implicitHeight + 24
                                 radius: 16
 
                                 // Position based on role
@@ -202,11 +277,12 @@ Item {
                                        ThemeManager.surface()
 
                                 Column {
-                                    id: messageContent
+                                    id: messageColumn
                                     anchors.fill: parent
                                     anchors.margins: 12
-                                    spacing: 4
+                                    spacing: 8
 
+                                    // Main message text - PLAIN TEXT ONLY
                                     Text {
                                         id: messageText
                                         width: parent.width
@@ -217,8 +293,10 @@ Item {
                                         font.pixelSize: 14
                                         wrapMode: Text.Wrap
                                         lineHeight: 1.4
+                                        textFormat: Text.PlainText
                                     }
 
+                                    // Timestamp
                                     Text {
                                         text: model.timestamp
                                         color: model.role === "user" ? 
@@ -437,18 +515,23 @@ Item {
         isThinking = true
 
         if (Backend) {
-            Backend.sendChatMessage(text)
+            // Use smart assistant for intelligent responses
+            Backend.sendSmartMessage(text)
         } else {
             // Fallback if backend not available
             chatModel.append({
                 "role": "user",
                 "content": text,
-                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm")
+                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
+                "hasStructuredData": false,
+                "structuredData": ""
             })
             chatModel.append({
                 "role": "assistant",
                 "content": "Backend not available. Please restart the application.",
-                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm")
+                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
+                "hasStructuredData": false,
+                "structuredData": ""
             })
             isThinking = false
         }

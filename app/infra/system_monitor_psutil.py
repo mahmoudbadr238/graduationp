@@ -97,7 +97,8 @@ class PsutilSystemMonitor(ISystemMonitor):
 
     def _get_cpu_info(self) -> dict[str, Any]:
         """Get CPU metrics."""
-        cpu_percent = psutil.cpu_percent(interval=0.1)
+        # Use interval=0 for non-blocking call (measures since last call)
+        cpu_percent = psutil.cpu_percent(interval=0)
         cpu_freq = psutil.cpu_freq()
         cpu_count = psutil.cpu_count(logical=True)
 

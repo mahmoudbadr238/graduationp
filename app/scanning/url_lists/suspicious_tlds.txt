@@ -1,0 +1,57 @@
+# Sentinel - Suspicious TLDs
+# These TLDs are commonly abused for malicious purposes
+# Higher weight in scoring
+
+# Free/cheap TLDs often abused
+.tk
+.ml
+.ga
+.cf
+.gq
+.xyz
+.top
+.work
+.click
+.link
+.download
+.win
+.racing
+.review
+.date
+.accountant
+.science
+.party
+.stream
+.gdn
+.men
+.loan
+.trade
+.webcam
+.bid
+.cricket
+.faith
+.site
+.online
+.icu
+.buzz
+.live
+.space
+.fun
+.store
+.monster
+.rest
+.sbs
+
+# Country codes sometimes abused
+.ru
+.cn
+.su
+.cc
+.ws
+.to
+.pw
+
+# Newer TLDs to watch
+.zip
+.mov
+.app

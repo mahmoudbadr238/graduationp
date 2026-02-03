@@ -1,15 +1,19 @@
 """
-Local LLM Engine - 100% offline AI processing with ONNX Runtime GPU.
+Local LLM Engine - 100% offline AI processing with optional ONNX Runtime GPU.
 
 This module provides a local language model wrapper that:
-1. Tries to load a small local model using ONNX Runtime with GPU acceleration
-2. Falls back to rule-based responses if ONNX/model not available
-3. NEVER makes any HTTP/network calls
+1. By default, uses fast rule-based responses (no model loading, no CPU usage)
+2. Optionally loads ONNX model with GPU if SENTINEL_ENABLE_LLM=1 is set
+3. Falls back to rule-based responses if ONNX/model not available
+4. NEVER makes any HTTP/network calls
 
 Configuration:
+- Set SENTINEL_ENABLE_LLM=1 to enable ONNX model loading (requires GPU for good performance)
 - Set SENTINEL_LOCAL_MODEL env var to specify model name
-- Default: "microsoft/DialoGPT-small" (small, fast, works offline once downloaded)
-- Uses ONNX Runtime with CUDA for GPU acceleration
+- Default: Uses rule-based fallback (fast, no CPU usage)
+- With ONNX: Uses ONNX Runtime with CUDA for GPU acceleration
+
+NOTE: ONNX on CPU causes HIGH CPU usage. Only enable if you have CUDA GPU support.
 """
 
 import logging
@@ -26,6 +30,10 @@ DEFAULT_MODEL = "microsoft/DialoGPT-small"
 # ONNX Runtime execution providers (TensorRT > CUDA > CPU)
 # TensorRT provides the fastest inference on NVIDIA GPUs
 ONNX_PROVIDERS = ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
+
+# Environment variable to enable LLM (disabled by default to avoid CPU usage)
+# Set SENTINEL_ENABLE_LLM=1 to enable ONNX model loading
+ENABLE_LLM = os.environ.get("SENTINEL_ENABLE_LLM", "").lower() in ("1", "true", "yes")
 
 
 class LocalLLMEngine(QObject):
@@ -51,7 +59,7 @@ class LocalLLMEngine(QObject):
 
         # DON'T load model here - wait until first use
         # This speeds up app startup significantly
-        logger.info("LocalLLMEngine created (lazy init - ONNX model loads on first use)")
+        logger.info("LocalLLMEngine created (lazy init - ONNX model loads on first use if enabled)")
 
     def _ensure_initialized(self) -> None:
         """Lazy initialization - load model on first use."""
@@ -61,7 +69,22 @@ class LocalLLMEngine(QObject):
         self._initialize_model()
 
     def _initialize_model(self) -> None:
-        """Attempt to load the local model using ONNX Runtime with GPU."""
+        """Attempt to load the local model using ONNX Runtime with GPU.
+        
+        NOTE: ONNX model loading is DISABLED by default because:
+        1. ONNX on CPU causes very high CPU usage
+        2. Most queries use deterministic rule-based responses (fast, no CPU overhead)
+        3. Set SENTINEL_ENABLE_LLM=1 to enable (requires CUDA GPU for good performance)
+        """
+        # Check if LLM is enabled (disabled by default to avoid CPU usage)
+        if not ENABLE_LLM:
+            logger.info(
+                "LLM disabled (SENTINEL_ENABLE_LLM not set). "
+                "Using fast rule-based fallback. Set SENTINEL_ENABLE_LLM=1 to enable ONNX model."
+            )
+            self._fallback_mode = True
+            return
+        
         try:
             # Import optimum for ONNX model loading
             from optimum.onnxruntime import ORTModelForCausalLM
@@ -73,6 +96,22 @@ class LocalLLMEngine(QObject):
             # Check available ONNX Runtime providers
             available_providers = ort.get_available_providers()
             logger.info(f"Available ONNX Runtime providers: {available_providers}")
+            
+            # IMPORTANT: Don't load on CPU - it causes high CPU usage
+            # Only proceed if CUDA or TensorRT is available
+            has_gpu = (
+                "CUDAExecutionProvider" in available_providers or
+                "TensorrtExecutionProvider" in available_providers
+            )
+            
+            if not has_gpu:
+                logger.warning(
+                    "No GPU provider available (CUDA/TensorRT not found). "
+                    "Skipping ONNX model load to avoid high CPU usage. "
+                    "Using fast rule-based fallback instead."
+                )
+                self._fallback_mode = True
+                return
             
             # Determine which provider to use
             # TensorRT requires pre-optimized models, so use CUDA by default
@@ -95,7 +134,11 @@ class LocalLLMEngine(QObject):
                     self._provider_name = "CUDA"
                     logger.info("CUDA GPU acceleration enabled")
             
-            providers_to_use.append("CPUExecutionProvider")
+            # Don't add CPUExecutionProvider - we want to fail if no GPU
+            if not providers_to_use:
+                logger.warning("No GPU provider available, skipping ONNX model load")
+                self._fallback_mode = True
+                return
 
             # Try to load tokenizer (local first, then download)
             try:
@@ -118,7 +161,7 @@ class LocalLLMEngine(QObject):
                 self._model = ORTModelForCausalLM.from_pretrained(
                     self._model_name,
                     local_files_only=True,
-                    provider=providers_to_use[0] if providers_to_use else "CPUExecutionProvider",
+                    provider=providers_to_use[0],
                 )
             except OSError:
                 logger.info(f"ONNX model not cached, exporting from transformers: {self._model_name}")
@@ -127,7 +170,7 @@ class LocalLLMEngine(QObject):
                     self._model = ORTModelForCausalLM.from_pretrained(
                         self._model_name,
                         export=True,  # Export to ONNX if not already
-                        provider=providers_to_use[0] if providers_to_use else "CPUExecutionProvider",
+                        provider=providers_to_use[0],
                     )
                     # Save the ONNX model for future use
                     try:
@@ -214,8 +257,6 @@ class LocalLLMEngine(QObject):
             return self._fallback_generate(prompt)
 
         try:
-            import numpy as np
-
             # Tokenize input - ONNX models work with numpy arrays
             inputs = self._tokenizer(
                 prompt,

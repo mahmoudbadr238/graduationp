@@ -1,0 +1,1249 @@
+{
+  "_description": "Sentinel Event Rules Knowledge Base - Deterministic event mappings for fast lookup",
+  "_version": "1.0.0",
+  
+  "providers": {
+    "Service Control Manager": {
+      "description": "Manages Windows services (background programs)",
+      "category": "service",
+      "common_events": {
+        "7000": {
+          "title": "Service failed to start",
+          "severity": "Warning",
+          "impact": "The affected service and its features may not be available.",
+          "causes": [
+            "Missing or corrupted service files",
+            "Permission issues",
+            "Required dependencies not running",
+            "Configuration errors"
+          ],
+          "actions": [
+            "Check if the service is essential for your work",
+            "Try restarting your computer",
+            "Run 'services.msc' and check service dependencies",
+            "If the issue persists, check Windows Event Viewer for more details"
+          ]
+        },
+        "7001": {
+          "title": "Service dependency failure",
+          "severity": "Warning",
+          "impact": "A service cannot start because another service it needs is not running.",
+          "causes": [
+            "A required service failed to start first",
+            "Network services not ready during boot",
+            "Circular dependency issue"
+          ],
+          "actions": [
+            "Wait a few minutes and check if it resolves itself",
+            "Restart your computer",
+            "Check which service is the dependency and start it manually"
+          ]
+        },
+        "7009": {
+          "title": "Service startup timeout",
+          "severity": "Warning",
+          "impact": "A service took too long to start. Windows stopped waiting.",
+          "causes": [
+            "System under heavy load during startup",
+            "Slow disk or network",
+            "Service hanging during initialization"
+          ],
+          "actions": [
+            "Usually resolves on its own after system fully boots",
+            "If persistent, check disk health",
+            "Consider increasing service timeout registry values (advanced)"
+          ]
+        },
+        "7023": {
+          "title": "Service terminated with error",
+          "severity": "Warning",
+          "impact": "A background service stopped unexpectedly due to an error.",
+          "causes": [
+            "Software bugs in the service",
+            "Resource exhaustion (memory/handles)",
+            "External factors (network, disk)"
+          ],
+          "actions": [
+            "Check if related features still work",
+            "The service may restart automatically",
+            "If critical, try restarting the service manually"
+          ]
+        },
+        "7031": {
+          "title": "Service crashed and recovered",
+          "severity": "Minor",
+          "impact": "A service crashed but Windows automatically restarted it.",
+          "causes": [
+            "Temporary software glitch",
+            "Memory pressure",
+            "Bug in the service code"
+          ],
+          "actions": [
+            "Usually no action needed - Windows handled it",
+            "Monitor if it happens frequently (more than a few times per day)"
+          ]
+        },
+        "7034": {
+          "title": "Service crashed unexpectedly",
+          "severity": "Warning",
+          "impact": "A service stopped without warning. Related functionality may be affected.",
+          "causes": [
+            "Critical bug or unhandled exception",
+            "Memory corruption",
+            "System instability"
+          ],
+          "actions": [
+            "Check if the service has restarted",
+            "If issues persist, consider reinstalling the affected software",
+            "Check for Windows updates"
+          ]
+        },
+        "7036": {
+          "title": "Service state changed",
+          "severity": "Safe",
+          "impact": "A service started or stopped. This is normal Windows operation.",
+          "causes": [
+            "Normal startup/shutdown sequence",
+            "User or software requested the change",
+            "On-demand service activation"
+          ],
+          "actions": [
+            "No action needed - this is informational"
+          ]
+        },
+        "7040": {
+          "title": "Service startup type changed",
+          "severity": "Minor",
+          "impact": "How a service starts (automatic/manual/disabled) was changed.",
+          "causes": [
+            "Software installation or update",
+            "User or admin changed settings",
+            "Windows optimization"
+          ],
+          "actions": [
+            "No action needed unless you didn't expect this change",
+            "If unexpected, check which service was modified"
+          ]
+        },
+        "7045": {
+          "title": "New service installed",
+          "severity": "Minor",
+          "impact": "A new background service was added to Windows.",
+          "causes": [
+            "Software installation",
+            "Driver installation",
+            "Windows update"
+          ],
+          "actions": [
+            "Verify the service is from expected software",
+            "If unexpected, investigate the source (could indicate unwanted software)"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-Security-Auditing": {
+      "description": "Windows security audit events (logins, permissions, policy changes)",
+      "category": "security",
+      "common_events": {
+        "4624": {
+          "title": "Successful login",
+          "severity": "Safe",
+          "impact": "Someone logged into the computer successfully.",
+          "causes": [
+            "Normal user login",
+            "Service account authentication",
+            "Remote desktop connection"
+          ],
+          "actions": [
+            "No action needed for expected logins",
+            "Review if login time/type seems unusual"
+          ]
+        },
+        "4625": {
+          "title": "Failed login attempt",
+          "severity": "Warning",
+          "impact": "Someone tried to log in but failed (wrong password or username).",
+          "causes": [
+            "Mistyped password",
+            "Forgotten credentials",
+            "Potential unauthorized access attempt"
+          ],
+          "actions": [
+            "Single failures are normal (typos happen)",
+            "Multiple failures from same source may indicate attack",
+            "Consider enabling account lockout policy"
+          ]
+        },
+        "4634": {
+          "title": "User logged off",
+          "severity": "Safe",
+          "impact": "A user session ended.",
+          "causes": [
+            "User logged out",
+            "Session timeout",
+            "System reboot"
+          ],
+          "actions": [
+            "No action needed - informational only"
+          ]
+        },
+        "4648": {
+          "title": "Login with explicit credentials",
+          "severity": "Minor",
+          "impact": "A program used specific credentials to access something.",
+          "causes": [
+            "Running a program as different user",
+            "Mapped network drive with saved credentials",
+            "Scheduled task with stored credentials"
+          ],
+          "actions": [
+            "Normal for system administration",
+            "Review if you didn't expect credential use"
+          ]
+        },
+        "4672": {
+          "title": "Special privileges assigned",
+          "severity": "Safe",
+          "impact": "An administrator or system account was granted elevated permissions.",
+          "causes": [
+            "Admin user logged in",
+            "System service started",
+            "UAC elevation"
+          ],
+          "actions": [
+            "Normal for admin activities",
+            "No action needed"
+          ]
+        },
+        "4688": {
+          "title": "New process created",
+          "severity": "Safe",
+          "impact": "A program was started.",
+          "causes": [
+            "User launched an application",
+            "System started a service",
+            "Scheduled task executed"
+          ],
+          "actions": [
+            "Purely informational - shows what programs run",
+            "Useful for security auditing"
+          ]
+        },
+        "4689": {
+          "title": "Process ended",
+          "severity": "Safe",
+          "impact": "A program closed or stopped running.",
+          "causes": [
+            "Normal program exit",
+            "User closed application",
+            "Process completed its task"
+          ],
+          "actions": [
+            "No action needed - informational"
+          ]
+        },
+        "4697": {
+          "title": "Service installed",
+          "severity": "Minor",
+          "impact": "A new Windows service was registered.",
+          "causes": [
+            "Software installation",
+            "Driver installation",
+            "Admin activity"
+          ],
+          "actions": [
+            "Verify the service is from legitimate software",
+            "Unexpected services may indicate security issues"
+          ]
+        },
+        "4719": {
+          "title": "Audit policy changed",
+          "severity": "Warning",
+          "impact": "Windows security auditing settings were modified.",
+          "causes": [
+            "Admin changed audit policy",
+            "Group policy update",
+            "Security software configuration"
+          ],
+          "actions": [
+            "Verify the change was intentional",
+            "Unauthorized changes may indicate tampering"
+          ]
+        },
+        "4732": {
+          "title": "Member added to security group",
+          "severity": "Minor",
+          "impact": "A user was added to a Windows security group.",
+          "causes": [
+            "Admin added user to group",
+            "Software installation requiring group membership"
+          ],
+          "actions": [
+            "Verify if you expected this change",
+            "Adding to Administrators group is significant"
+          ]
+        },
+        "4733": {
+          "title": "Member removed from security group",
+          "severity": "Minor",
+          "impact": "A user was removed from a Windows security group.",
+          "causes": [
+            "Admin removed user",
+            "Account cleanup",
+            "Policy enforcement"
+          ],
+          "actions": [
+            "Verify if you expected this change"
+          ]
+        }
+      }
+    },
+    
+    "DCOM": {
+      "description": "Distributed Component Object Model - inter-process communication",
+      "category": "system",
+      "common_events": {
+        "10016": {
+          "title": "DCOM permission warning",
+          "severity": "Safe",
+          "impact": "A Windows component tried to access something without full permissions. Very common and usually harmless.",
+          "causes": [
+            "Default Windows permissions not perfectly configured",
+            "Application requesting more access than needed",
+            "Common after Windows updates"
+          ],
+          "actions": [
+            "This is almost always safe to ignore",
+            "Only investigate if you're having actual functionality problems"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-Kernel-Power": {
+      "description": "Power management and shutdown events",
+      "category": "power",
+      "common_events": {
+        "41": {
+          "title": "Unexpected shutdown (kernel crash)",
+          "severity": "Warning",
+          "impact": "The computer crashed or lost power without proper shutdown. Data may have been lost.",
+          "causes": [
+            "Power outage or unplugged",
+            "Blue screen crash (BSOD)",
+            "Overheating causing emergency shutdown",
+            "Hardware failure"
+          ],
+          "actions": [
+            "Check if power was interrupted",
+            "If frequent, check for driver updates",
+            "Monitor system temperatures",
+            "Run memory diagnostics (mdsched.exe)"
+          ]
+        },
+        "42": {
+          "title": "System entering sleep",
+          "severity": "Safe",
+          "impact": "Computer is going to sleep mode.",
+          "causes": [
+            "User initiated sleep",
+            "Power settings timeout",
+            "Lid closed (laptop)"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "107": {
+          "title": "System resumed from sleep",
+          "severity": "Safe",
+          "impact": "Computer woke up from sleep mode.",
+          "causes": [
+            "User woke computer",
+            "Scheduled wake event",
+            "Network activity (Wake-on-LAN)"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "109": {
+          "title": "Kernel power performance",
+          "severity": "Safe",
+          "impact": "Power management adjusted CPU/system performance.",
+          "causes": [
+            "Battery power plan active",
+            "Thermal throttling",
+            "Power slider changed"
+          ],
+          "actions": [
+            "No action needed - normal power management"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-WindowsUpdateClient": {
+      "description": "Windows Update operations",
+      "category": "update",
+      "common_events": {
+        "19": {
+          "title": "Update installed successfully",
+          "severity": "Safe",
+          "impact": "A Windows update was downloaded and installed.",
+          "causes": [
+            "Automatic Windows Update",
+            "User-initiated update"
+          ],
+          "actions": [
+            "Restart if prompted to complete installation"
+          ]
+        },
+        "20": {
+          "title": "Update installation failed",
+          "severity": "Warning",
+          "impact": "A Windows update could not be installed.",
+          "causes": [
+            "Disk space too low",
+            "Conflicting software",
+            "Corrupted update files",
+            "Network interruption during download"
+          ],
+          "actions": [
+            "Try running Windows Update again",
+            "Free up disk space if low",
+            "Run Windows Update Troubleshooter"
+          ]
+        },
+        "25": {
+          "title": "Update download started",
+          "severity": "Safe",
+          "impact": "Windows started downloading an update.",
+          "causes": [
+            "Scheduled update check",
+            "User clicked 'Check for updates'"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "44": {
+          "title": "Update requires restart",
+          "severity": "Minor",
+          "impact": "An update is waiting for a restart to complete installation.",
+          "causes": [
+            "System files need to be replaced during startup",
+            "Driver update pending"
+          ],
+          "actions": [
+            "Restart your computer when convenient",
+            "Save your work before restarting"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-Kernel-General": {
+      "description": "Kernel and system boot events",
+      "category": "system",
+      "common_events": {
+        "12": {
+          "title": "Operating system started",
+          "severity": "Safe",
+          "impact": "Windows began starting up.",
+          "causes": [
+            "Computer turned on",
+            "System reboot"
+          ],
+          "actions": [
+            "No action needed - normal startup"
+          ]
+        },
+        "13": {
+          "title": "Operating system shutdown",
+          "severity": "Safe",
+          "impact": "Windows is shutting down.",
+          "causes": [
+            "User initiated shutdown",
+            "Windows Update restart",
+            "Scheduled restart"
+          ],
+          "actions": [
+            "No action needed - normal shutdown"
+          ]
+        }
+      }
+    },
+    
+    "Schannel": {
+      "description": "Security channel for SSL/TLS encryption",
+      "category": "security",
+      "common_events": {
+        "36871": {
+          "title": "TLS/SSL connection failed",
+          "severity": "Warning",
+          "impact": "A secure connection could not be established.",
+          "causes": [
+            "Certificate expired or invalid",
+            "TLS version mismatch",
+            "Server configuration issue"
+          ],
+          "actions": [
+            "Check if the website/service is accessible via browser",
+            "Verify system date/time is correct",
+            "May need to update Windows for newer TLS support"
+          ]
+        },
+        "36874": {
+          "title": "TLS connection error",
+          "severity": "Minor",
+          "impact": "An encrypted connection had a minor issue.",
+          "causes": [
+            "Client requested unsupported protocol",
+            "Cipher suite mismatch"
+          ],
+          "actions": [
+            "Usually safe to ignore",
+            "Update applications that are having connection issues"
+          ]
+        }
+      }
+    },
+    
+    "Application Error": {
+      "description": "Application crashes and errors",
+      "category": "application",
+      "common_events": {
+        "1000": {
+          "title": "Application crashed",
+          "severity": "Warning",
+          "impact": "A program stopped working unexpectedly. Any unsaved work may be lost.",
+          "causes": [
+            "Software bug",
+            "Corrupted application files",
+            "Incompatible software",
+            "Insufficient memory"
+          ],
+          "actions": [
+            "Restart the application",
+            "Update the software to latest version",
+            "If frequent, try reinstalling the app",
+            "Check for Windows updates"
+          ]
+        },
+        "1002": {
+          "title": "Application stopped responding",
+          "severity": "Minor",
+          "impact": "A program froze temporarily but may have recovered.",
+          "causes": [
+            "Heavy processing workload",
+            "Waiting on network or disk",
+            "Insufficient system resources"
+          ],
+          "actions": [
+            "Wait for the program to respond",
+            "If stuck, use Task Manager to close it",
+            "Close other programs to free up resources"
+          ]
+        }
+      }
+    },
+    
+    "Disk": {
+      "description": "Hard drive and storage events",
+      "category": "hardware",
+      "common_events": {
+        "7": {
+          "title": "Bad block on disk",
+          "severity": "Critical",
+          "impact": "A section of your hard drive may be failing. Data could be at risk.",
+          "causes": [
+            "Aging hard drive",
+            "Physical damage",
+            "Manufacturing defect"
+          ],
+          "actions": [
+            "Back up important data immediately",
+            "Run 'chkdsk /r' to attempt repair",
+            "Consider replacing the drive soon",
+            "Check drive health in CrystalDiskInfo or similar"
+          ]
+        },
+        "11": {
+          "title": "Disk controller error",
+          "severity": "Warning",
+          "impact": "The disk had trouble reading or writing. May be temporary.",
+          "causes": [
+            "Loose cable connection",
+            "Disk going to sleep",
+            "Hardware starting to fail"
+          ],
+          "actions": [
+            "If occasional, usually OK",
+            "If frequent, check cables and connections",
+            "Back up data as a precaution"
+          ]
+        },
+        "15": {
+          "title": "Disk not ready for access",
+          "severity": "Warning",
+          "impact": "The disk device was not ready when Windows tried to access it.",
+          "causes": [
+            "External drive disconnected unexpectedly",
+            "USB hub power issue",
+            "Drive spinning up slowly"
+          ],
+          "actions": [
+            "Check physical connections",
+            "Try a different USB port",
+            "Wait for drive to spin up before accessing"
+          ]
+        },
+        "51": {
+          "title": "Disk paging error",
+          "severity": "Warning",
+          "impact": "Windows had trouble accessing virtual memory on disk.",
+          "causes": [
+            "Disk temporarily busy",
+            "Disk health issue",
+            "Virtual memory file corrupted"
+          ],
+          "actions": [
+            "Run disk check",
+            "Ensure adequate free space",
+            "Check disk health"
+          ]
+        },
+        "153": {
+          "title": "Disk write operation retried",
+          "severity": "Warning",
+          "impact": "A write to the disk failed initially but succeeded on retry.",
+          "causes": [
+            "Disk busy or slow",
+            "Bad sector encountered",
+            "Controller issue"
+          ],
+          "actions": [
+            "Monitor for increasing frequency",
+            "Run 'chkdsk' if frequent",
+            "Check SMART status"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-WHEA-Logger": {
+      "description": "Windows Hardware Error Architecture - hardware fault logging",
+      "category": "hardware",
+      "common_events": {
+        "17": {
+          "title": "Hardware error corrected",
+          "severity": "Minor",
+          "impact": "A hardware error was detected and automatically corrected. Usually no data loss.",
+          "causes": [
+            "Cosmic ray bit flip (yes, really)",
+            "Minor memory error",
+            "CPU cache error"
+          ],
+          "actions": [
+            "No action needed - error was corrected",
+            "Monitor if this occurs frequently (more than a few per week)"
+          ]
+        },
+        "18": {
+          "title": "Uncorrectable hardware error",
+          "severity": "Critical",
+          "impact": "A hardware error occurred that could not be corrected. This may cause instability.",
+          "causes": [
+            "Failing RAM module",
+            "CPU defect",
+            "Overheating component"
+          ],
+          "actions": [
+            "Run Windows Memory Diagnostic (mdsched.exe)",
+            "Check CPU and RAM temperatures",
+            "Test RAM with MemTest86",
+            "Consider hardware replacement if persistent"
+          ]
+        },
+        "19": {
+          "title": "Machine check exception",
+          "severity": "Critical",
+          "impact": "The CPU reported a serious internal error. May cause system instability.",
+          "causes": [
+            "CPU overheating",
+            "Overclocking instability",
+            "Failing CPU",
+            "Power delivery issue"
+          ],
+          "actions": [
+            "Check CPU temperatures immediately",
+            "Disable any overclocking",
+            "Ensure adequate cooling",
+            "Update BIOS/UEFI firmware"
+          ]
+        },
+        "47": {
+          "title": "Corrected platform error",
+          "severity": "Minor",
+          "impact": "A platform (motherboard) error was detected and corrected.",
+          "causes": [
+            "PCIe communication glitch",
+            "Platform controller hub issue",
+            "Transient electrical noise"
+          ],
+          "actions": [
+            "Usually no action needed",
+            "Monitor for frequency - occasional is normal"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-Dhcp-Client": {
+      "description": "DHCP client - automatic IP address assignment",
+      "category": "network",
+      "common_events": {
+        "1001": {
+          "title": "DHCP lease obtained",
+          "severity": "Safe",
+          "impact": "Your computer received an IP address from the network router.",
+          "causes": [
+            "Network connection established",
+            "DHCP lease renewed"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "1002": {
+          "title": "DHCP lease renewed",
+          "severity": "Safe",
+          "impact": "Your network address was renewed successfully.",
+          "causes": [
+            "Automatic lease renewal",
+            "User ran ipconfig /renew"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "1003": {
+          "title": "DHCP server unreachable",
+          "severity": "Warning",
+          "impact": "Could not reach the DHCP server. Internet may not work.",
+          "causes": [
+            "Router offline or rebooting",
+            "Network cable disconnected",
+            "WiFi not connected"
+          ],
+          "actions": [
+            "Check your network connection",
+            "Restart your router",
+            "Run 'ipconfig /release' then 'ipconfig /renew'"
+          ]
+        },
+        "1006": {
+          "title": "DHCP address conflict",
+          "severity": "Warning",
+          "impact": "Another device on your network has the same IP address.",
+          "causes": [
+            "Static IP conflicts with DHCP range",
+            "DHCP server malfunction",
+            "Duplicate device registration"
+          ],
+          "actions": [
+            "Restart your computer to get a new address",
+            "Check router settings for IP conflicts",
+            "Release and renew your IP address"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-DNS-Client": {
+      "description": "DNS client - domain name resolution",
+      "category": "network",
+      "common_events": {
+        "1014": {
+          "title": "DNS name resolution timeout",
+          "severity": "Warning",
+          "impact": "Could not look up a website name. The site may be temporarily inaccessible.",
+          "causes": [
+            "DNS server slow or unreachable",
+            "Internet connection issue",
+            "Firewall blocking DNS"
+          ],
+          "actions": [
+            "Try visiting the website again",
+            "Run 'ipconfig /flushdns' to clear DNS cache",
+            "Try using different DNS (8.8.8.8 or 1.1.1.1)"
+          ]
+        },
+        "1015": {
+          "title": "DNS server not responding",
+          "severity": "Warning",
+          "impact": "Your configured DNS server is not answering. Internet browsing may fail.",
+          "causes": [
+            "ISP DNS issues",
+            "Router DNS forwarding problem",
+            "Network misconfiguration"
+          ],
+          "actions": [
+            "Wait a minute and try again",
+            "Change to Google DNS (8.8.8.8) or Cloudflare (1.1.1.1)",
+            "Restart your router"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-Winlogon": {
+      "description": "Windows logon process events",
+      "category": "security",
+      "common_events": {
+        "7001": {
+          "title": "User logon started",
+          "severity": "Safe",
+          "impact": "A user is logging into Windows.",
+          "causes": [
+            "User entered credentials",
+            "Automatic logon configured"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "7002": {
+          "title": "User logoff completed",
+          "severity": "Safe",
+          "impact": "A user has logged out of Windows.",
+          "causes": [
+            "User signed out",
+            "System restart",
+            "Session timeout"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "6005": {
+          "title": "Shell loaded",
+          "severity": "Safe",
+          "impact": "The Windows desktop environment started.",
+          "causes": [
+            "User logged in successfully",
+            "Explorer.exe started"
+          ],
+          "actions": [
+            "No action needed - normal logon"
+          ]
+        },
+        "6006": {
+          "title": "Shell notification",
+          "severity": "Safe",
+          "impact": "The Windows shell (desktop) reported an event.",
+          "causes": [
+            "Desktop initialization",
+            "Shell extension activity"
+          ],
+          "actions": [
+            "No action needed - informational"
+          ]
+        }
+      }
+    },
+    
+    "User32": {
+      "description": "User interface and shutdown events",
+      "category": "system",
+      "common_events": {
+        "1074": {
+          "title": "System shutdown or restart initiated",
+          "severity": "Safe",
+          "impact": "A user or process initiated a shutdown or restart.",
+          "causes": [
+            "User clicked Shut Down or Restart",
+            "Windows Update restarting",
+            "Software requested restart"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "1076": {
+          "title": "Unexpected shutdown reason logged",
+          "severity": "Minor",
+          "impact": "Windows asked why the last shutdown was unexpected.",
+          "causes": [
+            "Previous crash or power loss",
+            "Blue screen recovery",
+            "Admin noted reason for unplanned restart"
+          ],
+          "actions": [
+            "Review if unexpected shutdowns are occurring"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-DistributedCOM": {
+      "description": "Distributed COM activation and permission events",
+      "category": "system",
+      "common_events": {
+        "10010": {
+          "title": "DCOM server timeout",
+          "severity": "Minor",
+          "impact": "A COM server didn't respond in time. Usually harmless.",
+          "causes": [
+            "Server component slow to start",
+            "Rarely used component lazy-loaded"
+          ],
+          "actions": [
+            "Usually no action needed",
+            "Investigate only if related features don't work"
+          ]
+        },
+        "10016": {
+          "title": "DCOM permission issue",
+          "severity": "Safe",
+          "impact": "A DCOM component access was logged. Very common and almost always harmless.",
+          "causes": [
+            "Default Windows permissions not perfect",
+            "Application requesting excessive access",
+            "Common after Windows updates"
+          ],
+          "actions": [
+            "Safe to ignore in almost all cases",
+            "Only investigate if you have actual functionality problems"
+          ]
+        }
+      }
+    },
+    
+    "VSS": {
+      "description": "Volume Shadow Copy Service - backup snapshots",
+      "category": "backup",
+      "common_events": {
+        "12289": {
+          "title": "Shadow copy created successfully",
+          "severity": "Safe",
+          "impact": "A backup snapshot of your drive was created.",
+          "causes": [
+            "System Restore point created",
+            "Backup software ran",
+            "Windows Update preparation"
+          ],
+          "actions": [
+            "No action needed - backup completed"
+          ]
+        },
+        "8193": {
+          "title": "Shadow copy failed",
+          "severity": "Warning",
+          "impact": "Could not create a backup snapshot. System Restore may not work.",
+          "causes": [
+            "Not enough disk space",
+            "Another backup in progress",
+            "VSS writer error"
+          ],
+          "actions": [
+            "Free up disk space (10% free recommended)",
+            "Restart the Volume Shadow Copy service",
+            "Run 'vssadmin list writers' to check for errors"
+          ]
+        },
+        "12291": {
+          "title": "Shadow copy deleted",
+          "severity": "Safe",
+          "impact": "An old backup snapshot was removed to free space.",
+          "causes": [
+            "Automatic cleanup",
+            "Manual deletion",
+            "Disk space needed"
+          ],
+          "actions": [
+            "No action needed - normal maintenance"
+          ]
+        }
+      }
+    },
+    
+    "EventLog": {
+      "description": "Windows Event Log service events",
+      "category": "system",
+      "common_events": {
+        "6005": {
+          "title": "Event log service started",
+          "severity": "Safe",
+          "impact": "Windows started recording events. Usually means the computer just booted.",
+          "causes": [
+            "System startup",
+            "Event Log service restart"
+          ],
+          "actions": [
+            "No action needed - normal startup marker"
+          ]
+        },
+        "6006": {
+          "title": "Event log service stopped",
+          "severity": "Safe",
+          "impact": "Windows stopped recording events. Usually means the computer is shutting down.",
+          "causes": [
+            "System shutdown",
+            "Service stopped"
+          ],
+          "actions": [
+            "No action needed - normal shutdown marker"
+          ]
+        },
+        "6008": {
+          "title": "Unexpected shutdown detected",
+          "severity": "Warning",
+          "impact": "The previous shutdown was not clean. May indicate crash or power loss.",
+          "causes": [
+            "Power outage",
+            "Blue screen crash",
+            "Hard power off",
+            "System freeze"
+          ],
+          "actions": [
+            "Check for crash dump files in C:\\Windows\\Minidump",
+            "If frequent, investigate hardware/driver issues",
+            "Consider using a UPS for power protection"
+          ]
+        },
+        "6013": {
+          "title": "System uptime",
+          "severity": "Safe",
+          "impact": "Shows how long Windows has been running since last boot.",
+          "causes": [
+            "Daily uptime logging"
+          ],
+          "actions": [
+            "No action needed - informational only"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-TaskScheduler": {
+      "description": "Scheduled task execution events",
+      "category": "system",
+      "common_events": {
+        "100": {
+          "title": "Scheduled task started",
+          "severity": "Safe",
+          "impact": "A scheduled task began running.",
+          "causes": [
+            "Scheduled time reached",
+            "Trigger condition met",
+            "Manual run"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "101": {
+          "title": "Scheduled task completed",
+          "severity": "Safe",
+          "impact": "A scheduled task finished running.",
+          "causes": [
+            "Task completed successfully"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        },
+        "102": {
+          "title": "Scheduled task failed",
+          "severity": "Warning",
+          "impact": "A scheduled task could not complete successfully.",
+          "causes": [
+            "Task executable not found",
+            "Permission issues",
+            "Task dependencies not met"
+          ],
+          "actions": [
+            "Check Task Scheduler for the failed task details",
+            "Verify the program or script still exists",
+            "Check task run as credentials"
+          ]
+        },
+        "201": {
+          "title": "Task action completed",
+          "severity": "Safe",
+          "impact": "A specific action within a task finished.",
+          "causes": [
+            "Task action executed"
+          ],
+          "actions": [
+            "No action needed - informational"
+          ]
+        }
+      }
+    },
+    
+    "Microsoft-Windows-WMI": {
+      "description": "Windows Management Instrumentation events",
+      "category": "system",
+      "common_events": {
+        "10": {
+          "title": "WMI filter error",
+          "severity": "Minor",
+          "impact": "A WMI query in Group Policy had an error. Policy may not apply correctly.",
+          "causes": [
+            "Malformed WMI query in policy",
+            "WMI repository corruption",
+            "Namespace not found"
+          ],
+          "actions": [
+            "Usually only relevant in enterprise environments",
+            "Check Group Policy for WMI filter issues"
+          ]
+        },
+        "5858": {
+          "title": "WMI query failed",
+          "severity": "Minor",
+          "impact": "An application's WMI query failed. The app may not get system info it needs.",
+          "causes": [
+            "Invalid query syntax",
+            "Requested class not available",
+            "WMI service issue"
+          ],
+          "actions": [
+            "If apps are misbehaving, try: winmgmt /resetrepository",
+            "Usually safe to ignore if no functionality issues"
+          ]
+        }
+      }
+    },
+    
+    "Ntfs": {
+      "description": "NTFS file system events",
+      "category": "filesystem",
+      "common_events": {
+        "55": {
+          "title": "File system corruption detected",
+          "severity": "Critical",
+          "impact": "The file system structure has errors. Files may be inaccessible.",
+          "causes": [
+            "Improper shutdown",
+            "Disk failing",
+            "Driver bug"
+          ],
+          "actions": [
+            "Run 'chkdsk /f' on the affected drive",
+            "Back up data from the drive",
+            "Check disk health"
+          ]
+        },
+        "98": {
+          "title": "Volume mounted successfully",
+          "severity": "Safe",
+          "impact": "A drive or partition was made available to Windows.",
+          "causes": [
+            "Drive connected",
+            "System startup"
+          ],
+          "actions": [
+            "No action needed - normal operation"
+          ]
+        }
+      }
+    }
+  },
+  
+  "templates": {
+    "unknown_error": {
+      "title": "System error recorded",
+      "severity": "Minor",
+      "impact": "Windows encountered an error condition in one of its components. This is like a report that something didn't go as expected — though it may not always affect what you're doing.",
+      "causes": [
+        "A software component or driver encountered an unexpected condition",
+        "The system tried to perform an operation that couldn't be completed",
+        "A temporary resource shortage (memory, handles, or connections)",
+        "A configuration mismatch between components"
+      ],
+      "actions": [
+        "Check if any applications or features stopped working around this time",
+        "If this error repeats frequently (more than 5 times in an hour), it may indicate a deeper issue",
+        "Search online for this specific Event ID + the source name for detailed troubleshooting",
+        "If no problems are noticeable, this error may be safely ignored"
+      ]
+    },
+    "unknown_warning": {
+      "title": "System warning recorded",
+      "severity": "Minor",
+      "impact": "Windows logged a warning about a non-critical issue. Think of this as Windows saying 'heads up' rather than 'emergency'. The system continues to function normally in most cases.",
+      "causes": [
+        "A component noticed a condition that may become a problem if left unaddressed",
+        "Resource usage is higher than optimal but not critical",
+        "A process took longer than expected to complete",
+        "A deprecated feature or configuration was detected"
+      ],
+      "actions": [
+        "This is typically safe to ignore unless you notice related problems",
+        "If you see many warnings from the same source, investigate that component",
+        "Check if there are available updates for the affected software or driver"
+      ]
+    },
+    "unknown_information": {
+      "title": "System activity logged",
+      "severity": "Safe",
+      "impact": "Windows recorded a routine operational event. This is normal housekeeping — Windows logs thousands of these every day as it manages services, updates settings, and responds to your actions.",
+      "causes": [
+        "A system service started, stopped, or changed state",
+        "A configuration value was read or modified",
+        "A scheduled task or background process completed",
+        "The system is logging normal operational telemetry"
+      ],
+      "actions": [
+        "No action needed — this is purely informational",
+        "These events are useful for troubleshooting but don't indicate problems",
+        "You can safely ignore informational events in normal circumstances"
+      ]
+    },
+    "unknown_critical": {
+      "title": "Critical system event",
+      "severity": "Critical",
+      "impact": "Windows detected a serious issue that may affect system stability, data integrity, or security. Critical events are rare and typically indicate something that genuinely needs attention.",
+      "causes": [
+        "A core Windows component or driver encountered a fatal error",
+        "Hardware may be malfunctioning (disk, memory, or power subsystem)",
+        "A security-sensitive operation failed or was blocked",
+        "The system may have recovered from a crash or unexpected shutdown"
+      ],
+      "actions": [
+        "Check if your computer is working normally — can you open programs and access files?",
+        "If this is a one-time event after a restart, it may have been a temporary glitch",
+        "For persistent critical events, consider running Windows diagnostics (type 'reliability' in Start menu)",
+        "Back up important files as a precaution if you see multiple critical events",
+        "Don't panic — even critical events often have simple solutions"
+      ]
+    },
+    "security_1314": {
+      "title": "Security log access denied",
+      "severity": "Minor",
+      "impact": "The Windows Security event log contains sensitive audit information and requires administrator privileges to read. This is a security feature, not a problem.",
+      "causes": [
+        "Sentinel is running without administrator rights",
+        "Windows restricts Security log access to protect audit integrity",
+        "Your user account doesn't have security audit privileges"
+      ],
+      "actions": [
+        "To view Security events: Right-click Sentinel and select 'Run as administrator'",
+        "This is expected behavior — Windows protects these logs by design",
+        "Other event logs (Application, System) are still accessible normally"
+      ]
+    }
+  },
+  
+  "severity_definitions": {
+    "Safe": "Normal operation, no action needed",
+    "Minor": "Minor issue, usually safe to ignore unless frequent",
+    "Warning": "Something that may need attention but isn't critical",
+    "Critical": "Significant issue that should be addressed"
+  }
+}

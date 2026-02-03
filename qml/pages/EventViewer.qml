@@ -762,7 +762,28 @@ Item {
                         width: aiResultFlickable.width - 12
                         spacing: Theme.spacing_md
                     
-                        // Title
+                        // Plain Summary (highlighted, prominent)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: plainSummaryText.implicitHeight + Theme.spacing_md * 2
+                            color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.1)
+                            radius: Theme.radii_xs
+                            visible: aiData && aiData.plain_summary && aiData.plain_summary.length > 0
+                            
+                            Text {
+                                id: plainSummaryText
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_md
+                                text: aiData ? (aiData.plain_summary || "") : ""
+                                font.pixelSize: Theme.typography.body.size + 1
+                                font.weight: Font.Medium
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.5
+                            }
+                        }
+                    
+                        // Title (fallback if no plain_summary)
                         Text {
                             text: aiData ? (aiData.title || aiData.short_title || "Event Analysis") : ""
                             font.pixelSize: Theme.typography.h4 ? Theme.typography.h4.size : 18
@@ -770,6 +791,7 @@ Item {
                             color: ThemeManager.foreground()
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
+                            visible: !aiData || !aiData.plain_summary || aiData.plain_summary.length === 0
                         }
                         
                         // Severity Badge
@@ -789,10 +811,21 @@ Item {
                             }
                         }
                         
+                        // Source indicator (deterministic vs AI)
+                        Text {
+                            visible: aiData && aiData.source
+                            text: aiData && aiData.source === "ai" ? "🤖 AI Enhanced" : 
+                                  aiData && aiData.source === "cached" ? "💾 Cached" : "⚡ Instant Analysis"
+                            font.pixelSize: Theme.typography.caption.size
+                            color: aiData && aiData.source === "ai" ? ThemeManager.accent : ThemeManager.muted()
+                            opacity: 0.8
+                        }
+                        
                         // What happened section
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.spacing_xs
+                            visible: aiData && (aiData.what_happened || aiData.explanation)
                             
                             Text {
                                 text: "📋 What happened:"
@@ -811,11 +844,14 @@ Item {
                             }
                         }
                         
-                        // Why this usually happens section
+                        // Why this usually happens section (now supports list)
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.spacing_xs
-                            visible: aiData && aiData.why_it_happens && aiData.why_it_happens.length > 0
+                            visible: aiData && (
+                                (Array.isArray(aiData.why_it_happened) && aiData.why_it_happened.length > 0) ||
+                                (aiData.why_it_happens && aiData.why_it_happens.length > 0)
+                            )
                             
                             Text {
                                 text: "🔍 Why this usually happens:"
@@ -825,7 +861,13 @@ Item {
                             }
                             
                             Text {
-                                text: aiData ? (aiData.why_it_happens || "") : ""
+                                text: {
+                                    if (!aiData) return ""
+                                    if (Array.isArray(aiData.why_it_happened)) {
+                                        return aiData.why_it_happened.map(function(item) { return "• " + item }).join("\n")
+                                    }
+                                    return aiData.why_it_happens || ""
+                                }
                                 font.pixelSize: Theme.typography.body.size
                                 color: ThemeManager.foreground()
                                 wrapMode: Text.Wrap
@@ -834,11 +876,38 @@ Item {
                             }
                         }
                         
-                        // What you should do section (now includes "when to worry")
+                        // What it affects section (new in V4)
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.spacing_xs
-                            visible: aiData && (aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation)
+                            visible: aiData && Array.isArray(aiData.what_it_affects) && aiData.what_it_affects.length > 0
+                            
+                            Text {
+                                text: "⚠️ What it affects:"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                color: ThemeManager.warning || "#FBBF24"
+                            }
+                            
+                            Text {
+                                text: aiData && Array.isArray(aiData.what_it_affects) ? 
+                                    aiData.what_it_affects.map(function(item) { return "• " + item }).join("\n") : ""
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.4
+                            }
+                        }
+                        
+                        // Recommended actions section (now supports list)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: aiData && (
+                                (Array.isArray(aiData.recommended_actions) && aiData.recommended_actions.length > 0) ||
+                                aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation
+                            )
                             
                             Text {
                                 text: "✅ What you should do:"
@@ -848,7 +917,13 @@ Item {
                             }
                             
                             Text {
-                                text: aiData ? (aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation || "") : ""
+                                text: {
+                                    if (!aiData) return ""
+                                    if (Array.isArray(aiData.recommended_actions) && aiData.recommended_actions.length > 0) {
+                                        return aiData.recommended_actions.map(function(item) { return "• " + item }).join("\n")
+                                    }
+                                    return aiData.what_to_do || aiData.what_you_can_do || aiData.recommendation || ""
+                                }
                                 font.pixelSize: Theme.typography.body.size
                                 color: ThemeManager.foreground()
                                 wrapMode: Text.Wrap
@@ -857,27 +932,138 @@ Item {
                             }
                         }
                         
-                        // Tech notes (optional, subtle)
+                        // When to worry section (new in V4)
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.spacing_xs
-                            visible: aiData && aiData.tech_notes && aiData.tech_notes.length > 0
+                            visible: aiData && Array.isArray(aiData.when_to_worry) && aiData.when_to_worry.length > 0
                             
                             Text {
-                                text: "🔧 Technical notes:"
-                                font.pixelSize: Theme.typography.caption.size
+                                text: "🚨 When to worry:"
+                                font.pixelSize: Theme.typography.body.size
                                 font.weight: Font.Medium
-                                color: ThemeManager.muted()
+                                color: ThemeManager.error || "#EF4444"
                             }
                             
                             Text {
-                                text: aiData ? (aiData.tech_notes || "") : ""
+                                text: aiData && Array.isArray(aiData.when_to_worry) ? 
+                                    aiData.when_to_worry.map(function(item) { return "• " + item }).join("\n") : ""
+                                font.pixelSize: Theme.typography.body.size
+                                color: ThemeManager.foreground()
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                lineHeight: 1.4
+                            }
+                        }
+                        
+                        // Technical details (collapsible)
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: aiData && (aiData.technical_details || aiData.tech_notes)
+                            
+                            // Collapsible header
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: techHeaderRow.implicitHeight + Theme.spacing_xs * 2
+                                color: techDetailsMouseArea.containsMouse ? Qt.rgba(ThemeManager.foreground().r, ThemeManager.foreground().g, ThemeManager.foreground().b, 0.05) : "transparent"
+                                radius: Theme.radii_xs
+                                
+                                property bool expanded: false
+                                
+                                RowLayout {
+                                    id: techHeaderRow
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.spacing_xs
+                                    spacing: Theme.spacing_xs
+                                    
+                                    Text {
+                                        text: parent.parent.expanded ? "▼" : "▶"
+                                        font.pixelSize: Theme.typography.caption.size
+                                        color: ThemeManager.muted()
+                                    }
+                                    
+                                    Text {
+                                        text: "🔧 Technical details"
+                                        font.pixelSize: Theme.typography.caption.size
+                                        font.weight: Font.Medium
+                                        color: ThemeManager.muted()
+                                    }
+                                    
+                                    Item { Layout.fillWidth: true }
+                                }
+                                
+                                MouseArea {
+                                    id: techDetailsMouseArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: parent.expanded = !parent.expanded
+                                }
+                            }
+                            
+                            // Technical content (shown when expanded)
+                            Text {
+                                visible: parent.children[0].expanded
+                                text: {
+                                    if (!aiData) return ""
+                                    if (aiData.technical_details) {
+                                        var details = aiData.technical_details
+                                        var lines = []
+                                        if (details.provider) lines.push("Provider: " + details.provider)
+                                        if (details.event_id) lines.push("Event ID: " + details.event_id)
+                                        if (details.level) lines.push("Level: " + details.level)
+                                        if (details.extracted_entities) {
+                                            var entities = details.extracted_entities
+                                            for (var key in entities) {
+                                                if (entities[key] && entities[key].length > 0) {
+                                                    lines.push(key + ": " + (Array.isArray(entities[key]) ? entities[key].join(", ") : entities[key]))
+                                                }
+                                            }
+                                        }
+                                        return lines.join("\n")
+                                    }
+                                    return aiData.tech_notes || ""
+                                }
                                 font.pixelSize: Theme.typography.caption.size
-                                font.italic: true
+                                font.family: "Consolas, Monaco, monospace"
                                 color: ThemeManager.muted()
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
-                                opacity: 0.8
+                                Layout.leftMargin: Theme.spacing_md
+                                opacity: 0.9
+                            }
+                        }
+                        
+                        // AI Enhancement button (for deterministic results)
+                        Button {
+                            visible: aiData && aiData.source === "deterministic"
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: Theme.spacing_sm
+                            
+                            text: "🤖 Get AI Enhanced Analysis"
+                            implicitHeight: 36
+                            implicitWidth: implicitContentWidth + Theme.spacing_lg * 2
+                            
+                            background: Rectangle {
+                                color: parent.hovered ? ThemeManager.accent : Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.8)
+                                radius: Theme.radii_xs
+                            }
+                            
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            
+                            onClicked: {
+                                aiBusy = true
+                                if (typeof Backend !== "undefined" && Backend.requestAIEnhancement) {
+                                    Backend.requestAIEnhancement(selectedEventIndex)
+                                }
                             }
                         }
                         
