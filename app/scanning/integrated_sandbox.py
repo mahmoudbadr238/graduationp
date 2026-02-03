@@ -504,12 +504,22 @@ class IntegratedSandbox:
                 "start_time": datetime.now().isoformat(),
             })
             
-            # Wait for completion or timeout
-            try:
-                process.wait(timeout=timeout)
-                result.exit_code = process.returncode
-                result.success = True
-            except subprocess.TimeoutExpired:
+            # Wait for completion or timeout using polling (non-blocking)
+            # This allows the UI to remain responsive
+            poll_interval = 1.0  # Check every 1 second
+            elapsed = 0.0
+            
+            while elapsed < timeout:
+                retcode = process.poll()
+                if retcode is not None:
+                    # Process finished
+                    result.exit_code = retcode
+                    result.success = True
+                    break
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+            else:
+                # Timeout reached
                 result.timed_out = True
                 result.success = True  # Timeout is a valid outcome
                 # Kill via job object

@@ -1287,7 +1287,9 @@ class BackendBridge(QObject):
         worker.signals.error.connect(on_error)
         
         self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
+        # Register with longer stall threshold if sandbox is enabled
+        stall_threshold = 90 if run_sandbox else 30  # 90s for sandbox, 30s for static only
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=stall_threshold)
         self._thread_pool.start(worker)
         
         logger.info(f"Local file scan started for {path}")
@@ -1781,7 +1783,8 @@ class BackendBridge(QObject):
         worker.signals.error.connect(on_error)
         
         self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
+        # Register with longer stall threshold for sandbox (timeout + buffer)
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=timeout_seconds + 60)
         self._thread_pool.start(worker)
         
         logger.info(f"Integrated scan started for {path}")
