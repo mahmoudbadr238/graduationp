@@ -169,6 +169,23 @@ class BackendBridge(QObject):
         # The V4 event explainer handles all explanations deterministically
         # QTimer.singleShot(2000, self._start_ai_worker)  # Disabled - archived
     
+    def _event_to_dict(self, e) -> dict:
+        """Convert an event object to a dictionary."""
+        if hasattr(e, 'to_dict'):
+            return e.to_dict()
+        elif isinstance(e, dict):
+            return e
+        else:
+            return {
+                "record_id": getattr(e, 'record_id', 0),
+                "log_name": getattr(e, 'log_name', 'System'),
+                "event_id": getattr(e, 'event_id', 0),
+                "provider": getattr(e, 'provider', getattr(e, 'source', 'Unknown')),
+                "level": getattr(e, 'level', 'Information'),
+                "message": getattr(e, 'message', '')[:500],
+                "time_created": str(getattr(e, 'time_created', '')),
+            }
+    
     def _prewarm_security_snapshot(self):
         """Pre-warm security snapshot cache in background."""
         try:
@@ -327,6 +344,38 @@ class BackendBridge(QObject):
                         })
                 return events
             
+            def get_event_details(record_id=None, event_id=None, log_name=None):
+                """Get details for a specific event by record_id or event_id."""
+                # Search in loaded events first
+                for e in (self._loaded_events or []):
+                    e_record_id = getattr(e, 'record_id', e.get('record_id') if isinstance(e, dict) else 0)
+                    e_event_id = getattr(e, 'event_id', e.get('event_id') if isinstance(e, dict) else 0)
+                    
+                    # Match by record_id (exact) or event_id (first match)
+                    if record_id and e_record_id == record_id:
+                        return self._event_to_dict(e)
+                    if event_id and e_event_id == event_id:
+                        return self._event_to_dict(e)
+                
+                return None
+            
+            def search_events(query, limit=20):
+                """Search events by query string."""
+                query_lower = query.lower()
+                matches = []
+                for e in (self._loaded_events or []):
+                    msg = getattr(e, 'message', e.get('message', '') if isinstance(e, dict) else '')
+                    provider = getattr(e, 'provider', e.get('provider', '') if isinstance(e, dict) else '')
+                    event_id = str(getattr(e, 'event_id', e.get('event_id', 0) if isinstance(e, dict) else 0))
+                    
+                    if (query_lower in msg.lower() or 
+                        query_lower in provider.lower() or 
+                        query_lower in event_id):
+                        matches.append(self._event_to_dict(e))
+                        if len(matches) >= limit:
+                            break
+                return matches
+            
             # Initialize new agent-based smart assistant with callbacks
             # This version has built-in caching, throttling, and timeouts
             self._smart_assistant = SmartAssistant(
@@ -334,6 +383,8 @@ class BackendBridge(QObject):
                     "get_defender_status": get_defender_status,
                     "get_firewall_status": get_firewall_status,
                     "get_recent_events": get_recent_events,
+                    "get_event_details": get_event_details,
+                    "search_events": search_events,
                 },
                 enable_cache=True,      # 5-min LRU cache
                 enable_throttle=True,   # 2 req/sec max

@@ -292,6 +292,7 @@ class SmartAssistant:
             "get_update_status": ToolName.GET_UPDATE_STATUS,
             "get_recent_events": ToolName.GET_RECENT_EVENTS,
             "get_event_details": ToolName.GET_EVENT_DETAILS,
+            "search_events": ToolName.SEARCH_EVENTS,
             "scan_file": ToolName.SCAN_FILE,
             "analyze_url_offline": ToolName.ANALYZE_URL_OFFLINE,
             "analyze_url_online": ToolName.ANALYZE_URL_ONLINE,

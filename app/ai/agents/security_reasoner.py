@@ -80,19 +80,27 @@ class SecurityReasonerAgent:
         """Build response using KB data."""
         is_normal = kb_event.get("is_normal", True)
         
-        # Build answer
-        answer = kb_event.get("kb_title", f"Event {event.event_id}")
+        # Build answer - include the specific event ID and message snippet
+        answer = f"**Event {event.event_id}**: {kb_event.get('kb_title', 'Windows Event')}"
+        
+        # Add event message snippet if available (shows actual event data)
+        if event.message and len(event.message) > 10:
+            # Take first meaningful sentence (up to 200 chars)
+            msg_snippet = event.message[:200].split('\n')[0].strip()
+            if msg_snippet:
+                answer += f"\n\n*Event details*: {msg_snippet}"
+        
         if kb_event.get("kb_impact"):
-            answer += f". {kb_event['kb_impact']}"
+            answer += f"\n\n{kb_event['kb_impact']}"
         
         if is_normal:
-            answer += " This is normal system behavior."
+            answer += "\n\nThis is normal system behavior."
         else:
             severity = kb_event.get("kb_severity", "medium")
             if severity in ("high", "critical"):
-                answer += " This requires your attention."
+                answer += "\n\n⚠️ This requires your attention."
             else:
-                answer += " This should be reviewed."
+                answer += "\n\nThis should be reviewed."
         
         return AssistantResponse.build(
             answer=answer,
@@ -116,23 +124,28 @@ class SecurityReasonerAgent:
         """Build response for event without KB entry."""
         is_normal = event.level in ('Information', 'Verbose')
         
-        answer = (
-            f"Event {event.event_id} from {event.provider} is a {event.level.lower()}-level event. "
-        )
+        # Include actual event ID, provider, and message
+        answer = f"**Event {event.event_id}** from `{event.provider}`"
+        
+        # Add event message if available
+        if event.message and len(event.message) > 10:
+            msg_snippet = event.message[:300].split('\n')[0].strip()
+            answer += f"\n\n*Event message*: {msg_snippet}"
+        
         if is_normal:
-            answer += "Based on its level, this appears to be informational."
+            answer += f"\n\nThis is a {event.level.lower()}-level event which appears informational."
         else:
-            answer += "This level suggests it may need attention."
+            answer += f"\n\nThis is a **{event.level}**-level event that may need attention."
         
         return AssistantResponse.build(
             answer=answer,
-            why_it_happened=f"This event was logged by {event.provider}.",
-            what_it_affects="System logging and monitoring.",
-            what_to_do_now="No specific action needed." if is_normal else "Review the event details.",
+            why_it_happened=[f"This event was logged by {event.provider}"],
+            what_it_affects=["System logging and monitoring"],
+            what_to_do_now=["No specific action needed"] if is_normal else ["Review the event in Event Viewer for full details"],
             source="live_snapshot",
             confidence="low",
             follow_up_suggestions=[
-                "Would you like me to search for more information about this event?"
+                f"Would you like me to search for more events from {event.provider}?"
             ],
             evidence=[event.to_dict()],
         )
