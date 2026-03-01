@@ -18,20 +18,20 @@ from typing import Dict, Optional, Tuple
 @dataclass(frozen=True)
 class EventKnowledge:
     """Structured knowledge about a Windows event."""
-    
+
     title: str                  # Short summary (max ~60 chars)
     severity: str               # "Safe", "Minor", "Warning", "Critical"
     what_happened: str          # 1-2 sentences in plain language
     what_you_can_do: str        # 1-3 bullet-style sentences
-    tech_notes: Optional[str] = None  # Optional technical detail
+    tech_notes: str | None = None  # Optional technical detail
 
 
 # Key: (source, event_id) OR ("*", event_id) for generic/any-source matches
-EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
+EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
     # =========================================================================
     # APPLICATION EVENTS
     # =========================================================================
-    
+
     ("Application", 1000): EventKnowledge(
         title="Application error occurred",
         severity="Warning",
@@ -45,7 +45,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Error Reporting: Application Error (Event ID 1000)."
     ),
-    
+
     ("Application", 1001): EventKnowledge(
         title="Error report sent to Microsoft",
         severity="Safe",
@@ -58,7 +58,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Error Reporting follow-up event."
     ),
-    
+
     ("Application", 1002): EventKnowledge(
         title="Application stopped responding",
         severity="Warning",
@@ -72,7 +72,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Error Reporting: Application Hang (Event ID 1002)."
     ),
-    
+
     ("Application", 1005): EventKnowledge(
         title="Application restart required",
         severity="Minor",
@@ -80,7 +80,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="Restart the application when convenient.",
         tech_notes="Windows Error Reporting: Restart required."
     ),
-    
+
     ("Application", 1008): EventKnowledge(
         title="Application crash dump saved",
         severity="Minor",
@@ -93,7 +93,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Error Reporting: Crash dump created."
     ),
-    
+
     ("Application", 1026): EventKnowledge(
         title=".NET application error",
         severity="Warning",
@@ -107,7 +107,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes=".NET Runtime error event."
     ),
-    
+
     ("Application", 1033): EventKnowledge(
         title="Application installed successfully",
         severity="Safe",
@@ -115,7 +115,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Installation success."
     ),
-    
+
     ("Application", 1034): EventKnowledge(
         title="Application removed successfully",
         severity="Safe",
@@ -123,7 +123,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Removal success."
     ),
-    
+
     ("Application", 1040): EventKnowledge(
         title="Application install/update started",
         severity="Safe",
@@ -131,7 +131,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Install started."
     ),
-    
+
     ("Application", 1042): EventKnowledge(
         title="Application install/update finished",
         severity="Safe",
@@ -139,7 +139,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Install ended."
     ),
-    
+
     ("Application", 11707): EventKnowledge(
         title="Software installation successful",
         severity="Safe",
@@ -147,7 +147,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Product install success."
     ),
-    
+
     ("Application", 11708): EventKnowledge(
         title="Software installation failed",
         severity="Warning",
@@ -155,7 +155,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="Try running the installer again as Administrator.",
         tech_notes="MsiInstaller: Product install failure."
     ),
-    
+
     ("Application", 11724): EventKnowledge(
         title="Software removed successfully",
         severity="Safe",
@@ -163,11 +163,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="MsiInstaller: Product removal success."
     ),
-    
+
     # =========================================================================
     # ESENT (Database Engine) - very common
     # =========================================================================
-    
+
     ("Application", 102): EventKnowledge(
         title="Database instance started",
         severity="Safe",
@@ -175,7 +175,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="ESENT: Instance started."
     ),
-    
+
     ("Application", 103): EventKnowledge(
         title="Database instance stopped",
         severity="Safe",
@@ -183,7 +183,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="ESENT: Instance stopped."
     ),
-    
+
     ("Application", 326): EventKnowledge(
         title="Database attached",
         severity="Safe",
@@ -191,7 +191,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="ESENT: Database attached."
     ),
-    
+
     ("Application", 327): EventKnowledge(
         title="Database detached",
         severity="Safe",
@@ -199,11 +199,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="ESENT: Database detached."
     ),
-    
+
     # =========================================================================
     # VSS (Volume Shadow Copy) - backups
     # =========================================================================
-    
+
     ("Application", 8224): EventKnowledge(
         title="Backup in progress",
         severity="Safe",
@@ -211,11 +211,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. Let it complete.",
         tech_notes="VSS: Writer in use."
     ),
-    
+
     # =========================================================================
     # SYSTEM EVENTS - Startup/Shutdown
     # =========================================================================
-    
+
     ("*", 6005): EventKnowledge(
         title="Windows started",
         severity="Safe",
@@ -226,7 +226,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Event log service startup marker."
     ),
-    
+
     ("*", 6006): EventKnowledge(
         title="Windows shut down normally",
         severity="Safe",
@@ -237,7 +237,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Event log service shutdown marker."
     ),
-    
+
     ("*", 6008): EventKnowledge(
         title="Unexpected shutdown detected",
         severity="Warning",
@@ -251,7 +251,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Unexpected shutdown event (dirty shutdown)."
     ),
-    
+
     ("*", 6009): EventKnowledge(
         title="Windows version information",
         severity="Safe",
@@ -262,7 +262,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Windows version logged at boot time."
     ),
-    
+
     ("System", 1074): EventKnowledge(
         title="System restart or shutdown initiated",
         severity="Safe",
@@ -273,7 +273,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed unless it was unexpected.",
         tech_notes="User-initiated restart/shutdown event."
     ),
-    
+
     ("System", 1076): EventKnowledge(
         title="Unexpected shutdown reason recorded",
         severity="Minor",
@@ -284,11 +284,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is informational.",
         tech_notes="Shutdown Event Tracker reason."
     ),
-    
+
     # =========================================================================
     # SYSTEM EVENTS - Services
     # =========================================================================
-    
+
     ("System", 7000): EventKnowledge(
         title="A service failed to start",
         severity="Warning",
@@ -303,7 +303,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Service Control Manager: Service start failure."
     ),
-    
+
     ("System", 7001): EventKnowledge(
         title="A service depends on another that failed",
         severity="Warning",
@@ -317,7 +317,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Service Control Manager: Dependency failure."
     ),
-    
+
     ("System", 7034): EventKnowledge(
         title="A service stopped unexpectedly",
         severity="Warning",
@@ -331,7 +331,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Service Control Manager: Unexpected service termination."
     ),
-    
+
     ("System", 7036): EventKnowledge(
         title="Service status changed",
         severity="Safe",
@@ -342,7 +342,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Service Control Manager: Service state change."
     ),
-    
+
     ("System", 7040): EventKnowledge(
         title="Service startup type changed",
         severity="Safe",
@@ -353,11 +353,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed unless you didn't make this change.",
         tech_notes="Service Control Manager: Start type modification."
     ),
-    
+
     # =========================================================================
     # SYSTEM EVENTS - DCOM / Permissions
     # =========================================================================
-    
+
     ("System", 10016): EventKnowledge(
         title="DCOM permissions issue",
         severity="Minor",
@@ -371,11 +371,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="DistributedCOM permission error; very common on consumer Windows."
     ),
-    
+
     # =========================================================================
     # SYSTEM EVENTS - Time
     # =========================================================================
-    
+
     ("System", 1): EventKnowledge(
         title="System time changed",
         severity="Safe",
@@ -386,7 +386,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is normal.",
         tech_notes="Kernel-General: System time change."
     ),
-    
+
     ("*", 37): EventKnowledge(
         title="Time synchronized",
         severity="Safe",
@@ -397,11 +397,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is a good thing!",
         tech_notes="Windows Time service sync event."
     ),
-    
+
     # =========================================================================
     # SECURITY EVENTS - Logon/Logoff
     # =========================================================================
-    
+
     ("Security", 4624): EventKnowledge(
         title="User logged in successfully",
         severity="Safe",
@@ -412,7 +412,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed if it was you.",
         tech_notes="Successful logon event."
     ),
-    
+
     ("Security", 4625): EventKnowledge(
         title="Failed login attempt",
         severity="Warning",
@@ -426,7 +426,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Failed logon event."
     ),
-    
+
     ("Security", 4634): EventKnowledge(
         title="User logged off",
         severity="Safe",
@@ -434,7 +434,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Logoff event."
     ),
-    
+
     ("Security", 4648): EventKnowledge(
         title="Login with explicit credentials",
         severity="Safe",
@@ -445,7 +445,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed if you recognize the activity.",
         tech_notes="Explicit credential logon."
     ),
-    
+
     ("Security", 4672): EventKnowledge(
         title="Special privileges assigned",
         severity="Safe",
@@ -456,11 +456,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Special privileges assigned to new logon."
     ),
-    
+
     # =========================================================================
     # SECURITY EVENTS - Process
     # =========================================================================
-    
+
     ("Security", 4688): EventKnowledge(
         title="New program started",
         severity="Safe",
@@ -468,7 +468,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is normal activity logging.",
         tech_notes="Process creation audit event."
     ),
-    
+
     ("Security", 4689): EventKnowledge(
         title="Program closed",
         severity="Safe",
@@ -476,11 +476,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Process exit audit event."
     ),
-    
+
     # =========================================================================
     # SECURITY EVENTS - Firewall
     # =========================================================================
-    
+
     ("Security", 5152): EventKnowledge(
         title="Network connection blocked",
         severity="Safe",
@@ -493,7 +493,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Filtering Platform packet drop."
     ),
-    
+
     ("Security", 5156): EventKnowledge(
         title="Network connection allowed",
         severity="Safe",
@@ -504,11 +504,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Windows Filtering Platform connection permit."
     ),
-    
+
     # =========================================================================
     # WINDOWS DEFENDER / SECURITY CENTER
     # =========================================================================
-    
+
     ("*", 1116): EventKnowledge(
         title="Windows Defender detected something",
         severity="Warning",
@@ -522,7 +522,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Microsoft Defender Antivirus detection event."
     ),
-    
+
     ("*", 1117): EventKnowledge(
         title="Windows Defender took action",
         severity="Safe",
@@ -536,7 +536,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Microsoft Defender Antivirus action event."
     ),
-    
+
     ("*", 1150): EventKnowledge(
         title="Windows Defender service started",
         severity="Safe",
@@ -544,7 +544,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is good!",
         tech_notes="Microsoft Defender Antivirus service start."
     ),
-    
+
     ("*", 2000): EventKnowledge(
         title="Windows Defender definitions updated",
         severity="Safe",
@@ -555,7 +555,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. Updates are good!",
         tech_notes="Microsoft Defender Antivirus signature update."
     ),
-    
+
     ("*", 2001): EventKnowledge(
         title="Windows Defender update failed",
         severity="Warning",
@@ -569,11 +569,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Microsoft Defender Antivirus signature update failure."
     ),
-    
+
     # =========================================================================
     # WINDOWS UPDATE
     # =========================================================================
-    
+
     ("*", 19): EventKnowledge(
         title="Windows Update installed successfully",
         severity="Safe",
@@ -581,7 +581,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. You may need to restart if prompted.",
         tech_notes="Windows Update Agent: Installation success."
     ),
-    
+
     ("*", 20): EventKnowledge(
         title="Windows Update installation failed",
         severity="Warning",
@@ -596,7 +596,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Windows Update Agent: Installation failure."
     ),
-    
+
     ("*", 43): EventKnowledge(
         title="Windows Update download started",
         severity="Safe",
@@ -604,11 +604,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. Updates will install when ready.",
         tech_notes="Windows Update Agent: Download started."
     ),
-    
+
     # =========================================================================
     # DISK / STORAGE
     # =========================================================================
-    
+
     ("*", 7): EventKnowledge(
         title="Disk error detected",
         severity="Critical",
@@ -623,7 +623,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Disk: Block error or bad sector."
     ),
-    
+
     ("*", 11): EventKnowledge(
         title="Disk controller error",
         severity="Warning",
@@ -637,7 +637,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Disk: Controller error."
     ),
-    
+
     ("*", 51): EventKnowledge(
         title="Disk write error",
         severity="Warning",
@@ -651,11 +651,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Disk: Paging write failure."
     ),
-    
+
     # =========================================================================
     # POWER
     # =========================================================================
-    
+
     ("*", 41): EventKnowledge(
         title="System rebooted without clean shutdown",
         severity="Warning",
@@ -669,7 +669,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Kernel-Power: Bugcheck or unexpected reboot."
     ),
-    
+
     ("*", 42): EventKnowledge(
         title="System entering sleep mode",
         severity="Safe",
@@ -677,7 +677,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Kernel-Power: Sleep transition."
     ),
-    
+
     ("*", 107): EventKnowledge(
         title="System resumed from sleep",
         severity="Safe",
@@ -685,11 +685,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Kernel-Power: Resume from sleep."
     ),
-    
+
     # =========================================================================
     # DNS / NAME RESOLUTION
     # =========================================================================
-    
+
     ("*", 1014): EventKnowledge(
         title="DNS lookup timed out",
         severity="Minor",
@@ -703,11 +703,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="DNS Client: Name resolution timeout."
     ),
-    
+
     # =========================================================================
     # DCOM / COM+ ERRORS
     # =========================================================================
-    
+
     ("*", 10010): EventKnowledge(
         title="Program didn't respond in time",
         severity="Minor",
@@ -721,7 +721,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="DCOM: Server did not register within timeout."
     ),
-    
+
     ("*", 10317): EventKnowledge(
         title="DCOM activation issue",
         severity="Minor",
@@ -732,11 +732,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. This is typically harmless.",
         tech_notes="DCOM: Activation failure (usually cosmetic)."
     ),
-    
+
     # =========================================================================
     # MICROSOFT OFFICE / APPLICATIONS
     # =========================================================================
-    
+
     ("*", 16384): EventKnowledge(
         title="Application started or status update",
         severity="Safe",
@@ -747,7 +747,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Application informational event."
     ),
-    
+
     ("*", 16394): EventKnowledge(
         title="Application status logged",
         severity="Safe",
@@ -758,11 +758,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Application status event."
     ),
-    
+
     # =========================================================================
     # WINDOWS PERFORMANCE / WMI
     # =========================================================================
-    
+
     ("*", 1801): EventKnowledge(
         title="Performance data collection",
         severity="Safe",
@@ -773,7 +773,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="WMI/Performance counter event."
     ),
-    
+
     ("*", 5858): EventKnowledge(
         title="WMI activity recorded",
         severity="Safe",
@@ -784,7 +784,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="WMI-Activity event."
     ),
-    
+
     ("*", 5857): EventKnowledge(
         title="WMI provider loaded",
         severity="Safe",
@@ -792,11 +792,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="WMI-Activity: Provider loaded."
     ),
-    
+
     # =========================================================================
     # TASK SCHEDULER
     # =========================================================================
-    
+
     ("*", 100): EventKnowledge(
         title="Scheduled task started",
         severity="Safe",
@@ -804,7 +804,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Task started."
     ),
-    
+
     ("*", 101): EventKnowledge(
         title="Scheduled task failed to start",
         severity="Warning",
@@ -818,7 +818,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="Task Scheduler: Task start failure."
     ),
-    
+
     ("*", 102): EventKnowledge(
         title="Scheduled task completed",
         severity="Safe",
@@ -826,7 +826,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Task completed."
     ),
-    
+
     ("*", 110): EventKnowledge(
         title="Scheduled task triggered",
         severity="Safe",
@@ -834,7 +834,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Task triggered."
     ),
-    
+
     ("*", 129): EventKnowledge(
         title="Scheduled task process created",
         severity="Safe",
@@ -842,7 +842,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Process created."
     ),
-    
+
     ("*", 200): EventKnowledge(
         title="Scheduled task action started",
         severity="Safe",
@@ -850,7 +850,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Action started."
     ),
-    
+
     ("*", 201): EventKnowledge(
         title="Scheduled task action completed",
         severity="Safe",
@@ -858,11 +858,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Task Scheduler: Action completed."
     ),
-    
+
     # =========================================================================
     # PRINT / SPOOLER
     # =========================================================================
-    
+
     ("*", 307): EventKnowledge(
         title="Document printed",
         severity="Safe",
@@ -870,7 +870,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Print Spooler: Document printed."
     ),
-    
+
     ("*", 805): EventKnowledge(
         title="Printer added or removed",
         severity="Safe",
@@ -878,11 +878,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed if you made this change.",
         tech_notes="Print Spooler: Printer change."
     ),
-    
+
     # =========================================================================
     # BITS (Background Intelligent Transfer Service)
     # =========================================================================
-    
+
     ("*", 3): EventKnowledge(
         title="Background download started",
         severity="Safe",
@@ -893,7 +893,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed. Downloads help keep your system updated.",
         tech_notes="BITS: Transfer job started."
     ),
-    
+
     ("*", 4): EventKnowledge(
         title="Background download completed",
         severity="Safe",
@@ -901,7 +901,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="BITS: Transfer job completed."
     ),
-    
+
     ("*", 5): EventKnowledge(
         title="Background download cancelled",
         severity="Safe",
@@ -909,11 +909,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="BITS: Transfer job cancelled."
     ),
-    
+
     # =========================================================================
     # USER PROFILE
     # =========================================================================
-    
+
     ("*", 1530): EventKnowledge(
         title="User profile loaded slowly",
         severity="Minor",
@@ -927,7 +927,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="User Profile Service: Slow profile load."
     ),
-    
+
     ("*", 1531): EventKnowledge(
         title="User profile backup created",
         severity="Safe",
@@ -935,11 +935,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="User Profile Service: Profile backup."
     ),
-    
+
     # =========================================================================
     # CERTIFICATE / CRYPTO
     # =========================================================================
-    
+
     ("*", 4107): EventKnowledge(
         title="Certificate error",
         severity="Warning",
@@ -953,19 +953,19 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="CAPI2: Certificate validation issue."
     ),
-    
-    ("*", 11): EventKnowledge(
+
+    ("CAPI2", 11): EventKnowledge(
         title="Certificate auto-update",
         severity="Safe",
         what_happened="Windows updated its certificate store. This keeps you secure.",
         what_you_can_do="No action needed.",
         tech_notes="CAPI2: Certificate update."
     ),
-    
+
     # =========================================================================
     # GROUP POLICY
     # =========================================================================
-    
+
     ("*", 1500): EventKnowledge(
         title="Group Policy applied",
         severity="Safe",
@@ -976,7 +976,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Group Policy: Policy applied."
     ),
-    
+
     ("*", 1501): EventKnowledge(
         title="Group Policy applied successfully",
         severity="Safe",
@@ -984,7 +984,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Group Policy: Computer policy success."
     ),
-    
+
     ("*", 1502): EventKnowledge(
         title="User Group Policy applied",
         severity="Safe",
@@ -992,11 +992,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Group Policy: User policy success."
     ),
-    
+
     # =========================================================================
     # SEARCH INDEXER
     # =========================================================================
-    
+
     ("*", 3028): EventKnowledge(
         title="Search indexing activity",
         severity="Safe",
@@ -1007,7 +1007,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Windows Search: Indexing activity."
     ),
-    
+
     ("*", 3036): EventKnowledge(
         title="Search index optimization",
         severity="Safe",
@@ -1015,11 +1015,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="Windows Search: Index optimization."
     ),
-    
+
     # =========================================================================
     # NETWORK
     # =========================================================================
-    
+
     ("*", 4000): EventKnowledge(
         title="Network adapter connected",
         severity="Safe",
@@ -1027,7 +1027,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="WLAN/LAN connect event."
     ),
-    
+
     ("*", 4001): EventKnowledge(
         title="Network adapter disconnected",
         severity="Safe",
@@ -1035,7 +1035,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed if you unplugged or moved away from Wi-Fi.",
         tech_notes="WLAN/LAN disconnect event."
     ),
-    
+
     ("*", 10000): EventKnowledge(
         title="Network connection successful",
         severity="Safe",
@@ -1043,7 +1043,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed.",
         tech_notes="WLAN connection event."
     ),
-    
+
     ("*", 10001): EventKnowledge(
         title="Network connection failed",
         severity="Warning",
@@ -1055,11 +1055,11 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         ),
         tech_notes="WLAN connection failure."
     ),
-    
+
     # =========================================================================
     # USER ACCOUNT CONTROL (UAC)
     # =========================================================================
-    
+
     ("*", 4673): EventKnowledge(
         title="Privileged service called",
         severity="Safe",
@@ -1070,7 +1070,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
         what_you_can_do="No action needed unless you see suspicious activity.",
         tech_notes="Audit: Privileged service called."
     ),
-    
+
     ("*", 4670): EventKnowledge(
         title="Object permissions changed",
         severity="Safe",
@@ -1081,7 +1081,7 @@ EVENT_KB: Dict[Tuple[str, int], EventKnowledge] = {
 }
 
 
-def lookup_event_knowledge(source: str, event_id: int) -> Optional[EventKnowledge]:
+def lookup_event_knowledge(source: str, event_id: int) -> EventKnowledge | None:
     """
     Look up knowledge for a specific event.
     
@@ -1096,12 +1096,12 @@ def lookup_event_knowledge(source: str, event_id: int) -> Optional[EventKnowledg
     """
     # Normalize source
     source = (source or "").strip()
-    
+
     # Try exact match first
     key = (source, event_id)
     if key in EVENT_KB:
         return EVENT_KB[key]
-    
+
     # Try generic match (any source)
     generic_key = ("*", event_id)
     return EVENT_KB.get(generic_key)

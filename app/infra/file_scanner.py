@@ -1,31 +1,24 @@
-"""Local file scanner with hash calculation and optional VirusTotal check."""
+"""Local file scanner with hash calculation."""
 
 import hashlib
 from pathlib import Path
 from typing import Any
 
-from ..core.errors import IntegrationDisabled
 from ..core.interfaces import IFileScanner
 
 
 class LocalFileScanner(IFileScanner):
-    """Scan files locally with SHA256 hash and optional VirusTotal lookup."""
+    """Scan files locally with SHA256 hash."""
 
-    def __init__(self, vt_client=None):
-        """
-        Initialize scanner.
-
-        Args:
-            vt_client: Optional VirusTotalClient for cloud lookups
-        """
-        self.vt_client = vt_client
+    def __init__(self):
+        """Initialize scanner."""
 
     def scan_file(self, path: str) -> dict[str, Any]:
         """
         Scan a file and return results.
 
         Returns:
-            Dict with file info, hash, and optional VT results
+            Dict with file info and hash
         """
         file_path = Path(path)
 
@@ -47,21 +40,7 @@ class LocalFileScanner(IFileScanner):
                 "name": file_path.name,
                 "size": stat.st_size,
                 "sha256": sha256,
-                "vt_check": False,
             }
-
-            # Optional VirusTotal check
-            if self.vt_client:
-                try:
-                    vt_result = self.vt_client.scan_file_hash(sha256)
-                    result["vt_check"] = True
-                    result["vt_result"] = vt_result
-                except IntegrationDisabled:
-                    result["vt_check"] = False
-                    result["vt_disabled"] = True
-                except (OSError, ValueError, RuntimeError) as e:
-                    # VirusTotal API errors (network, rate limit, invalid hash)
-                    result["vt_error"] = str(e)
 
             return result
 

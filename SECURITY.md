@@ -65,12 +65,12 @@ Sentinel requests administrator privileges to access:
 - **Local only**: Scans do not leave your network without explicit user action
 - **Process isolation**: Nmap runs as a subprocess with timeout protection
 
-### File Scanning (VirusTotal)
+### AI-Powered Analysis
 
-- **Requires API key**: Only works if `VT_API_KEY` environment variable is set
-- **User initiated**: Never automatically scans files
-- **Hash and content sent**: Both file hash and content sent to VirusTotal for analysis
-- **Privacy**: Reviewed file hashes are uploaded; refer to VirusTotal's privacy policy
+- **API-based**: Uses Claude or OpenAI for security explanations
+- **User initiated**: AI analysis only runs when requested by user
+- **Data sent**: Event descriptions and context sent for analysis
+- **Privacy**: Refer to Anthropic/OpenAI privacy policies for data handling
 
 ### Crash Reporting (Sentry)
 
@@ -109,7 +109,7 @@ Sentinel requests administrator privileges to access:
 
 1. **Keep updated**: Update to latest version promptly
 2. **Audit settings**: Review `~/.sentinel/settings.json` or `%APPDATA%/Sentinel/settings.json`
-3. **Manage API keys**: Store `VT_API_KEY` in `.env`, never in code or commit history
+3. **Manage API keys**: Store API keys in `.env`, never in code or commit history
 4. **Logs**: Periodically delete old logs to prevent accumulation
 5. **Permissions**: Run with minimum required privileges (not always feasible on Windows)
 

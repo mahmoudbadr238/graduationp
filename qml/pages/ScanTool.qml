@@ -22,8 +22,26 @@ Item {
     property bool useSandbox: true  // Default to true for integrated sandbox
     property bool blockNetwork: true  // Block network in sandbox
     property int sandboxTimeout: 30  // Seconds
+
+    // VMware sandbox (Sandbox Lab)
+    property int vmwareMonitorSeconds: 30
+    property bool vmwareDisableNetwork: false
+    property bool vmwareKillOnFinish: true
+    property var sandboxLab: (typeof SandboxLab !== "undefined") ? SandboxLab : null
     
-    // URL check state (VirusTotal-like)
+    // Sandbox live view state
+    property bool sandboxLiveViewVisible: false
+    property var sandboxStats: ({
+        running_time_ms: 0,
+        process_count: 0,
+        file_count: 0,
+        registry_count: 0,
+        network_count: 0,
+        suspicious_count: 0
+    })
+    property var sandboxEvents: []
+    
+    // URL check state (local analysis)
     property bool urlCheckingInProgress: false
     property string urlScanStage: ""
     property int urlScanProgressValue: 0
@@ -121,16 +139,31 @@ Item {
         function onIntegratedSandboxStarted() {
             fileScanningInProgress = true
             fileScanResult = null
+            // Reset sandbox live view
+            sandboxEvents = []
+            sandboxStats = {
+                running_time_ms: 0,
+                process_count: 0,
+                file_count: 0,
+                registry_count: 0,
+                network_count: 0,
+                suspicious_count: 0
+            }
         }
         
         function onIntegratedSandboxProgress(stage) {
             fileScanStage = stage
+            // Show live view when sandbox execution starts
+            if (stage.toLowerCase().includes("sandbox")) {
+                sandboxLiveViewVisible = true
+            }
         }
         
         function onIntegratedSandboxFinished(result) {
             fileScanningInProgress = false
             fileScanStage = ""
             fileScanResult = result
+            sandboxLiveViewVisible = false
             // Store report content for preview
             if (result && result.report_content) {
                 currentReportContent = result.report_content
@@ -138,7 +171,72 @@ Item {
             }
         }
         
-        // URL scan signals (VirusTotal-like)
+        // Sandbox live event signals
+        function onSandboxEventBatch(eventsJson) {
+            try {
+                var events = JSON.parse(eventsJson)
+                // Append new events
+                for (var i = 0; i < events.length; i++) {
+                    sandboxEvents.push(events[i])
+                }
+                // Trigger binding update
+                sandboxEvents = sandboxEvents.slice()
+            } catch (e) {
+                console.log("Failed to parse sandbox events:", e)
+            }
+        }
+        
+        function onSandboxStatsUpdate(statsJson) {
+            try {
+                sandboxStats = JSON.parse(statsJson)
+            } catch (e) {
+                console.log("Failed to parse sandbox stats:", e)
+            }
+        }
+        
+        function onSandboxSessionEnded(summaryJson) {
+            // Session ended, can hide live view
+            sandboxLiveViewVisible = false
+        }
+        
+        // Sandbox preview signals (live video capture)
+        function onSandboxPreviewFrameReady(frameNumber) {
+            // Update frame number so SandboxLiveView can refresh the image
+            if (sandboxLiveView) {
+                sandboxLiveView.frameNumber = frameNumber
+                sandboxLiveView.previewAvailable = true
+            }
+        }
+        
+        function onSandboxWindowFound(found) {
+            // Update preview availability based on window detection
+            if (sandboxLiveView) {
+                if (found) {
+                    sandboxLiveView.previewAvailable = true
+                } else if ((sandboxLiveView.frameNumber || 0) <= 0) {
+                    // Don't hide an already-streaming preview due to transient window loss.
+                    sandboxLiveView.previewAvailable = false
+                }
+                if (!found && (sandboxLiveView.frameNumber || 0) <= 0) {
+                    sandboxLiveView.previewStatus = "No visible app window (console/background process)"
+                }
+            }
+        }
+        
+        function onSandboxPreviewStarted() {
+            if (sandboxLiveView) {
+                sandboxLiveView.previewStatus = "Searching for sandbox window..."
+            }
+        }
+        
+        function onSandboxPreviewStopped() {
+            if (sandboxLiveView) {
+                sandboxLiveView.previewAvailable = false
+                sandboxLiveView.frameNumber = 0
+            }
+        }
+
+        // URL scan signals (local analysis)
         function onUrlScanStarted() {
             urlCheckingInProgress = true
             urlCheckResult = null
@@ -444,7 +542,7 @@ Item {
                                     Rectangle {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        color: "#1a1a2e"
+                                        color: ThemeManager.surface()
                                         radius: 8
                                         border.color: filePathInput.activeFocus ? ThemeManager.primary : ThemeManager.border()
                                         border.width: 1
@@ -616,6 +714,197 @@ Item {
                                 }
                             }
                         }
+
+                        // VMware Sandbox Lab (detonation in VM)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            color: ThemeManager.panel()
+                            radius: 10
+                            visible: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 10
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 12
+
+                                    Text {
+                                        text: "VMware Sandbox Lab"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        color: ThemeManager.foreground()
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: sandboxLab ? sandboxLab.availabilityMessage : "Sandbox Lab not available (controller missing)"
+                                        font.pixelSize: 11
+                                        color: (sandboxLab && sandboxLab.available) ? ThemeManager.muted() : ThemeManager.warning
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Button {
+                                        text: (sandboxLab && sandboxLab.busy) ? "Running..." : "Detonate in VMware"
+                                        enabled: sandboxLab && !sandboxLab.busy && sandboxLab.available && selectedFilePath.length > 0
+                                        Layout.preferredWidth: 160
+                                        Layout.preferredHeight: 36
+                                        onClicked: {
+                                            sandboxLab.runFileInSandbox(
+                                                selectedFilePath,
+                                                vmwareMonitorSeconds,
+                                                vmwareDisableNetwork,
+                                                vmwareKillOnFinish
+                                            )
+                                        }
+                                        background: Rectangle {
+                                            color: parent.enabled
+                                                ? (parent.hovered ? Qt.lighter(ThemeManager.primary, 1.1) : ThemeManager.primary)
+                                                : ThemeManager.muted()
+                                            radius: 8
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: "#FFFFFF"
+                                            font.pixelSize: 12
+                                            font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 16
+
+                                    RowLayout {
+                                        spacing: 6
+                                        Text { text: "Monitor (s)"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                        TextField {
+                                            id: vmwareMonitorInput
+                                            text: vmwareMonitorSeconds.toString()
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            maximumLength: 4
+                                            width: 60
+                                            onEditingFinished: {
+                                                var v = parseInt(text)
+                                                if (!isNaN(v) && v > 0) {
+                                                    vmwareMonitorSeconds = v
+                                                } else {
+                                                    text = vmwareMonitorSeconds.toString()
+                                                }
+                                            }
+                                            background: Rectangle { color: ThemeManager.surface(); radius: 6 }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        CheckBox {
+                                            checked: vmwareDisableNetwork
+                                            onClicked: vmwareDisableNetwork = checked
+                                        }
+                                        Text { text: "Disable Network"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6
+                                        CheckBox {
+                                            checked: vmwareKillOnFinish
+                                            onClicked: vmwareKillOnFinish = checked
+                                        }
+                                        Text { text: "Kill On Finish"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Button {
+                                        text: "Open Run Folder"
+                                        enabled: sandboxLab && sandboxLab.lastRunFolder.length > 0
+                                        Layout.preferredHeight: 32
+                                        onClicked: sandboxLab.openLastRunFolder()
+                                    }
+
+                                    Button {
+                                        text: "Open Proof Media"
+                                        enabled: sandboxLab && (sandboxLab.proofGifPath.length > 0 || sandboxLab.proofMp4Path.length > 0)
+                                        Layout.preferredHeight: 32
+                                        onClicked: sandboxLab.openProofMedia()
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 12
+
+                                    Rectangle {
+                                        Layout.preferredWidth: 320
+                                        Layout.preferredHeight: 180
+                                        color: ThemeManager.surface()
+                                        radius: 8
+                                        border.color: ThemeManager.border()
+
+                                        Image {
+                                            anchors.fill: parent
+                                            anchors.margins: 2
+                                            source: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath : sandboxLab.liveFrameSource) : ""
+                                            fillMode: Image.PreserveAspectFit
+                                            cache: false
+                                            visible: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : false
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: sandboxLab ? sandboxLab.liveViewState : "Sandbox Lab not ready"
+                                            color: ThemeManager.muted()
+                                            visible: sandboxLab ? !(sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : true
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+
+                                        Text {
+                                            text: "Automation Steps"
+                                            font.pixelSize: 12
+                                            color: ThemeManager.foreground()
+                                        }
+
+                                        ListView {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 160
+                                            model: sandboxLab ? sandboxLab.stepsModel : []
+                                            clip: true
+                                            delegate: Text {
+                                                text: model.time + " [" + model.status + "] " + model.message
+                                                font.pixelSize: 11
+                                                color: model.status === "Failed" ? ThemeManager.danger
+                                                    : (model.status === "OK" ? ThemeManager.success : ThemeManager.muted())
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        Text {
+                                            text: sandboxLab ? sandboxLab.verdictSummary : ""
+                                            font.pixelSize: 12
+                                            color: ThemeManager.foreground()
+                                            visible: sandboxLab ? sandboxLab.verdictSummary.length > 0 : false
+                                        }
+
+                                        Text {
+                                            text: sandboxLab ? sandboxLab.lastError : ""
+                                            font.pixelSize: 11
+                                            color: ThemeManager.danger
+                                            visible: sandboxLab ? sandboxLab.lastError.length > 0 : false
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         
                         // Progress Indicator (while scanning)
                         Rectangle {
@@ -623,7 +912,7 @@ Item {
                             height: 60
                             color: ThemeManager.panel()
                             radius: 12
-                            visible: fileScanningInProgress
+                            visible: fileScanningInProgress && !sandboxLiveViewVisible
                             
                             RowLayout {
                                 anchors.centerIn: parent
@@ -639,6 +928,23 @@ Item {
                                     text: "Scanning: " + fileScanStage
                                     font.pixelSize: 14
                                     color: ThemeManager.foreground()
+                                }
+                            }
+                        }
+                        
+                        // Sandbox Live View (when sandbox is running)
+                        SandboxLiveView {
+                            id: sandboxLiveView
+                            Layout.fillWidth: true
+                            visible: sandboxLiveViewVisible
+                            isActive: sandboxLiveViewVisible
+                            
+                            stats: sandboxStats
+                            events: sandboxEvents
+                            
+                            onCancelClicked: {
+                                if (Backend) {
+                                    Backend.cancelSandbox()
                                 }
                             }
                         }
@@ -738,7 +1044,7 @@ Item {
                                     
                                     Text { text: "MIME:"; color: ThemeManager.muted(); font.pixelSize: 12 }
                                     Text { 
-                                        text: fileScanResult ? fileScanResult.mime_type : ""
+                                        text: (fileScanResult && fileScanResult.mime_type) ? fileScanResult.mime_type : ""
                                         color: ThemeManager.foreground()
                                         font.pixelSize: 12
                                     }
@@ -761,7 +1067,7 @@ Item {
                                             spacing: 2
                                             
                                             Text {
-                                                text: fileScanResult ? fileScanResult.yara_matches_count : "0"
+                                                text: (fileScanResult && fileScanResult.yara_matches_count !== undefined) ? fileScanResult.yara_matches_count : "0"
                                                 font.pixelSize: 20
                                                 font.bold: true
                                                 color: fileScanResult && fileScanResult.yara_matches_count > 0 
@@ -1023,7 +1329,7 @@ Item {
             }
             
             // ========================================
-            // URL CHECK TAB (VirusTotal-like)
+            // URL CHECK TAB (Local Analysis)
             // ========================================
             Item {
                 id: urlCheckTab
@@ -1089,7 +1395,7 @@ Item {
                                     Rectangle {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        color: "#1a1a2e"
+                                        color: ThemeManager.surface()
                                         radius: 8
                                         border.color: urlInput.activeFocus ? ThemeManager.primary : ThemeManager.border()
                                         border.width: 1
@@ -1489,7 +1795,7 @@ Item {
                                     
                                     Text { text: "Original URL:"; color: ThemeManager.muted(); font.pixelSize: 12 }
                                     Text { 
-                                        text: urlCheckResult ? urlCheckResult.url : ""
+                                        text: (urlCheckResult && urlCheckResult.url) ? urlCheckResult.url : ""
                                         color: ThemeManager.foreground()
                                         font.pixelSize: 12
                                         elide: Text.ElideMiddle
@@ -1657,7 +1963,7 @@ Item {
                                     implicitHeight: iocColumn.implicitHeight + 20
                                     color: ThemeManager.surface()
                                     radius: 8
-                                    visible: urlCheckResult && urlCheckResult.has_iocs
+                                    visible: !!(urlCheckResult && urlCheckResult.has_iocs)
                                     
                                     ColumnLayout {
                                         id: iocColumn
@@ -1859,7 +2165,7 @@ Item {
                                     }
                                     
                                     Text {
-                                        text: urlCheckResult ? urlCheckResult.error : "Unknown error"
+                                        text: (urlCheckResult && urlCheckResult.error) ? urlCheckResult.error : "Unknown error"
                                         font.pixelSize: 13
                                         color: ThemeManager.foreground()
                                         wrapMode: Text.Wrap
@@ -1884,7 +2190,7 @@ Item {
                                 spacing: 16
                                 
                                 Text {
-                                    text: "🔬 VirusTotal-like URL Analysis"
+                                    text: "🔬 Local URL Analysis"
                                     font.pixelSize: 16
                                     font.bold: true
                                     color: ThemeManager.foreground()

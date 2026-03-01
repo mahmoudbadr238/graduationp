@@ -82,28 +82,28 @@ def __getattr__(name):
     """Lazy attribute access for backwards compatibility."""
     if name == "StaticScanner":
         return get_static_scanner()
-    elif name == "ScanResult":
+    if name == "ScanResult":
         from .static_scanner import ScanResult
         return ScanResult
-    elif name == "URLChecker":
+    if name == "URLChecker":
         return get_url_checker()
-    elif name == "URLCheckResult":
+    if name == "URLCheckResult":
         from .url_checker import URLCheckResult
         return URLCheckResult
-    elif name == "ReportWriter":
+    if name == "ReportWriter":
         return get_report_writer()
-    elif name == "YaraEngine":
+    if name == "YaraEngine":
         return get_yara_engine()
-    elif name == "ClamAVAdapter":
+    if name == "ClamAVAdapter":
         return get_clamav_adapter()
-    elif name == "SandboxController":
+    if name == "SandboxController":
         return get_sandbox_controller()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
     "StaticScanner",
-    "ScanResult", 
+    "ScanResult",
     "URLChecker",
     "URLCheckResult",
     "ReportWriter",

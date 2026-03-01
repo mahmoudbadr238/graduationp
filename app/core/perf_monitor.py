@@ -37,7 +37,7 @@ def start_perf_monitor(interval_seconds: int = 5) -> None:
     def _loop() -> None:
         # Wait 5 seconds before starting to let app stabilize
         time.sleep(5)
-        
+
         # First call primes cpu_percent, subsequent calls measure since last call
         _ = proc.cpu_percent(interval=None)
         while True:

@@ -9,18 +9,18 @@
 <img src="https://img.shields.io/badge/version-1.0.0--beta-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Version">
 <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
 <img src="https://img.shields.io/badge/Qt-6.x-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt">
-<img src="https://img.shields.io/badge/AI-Local%20LLM-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white" alt="AI">
+<img src="https://img.shields.io/badge/AI-Groq%20%7C%20Claude%20%7C%20OpenAI-FF6F00?style=for-the-badge&logo=openai&logoColor=white" alt="AI">
 <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
 
 <br><br>
 
 **An AI-powered desktop security application that makes Windows security accessible to everyone.**
 
-*Built with PySide6, QML, and Local AI — No cloud required.*
+*Built with PySide6, QML, and Cloud AI (Groq/Claude/OpenAI) for production-quality security analysis.*
 
 <br>
 
-[✨ Features](#-features) · [🚀 Quick Start](#-quick-start) · [📖 Documentation](#-documentation) · [🤝 Contributing](#-contributing)
+[✨ Features](#-features) · [🚀 Quick Start](#-quick-start) · [🤖 AI Setup](#-ai-configuration) · [📖 Documentation](#-documentation) · [🤝 Contributing](#-contributing)
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## 📋 Overview
 
-**Sentinel** is a comprehensive endpoint security suite designed to bridge the gap between complex Windows security tools and everyday users. By leveraging **local AI technology**, Sentinel translates cryptic system events into clear, actionable explanations — no security expertise required.
+**Sentinel** is a comprehensive endpoint security suite designed to bridge the gap between complex Windows security tools and everyday users. By leveraging **online AI technology** (Claude or OpenAI), Sentinel translates cryptic system events into clear, actionable explanations — no security expertise required.
 
 > 🎓 **Graduation Project** — Developed as a capstone project demonstrating modern desktop application architecture, AI integration, and user-centered security design.
 
@@ -42,7 +42,7 @@
 |---------------------------|----------|
 | ❌ Cryptic error codes | ✅ Plain English explanations |
 | ❌ Requires expertise | ✅ Designed for everyone |
-| ❌ Cloud-dependent AI | ✅ **100% Local AI** — Your data never leaves your PC |
+| ❌ Generic, template responses | ✅ **Real AI analysis** — context-aware, specific recommendations |
 | ❌ Overwhelming dashboards | ✅ Clean, intuitive interface |
 | ❌ Subscription fees | ✅ Free and open source |
 
@@ -52,13 +52,92 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 **AI-Powered Event Analysis** | Local LLM translates Windows events into 5-section explanations anyone can understand |
+| 🤖 **AI-Powered Event Analysis** | Claude/OpenAI translates Windows events into detailed, actionable explanations |
 | 📊 **Real-Time Monitoring** | Live CPU, Memory, Disk, GPU, and Network metrics with beautiful visualizations |
-| 🔍 **Smart Event Viewer** | Color-coded security events with severity ratings and actionable recommendations |
-| 🛡️ **Threat Scanning** | VirusTotal integration for file and URL analysis (optional) |
+| 🔍 **Smart Event Viewer** | Color-coded security events with severity ratings and AI recommendations |
+| 🛡️ **Intelligent Scanning** | AI-enhanced file and URL analysis with malware detection |
 | 🌐 **Network Scanner** | 8 specialized Nmap scan types with streaming output (optional) |
 | 🎨 **Modern UI** | Dark/Light/System themes with smooth 300ms transitions |
-| 💾 **Local Database** | SQLite storage — all data stays on your machine |
+| 💬 **Security Chatbot** | SOC analyst chatbot with access to your system data |
+
+---
+
+<br>
+
+## 🤖 AI Configuration
+
+Sentinel uses cloud AI for intelligent security analysis. **Groq (free tier)** is recommended for most users.
+
+### Setup Options
+
+#### Option 1: Groq (Recommended - FREE)
+
+Groq offers a generous free tier with fast inference:
+
+```powershell
+# Set Groq API key
+$env:GROQ_API_KEY = "gsk_your-key-here"
+
+# Then run Sentinel
+python main.py
+```
+
+Get your free API key at [console.groq.com](https://console.groq.com/)
+
+#### Option 2: Claude/OpenAI (Paid)
+
+```powershell
+# For Claude (best for detailed analysis)
+$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+
+# OR for OpenAI
+$env:OPENAI_API_KEY = "sk-your-key-here"
+
+# Then run Sentinel
+python main.py
+```
+
+#### Option 3: .env File
+
+Create a `.env` file in the project root:
+
+```env
+# Use Groq (free, recommended)
+GROQ_API_KEY=gsk_your-key-here
+
+# OR use Claude (paid)
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+
+# OR use OpenAI (paid)
+OPENAI_API_KEY=sk-your-key-here
+```
+
+### Get Your API Key
+
+| Provider | Link | Cost | Notes |
+|----------|------|------|-------|
+| **Groq** | [console.groq.com](https://console.groq.com/) | **FREE** | Recommended for most users |
+| **Claude** | [console.anthropic.com](https://console.anthropic.com/) | Paid | Best for detailed analysis |
+| **OpenAI** | [platform.openai.com](https://platform.openai.com/api-keys) | Paid | Fallback option |
+
+### AI Features
+
+| Feature | Uses AI For |
+|---------|------------|
+| **Event Viewer** | Explaining Windows events with context and recommendations |
+| **Security Chatbot** | Answering security questions with access to your system data |
+| **File Scanner** | Analyzing static analysis and sandbox results |
+| **URL Scanner** | Interpreting threat indicators and phishing detection |
+
+### Offline Mode
+
+Without an API key, Sentinel operates in offline mode:
+- ✅ **Event Viewer**: Uses built-in knowledge base for instant explanations
+- ✅ **File Scanner**: Full static analysis (PE parsing, entropy, YARA rules)
+- ✅ **URL Scanner**: Reputation checks and pattern matching
+- ❌ **AI Chat**: Disabled (no cloud connection)
+
+> 💡 **Tip:** The offline knowledge base covers 500+ common Windows events. Set up Groq (free) for AI-enhanced analysis of uncommon events.
 
 ---
 
@@ -193,20 +272,6 @@ Get a comprehensive view of your system:
 
 <br>
 
-### 🛡️ Threat Scanning (Optional)
-
-Integrate with **VirusTotal** for enhanced threat detection:
-
-| Feature | Description |
-|---------|-------------|
-| File Scanning | Check files against 70+ antivirus engines |
-| URL Analysis | Verify website safety before visiting |
-| Hash Lookup | Quick reputation checks without uploading |
-
-> 📝 **Free Tier:** 4 requests/minute, 500/day — [Get API Key](https://www.virustotal.com/gui/join-us)
-
-<br>
-
 ### 🌐 Network Scanner (Optional)
 
 **8 Specialized Scan Types** powered by Nmap:
@@ -241,9 +306,11 @@ Create a `.env` file in the project root (or copy from `.env.example`):
 # SENTINEL CONFIGURATION
 # ─────────────────────────────────────────────────────────
 
-# VirusTotal API Key (Optional)
-# Get free key: https://www.virustotal.com/gui/join-us
-VT_API_KEY=
+# AI API Keys (At least one required for AI features)
+# Get Claude key: https://console.anthropic.com/
+# Get OpenAI key: https://platform.openai.com/api-keys
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
 
 # Nmap Path (Optional - auto-detected if in PATH)
 NMAP_PATH=
@@ -253,17 +320,6 @@ OFFLINE_ONLY=false
 ```
 
 ### Optional Integrations
-
-<details>
-<summary><b>🛡️ VirusTotal Setup</b></summary>
-
-1. Create free account: https://www.virustotal.com/gui/join-us
-2. Copy API key from your profile
-3. Add to `.env`: `VT_API_KEY=your_key_here`
-4. Restart Sentinel
-5. Verify: Status bar shows "VirusTotal: Enabled"
-
-</details>
 
 <details>
 <summary><b>🌐 Nmap Setup</b></summary>
@@ -330,7 +386,6 @@ sentinel/
 │   ├── 🌐 infra/              # Infrastructure
 │   │   ├── sqlite_repo.py     # Database operations
 │   │   ├── events_windows.py  # Windows Event Log reader
-│   │   ├── vt_client.py       # VirusTotal API client
 │   │   └── nmap_cli.py        # Nmap integration
 │   ├── 🖥️ ui/                 # QML ↔ Python Bridge
 │   │   ├── backend_bridge.py  # Main bridge for QML
@@ -365,7 +420,6 @@ sentinel/
 
 | Issue | Solution |
 |-------|----------|
-| "VirusTotal API key required" | Add key to `.env` or set `OFFLINE_ONLY=true` |
 | "Nmap not found" | Install Nmap and ensure it's in PATH (`where nmap`) |
 | "Not running with administrator privileges" | Use `scripts/run_as_admin.bat` |
 | "Could not set initial property duration" | Cosmetic warning only — safe to ignore |
@@ -405,8 +459,7 @@ Sentinel is designed with privacy as a core principle:
 | 🔒 **Data Storage** | All data stored locally in `~/.sentinel/sentinel.db` |
 | 🚫 **No Telemetry** | Zero usage statistics or analytics collected |
 | 🤖 **Local AI** | All AI processing happens on your machine |
-| 🌐 **Optional APIs** | VirusTotal/Nmap are opt-in only |
-| ⚠️ **VirusTotal Note** | File hashes sent when enabled — avoid scanning confidential files |
+| 🌐 **Optional APIs** | Nmap network scanning is opt-in only |
 
 📄 See [SECURITY.md](SECURITY.md) and [Privacy Policy](docs/PRIVACY.md) for details.
 
@@ -418,7 +471,8 @@ Sentinel is designed with privacy as a core principle:
 |----------|-------------|
 | 📘 **[Quick Start Guide](docs/QUICKSTART.md)** | Get running in 5 minutes |
 | 📗 **[User Manual](docs/user/USER_MANUAL.md)** | Complete feature reference |
-| 📙 **[API Integration](docs/api/API_INTEGRATION_GUIDE.md)** | VirusTotal & Nmap setup |
+| 📙 **[API Integration](docs/api/API_INTEGRATION_GUIDE.md)** | AI & Nmap setup |
+| 📔 **[VMware Sandbox Lab](docs/sandbox_vmware.md)** | VMware Workstation setup for in-app detonation demos |
 | 📕 **[Architecture](docs/api/README_BACKEND.md)** | System design overview |
 | 📓 **[Contributing](docs/CONTRIBUTING.md)** | How to contribute |
 
@@ -433,13 +487,13 @@ Sentinel is designed with privacy as a core principle:
 - [x] Windows Event Viewer with severity color-coding
 - [x] Scan history with CSV export
 - [x] Theme support (Dark/Light/System) with persistence
-- [x] VirusTotal & Nmap integration
-- [x] 8 specialized Nmap scan types with streaming output
+- [x] Nmap integration with 8 specialized scan types
+- [x] Streaming output for network scans
 - [x] Settings persistence across restarts
 
 ### 🚧 v1.1.0 (Planned)
 
-- [ ] VirusTotal file upload with analysis polling
+- [ ] Enhanced local file scanning
 - [ ] Background threading for all scans
 - [ ] First-run setup wizard
 - [ ] Historical metrics charts
@@ -487,8 +541,8 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 | [Qt Framework](https://www.qt.io/) | Cross-platform UI framework |
 | [PySide6](https://doc.qt.io/qtforpython/) | Python bindings for Qt |
 | [psutil](https://github.com/giampaolo/psutil) | System monitoring |
-| [VirusTotal](https://www.virustotal.com/) | Threat intelligence API |
 | [Nmap](https://nmap.org/) | Network scanning |
+| [Anthropic Claude](https://www.anthropic.com/) | AI-powered explanations |
 
 <br>
 

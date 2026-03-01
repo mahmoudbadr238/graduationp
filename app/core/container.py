@@ -32,9 +32,7 @@ def configure() -> None:
     from ..infra.nmap_cli import NmapCli
     from ..infra.sqlite_repo import SqliteRepo
     from ..infra.system_monitor_psutil import PsutilSystemMonitor
-    from ..infra.url_scanner import UrlScanner
-    from ..infra.vt_client import VirusTotalClient
-    from .errors import IntegrationDisabled
+    from ..scanning.url_scanner import UrlScanner
     from .interfaces import (
         IEventReader,
         IEventRepository,
@@ -51,44 +49,28 @@ def configure() -> None:
     DI.register(IScanRepository, lambda: SqliteRepo())
     DI.register(IEventRepository, lambda: SqliteRepo())
 
-    # Shared VirusTotal client (may be unavailable)
-    try:
-        vt = VirusTotalClient()
-        DI.register(IFileScanner, lambda: LocalFileScanner(vt))
-        DI.register(IUrlScanner, lambda: UrlScanner(vt))
-    except IntegrationDisabled as e:
-        error_msg = str(e)
-        print(f"[SKIP] VirusTotal integration disabled: {error_msg}")
-
-        # Register dummy factories that raise IntegrationDisabled when resolved
-        def _raise_disabled():
-            raise IntegrationDisabled(error_msg)
-
-        DI.register(IFileScanner, _raise_disabled)
-        DI.register(IUrlScanner, _raise_disabled)
+    # Register scanners (local-only, no external APIs)
+    DI.register(IFileScanner, lambda: LocalFileScanner())
+    DI.register(IUrlScanner, lambda: UrlScanner())
 
     DI.register(INetworkScanner, lambda: NmapCli())
 
-    # Register AI services (100% local, no network calls)
+    # Register AI services (cloud-based via Groq API)
     try:
-        from ..ai.local_llm_engine import LocalLLMEngine, get_llm_engine
-        from ..ai.event_explainer import EventExplainer, get_event_explainer
+        from ..ai.event_explainer_v5 import EventExplainerV5, get_event_explainer_v5
         from ..ai.event_summarizer import EventSummarizer, get_event_summarizer
-        from ..ai.security_chatbot import SecurityChatbot, get_security_chatbot
+        from ..ai.security_chatbot_v4 import SecurityChatbotV4
 
-        # Register LLM engine singleton
-        DI.register(LocalLLMEngine, get_llm_engine)
+        # Register Event Explainer V5 (uses Groq cloud API)
+        DI.register(EventExplainerV5, lambda: get_event_explainer_v5())
 
-        # Register Event Explainer (uses LLM engine)
-        DI.register(EventExplainer, lambda: get_event_explainer(get_llm_engine()))
-        
-        # Register Event Summarizer (uses LLM engine)
-        DI.register(EventSummarizer, lambda: get_event_summarizer(get_llm_engine()))
+        # Register Event Summarizer (fallback for batch summaries)
+        DI.register(EventSummarizer, lambda: get_event_summarizer(None))
 
-        # Security Chatbot will be initialized with services in application.py
+        # Security Chatbot V4 will be initialized with services in application.py
         # since it needs snapshot_service which isn't available at container config time
-        DI.register(SecurityChatbot, lambda: None)  # Placeholder
+        DI.register(SecurityChatbotV4, lambda: None)  # Placeholder
 
-        print("[OK] Local AI services registered (no network calls)")
+        print("[OK] Cloud AI services registered (Groq API)")
     except Exception as e:
         print(f"[SKIP] AI services not available: {e}")

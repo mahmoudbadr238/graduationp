@@ -3,15 +3,15 @@
 import asyncio
 import logging
 import os
-import platform
 import re
 import shutil
 import socket
 import subprocess  # nosec B404 - subprocess needed for nmap integration with hardcoded path
 import sys
+from collections.abc import Callable, Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Optional
 
 from ..config.settings import get_settings
 from ..core.errors import ExternalToolMissing, IntegrationDisabled
@@ -180,7 +180,7 @@ class NmapCli(INetworkScanner):
             raise ExternalToolMissing("Nmap not found. Install from https://nmap.org/")
 
         # Progress callback and rate limiting
-        self._progress_callback: Optional[Callable[[str], None]] = None
+        self._progress_callback: Callable[[str], None] | None = None
         self._last_scan_time = 0
 
         # Active scan processes for streaming output
@@ -300,7 +300,7 @@ class NmapCli(INetworkScanner):
             parsed["duration_seconds"] = timeout
             return parsed
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Scan timeout for {target} after {timeout}s")
             return {
                 "target": target,
@@ -422,7 +422,7 @@ class NmapCli(INetworkScanner):
     def run_scan_streaming(
         self,
         scan_type: str,
-        target_host: Optional[str],
+        target_host: str | None,
         output_callback: Callable[[str], None],
     ) -> Generator[str, None, tuple[bool, int, str]]:
         """
@@ -512,8 +512,8 @@ class NmapCli(INetworkScanner):
 
             # Write report
             with open(report_path, "w", encoding="utf-8") as f:
-                f.write(f"Nmap Scan Report\n")
-                f.write(f"================\n")
+                f.write("Nmap Scan Report\n")
+                f.write("================\n")
                 f.write(f"Scan Type: {profile['description']}\n")
                 f.write(f"Target: {target}\n")
                 f.write(f"Date: {datetime.now().isoformat()}\n")
@@ -523,7 +523,7 @@ class NmapCli(INetworkScanner):
 
             success = exit_code == 0
             if success:
-                output_callback(f"\n[SUCCESS] Scan completed\n")
+                output_callback("\n[SUCCESS] Scan completed\n")
                 output_callback(f"[INFO] Report saved: {report_path}\n")
             else:
                 output_callback(

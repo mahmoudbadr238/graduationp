@@ -44,6 +44,12 @@ ApplicationWindow {
                 NotificationService.push(title, message, type || "info")
             }
         }
+        
+        // Handle navigation requests from backend
+        function onNavigateTo(route) {
+            console.log("[NAV] Backend requested navigation to:", route)
+            loadRoute(route)
+        }
     }
 
     // ===== NAVIGATION STATE =====
@@ -191,7 +197,7 @@ ApplicationWindow {
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("scan-tool")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
                     icon: "🛡️"
@@ -218,6 +224,15 @@ ApplicationWindow {
                     isActive: currentRoute === "ai-assistant"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("ai-assistant")
+                }
+                
+                SidebarItem {
+                    Layout.fillWidth: true
+                    icon: "📋"
+                    label: "Resolution Reports"
+                    isActive: currentRoute === "resolution-report"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("resolution-report")
                 }
                 
                 SidebarItem {
@@ -345,7 +360,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     visible: currentRoute === "scan-tool"
                 }
-                
+
                 DataLossPrevention {
                     anchors.fill: parent
                     visible: currentRoute === "dlp"
@@ -354,6 +369,11 @@ ApplicationWindow {
                 SecurityAssistant {
                     anchors.fill: parent
                     visible: currentRoute === "ai-assistant"
+                }
+                
+                ResolutionReport {
+                    anchors.fill: parent
+                    visible: currentRoute === "resolution-report"
                 }
                 
                 SettingsPage {

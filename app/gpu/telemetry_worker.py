@@ -18,11 +18,12 @@ import contextlib
 import json
 import os
 import sys
-import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, TypeVar
 
 # Configure interval from environment or default
 INTERVAL = float(sys.argv[1]) / 1000.0 if len(sys.argv) > 1 else 1.0
@@ -704,15 +705,15 @@ def collect_amd_metrics(adl_enabled: bool, wmi_enabled: bool) -> list[dict[str, 
     """
     adl_gpus = []
     wmi_gpus = []
-    
+
     # Try WMI first to get usage/memory (works for both discrete and integrated)
     if wmi_enabled:
         wmi_gpus = collect_amd_wmi_metrics()
-    
+
     # Try ADL for additional metrics (clocks, temp, fan - mainly discrete GPUs)
     if adl_enabled:
         adl_gpus = collect_amd_adl_metrics()
-    
+
     # If we have WMI data, use it as the base (more reliable for iGPUs)
     if wmi_gpus:
         # Merge ADL data into WMI data where available
@@ -739,7 +740,7 @@ def collect_amd_metrics(adl_enabled: bool, wmi_enabled: bool) -> list[dict[str, 
                     wmi_gpu["source"] = "WMI+ADL"
                     break
         return wmi_gpus
-    
+
     # If only ADL is available, use that (legacy behavior)
     if adl_gpus:
         return adl_gpus

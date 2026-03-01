@@ -22,8 +22,9 @@ pywin32>=306; sys_platform=='win32'     # Windows API access (Event Logs, Regist
 # ─────────────────────────────────────────────────────────────────────────────────
 # NETWORKING & HTTP
 # ─────────────────────────────────────────────────────────────────────────────────
-requests>=2.31.0                # HTTP client for VirusTotal API
+requests>=2.31.0                # HTTP client for API calls
 urllib3>=2.0.0                  # HTTP library (requests dependency)
+aiohttp>=3.9.0                  # Async HTTP client for Groq/AI providers
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # GPU MONITORING (Optional - gracefully degraded if unavailable)
@@ -34,21 +35,30 @@ pyadl>=0.1                      # AMD GPU monitoring (AMD GPUs on Windows)
 # Note: amdsmi is installed separately if needed for Linux AMD GPUs
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# AI / LOCAL LLM (Optional - falls back to rule-based if unavailable)
+# AI / ONLINE AI (Groq is default free tier, Claude/OpenAI as fallback)
 # ─────────────────────────────────────────────────────────────────────────────────
-transformers>=4.35.0            # HuggingFace transformers for local LLM
-onnxruntime-gpu>=1.16.0         # ONNX Runtime with GPU support (CUDA/TensorRT)
-optimum[onnxruntime-gpu]>=1.14.0  # HuggingFace Optimum with ONNX GPU support
-numpy>=1.24.0                   # Required for ONNX Runtime tensor operations
-# Note: For smaller footprint, these can be omitted (rule-based fallback used)
-# Note: Requires CUDA toolkit and cuDNN installed for GPU acceleration
-# Note: For TensorRT support, install TensorRT SDK from NVIDIA
+# Groq uses standard HTTP API - no special SDK needed
+anthropic>=0.39.0               # Claude AI API client (fallback)
+openai>=1.54.0                  # OpenAI API client (fallback)
+# Configure via environment variables:
+#   ANTHROPIC_API_KEY=sk-ant-...  (for Claude)
+#   OPENAI_API_KEY=sk-...         (for OpenAI, fallback if Claude not available)
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# AI / LOCAL LLM (Optional - kept for offline fallback, NOT recommended)
+# ─────────────────────────────────────────────────────────────────────────────────
+# transformers>=4.35.0          # HuggingFace transformers for local LLM
+# onnxruntime-gpu>=1.16.0       # ONNX Runtime with GPU support (CUDA/TensorRT)
+# optimum[onnxruntime-gpu]>=1.14.0  # HuggingFace Optimum with ONNX GPU support
+numpy>=1.24.0                   # Required for tensor operations
+# Note: Local LLM is DEPRECATED - use online AI for production quality
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION & UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0            # Environment variable management (.env files)
 colorama>=0.4.6                 # Cross-platform colored terminal output
+imageio>=2.36.0                 # GIF export for Sandbox Lab proof media
 
 
 # ─────────────────────────────────────────────────────────────────────────────────

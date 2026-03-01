@@ -43,7 +43,7 @@ class GPUBackend(QObject):
         super().__init__(parent)
 
         # Initialize GPU Manager in a lazy way
-        self._manager: Optional[GPUManager] = None
+        self._manager: GPUManager | None = None
         self._gpu_count = 0
         self._update_interval = 3000  # 3 seconds
 

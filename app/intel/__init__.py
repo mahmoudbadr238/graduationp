@@ -24,20 +24,19 @@ Usage:
     print(result.verdict)  # CLEAN, SUSPICIOUS, MALICIOUS, UNKNOWN
 """
 
+from .cache import IntelCache, get_intel_cache
 from .providers import (
-    ThreatVerdict,
     IntelProvider,
+    ThreatVerdict,
     VirusTotalClient,
     get_virustotal_client,
 )
 
-from .cache import IntelCache, get_intel_cache
-
 __all__ = [
-    "ThreatVerdict",
-    "IntelProvider", 
-    "VirusTotalClient",
-    "get_virustotal_client",
     "IntelCache",
+    "IntelProvider",
+    "ThreatVerdict",
+    "VirusTotalClient",
     "get_intel_cache",
+    "get_virustotal_client",
 ]

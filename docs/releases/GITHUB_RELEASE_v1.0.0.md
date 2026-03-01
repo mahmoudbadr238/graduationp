@@ -55,7 +55,7 @@ Key Features:
 - Windows Event Log viewer with translations
 - Scan history with CSV export
 - Network scanning (Nmap integration)
-- File/URL scanning (VirusTotal integration)
+- AI-powered security explanations
 - Dark/Light/System themes
 - Full keyboard accessibility
 
@@ -104,7 +104,7 @@ Sentinel v1.0.0 — Official Production Release 🚀
 
 ## 🎯 What's New
 
-Sentinel is a **modern desktop security suite** for Windows with real-time system monitoring, event log analysis, and optional VirusTotal/Nmap integrations.
+Sentinel is a **modern desktop security suite** for Windows with real-time system monitoring, event log analysis, and optional AI-powered explanations and Nmap integrations.
 
 ### Core Features
 - 🏠 **Home Dashboard**: Live CPU, RAM, GPU, Network metrics (1Hz updates)
@@ -155,19 +155,19 @@ Get-FileHash Sentinel.exe -Algorithm SHA256
 - 512 MB RAM
 - 500 MB disk space
 - 1920×1080 display
-- Internet connection (for VT/Nmap)
+- Internet connection (for AI/Nmap)
 
 ### Optional
 - **Administrator Privileges**: For Security event logs
 - **Nmap**: Network scanning ([download](https://nmap.org/))
-- **VirusTotal API Key**: File/URL scanning ([signup](https://www.virustotal.com/))
+- **AI API Key**: AI-powered explanations ([Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/))
 
 ---
 
 ## 📚 Documentation
 
 - **[User Manual](USER_MANUAL.md)**: Step-by-step guide for end users
-- **[API Integration Guide](API_INTEGRATION_GUIDE.md)**: VirusTotal & Nmap setup
+- **[API Integration Guide](API_INTEGRATION_GUIDE.md)**: AI & Nmap setup
 - **[README](README.md)**: Project overview and architecture
 - **[CHANGELOG](CHANGELOG.md)**: Full version history
 
@@ -184,7 +184,7 @@ Get-FileHash Sentinel.exe -Algorithm SHA256
 
 ## 🚀 What's Next (v1.1 Roadmap)
 
-- [ ] VirusTotal file upload with polling
+- [ ] Enhanced local file scanning
 - [ ] Async network scanning (non-blocking UI)
 - [ ] Custom alert rules and notifications
 - [ ] Auto-update checking
@@ -236,7 +236,7 @@ MIT License - See [LICENSE](LICENSE) for details.
 - **Framework**: PySide6 (Qt 6)
 - **Language**: Python 3.13
 - **Build Tool**: PyInstaller 6.16
-- **APIs**: VirusTotal v3, Nmap CLI
+- **APIs**: Claude/OpenAI AI, Nmap CLI
 
 ---
 

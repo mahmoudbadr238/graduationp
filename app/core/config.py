@@ -30,7 +30,6 @@ class Config:
         "feature_toggles": {
             "enable_gpu_monitoring": True,
             "enable_network_scanner": False,  # Requires nmap
-            "enable_virustotal": False,  # Requires API key
             "enable_crash_reporting": False,  # Requires SENTRY_DSN
         },
         "ui": {

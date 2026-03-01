@@ -80,13 +80,13 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 )
             """
             )
-            
+
             # Add event_id column if it doesn't exist (migration for existing DBs)
             try:
                 cursor.execute("ALTER TABLE events ADD COLUMN event_id INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass  # Column already exists
-            
+
             try:
                 cursor.execute("ALTER TABLE events ADD COLUMN friendly_message TEXT")
             except sqlite3.OperationalError:
@@ -129,11 +129,50 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 )
             """
             )
-            
+
             # Index for fast lookups
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_event_summaries_lookup "
                 "ON event_summaries(source, event_id, signature)"
+            )
+
+            # Event explanations cache (new 2-level system for Groq AI)
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS event_explanations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider TEXT NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    detail_level TEXT NOT NULL DEFAULT 'full',
+                    locale TEXT NOT NULL DEFAULT 'en',
+                    message_hash TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    what_happened TEXT NOT NULL,
+                    why_it_happened TEXT,
+                    what_it_affects TEXT,
+                    is_normal INTEGER DEFAULT 1,
+                    risk_level TEXT DEFAULT 'low',
+                    what_to_do TEXT,
+                    when_to_worry TEXT,
+                    technical_brief TEXT,
+                    simplified_text TEXT,
+                    ai_provider TEXT DEFAULT 'groq',
+                    token_count INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    ttl_seconds INTEGER DEFAULT 86400,
+                    UNIQUE (provider, event_id, detail_level, locale, message_hash)
+                )
+            """
+            )
+
+            # Indexes for event_explanations
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_explanations_lookup "
+                "ON event_explanations(provider, event_id, detail_level, message_hash)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_explanations_created "
+                "ON event_explanations(created_at)"
             )
 
             conn.commit()
@@ -153,10 +192,10 @@ class SqliteRepo(IScanRepository, IEventRepository):
             cursor = conn.cursor()
 
             # Handle both datetime objects and ISO strings for started_at/finished_at
-            started_str = rec.started_at.isoformat() if hasattr(rec.started_at, 'isoformat') else str(rec.started_at)
+            started_str = rec.started_at.isoformat() if hasattr(rec.started_at, "isoformat") else str(rec.started_at)
             finished_str = None
             if rec.finished_at:
-                finished_str = rec.finished_at.isoformat() if hasattr(rec.finished_at, 'isoformat') else str(rec.finished_at)
+                finished_str = rec.finished_at.isoformat() if hasattr(rec.finished_at, "isoformat") else str(rec.finished_at)
 
             cursor.execute(
                 """
@@ -232,7 +271,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
         """Get all scan records (use with caution for large datasets)."""
         return self.all(limit=10000)  # Reasonable limit to prevent memory issues
 
-    def get_by_id(self, scan_id: int) -> Optional[ScanRecord]:
+    def get_by_id(self, scan_id: int) -> ScanRecord | None:
         """Get a specific scan record by ID"""
         conn = self._get_connection()
         try:
@@ -331,12 +370,12 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 """,
                     [
                         (
-                            item.timestamp.isoformat() if hasattr(item.timestamp, 'isoformat') else str(item.timestamp),
+                            item.timestamp.isoformat() if hasattr(item.timestamp, "isoformat") else str(item.timestamp),
                             item.level,
                             item.source,
                             item.message,
-                            getattr(item, 'event_id', 0),
-                            getattr(item, 'friendly_message', None),
+                            getattr(item, "event_id", 0),
+                            getattr(item, "friendly_message", None),
                         )
                         for item in items
                     ],
@@ -475,7 +514,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
     # ============ Event Summary Cache ============
 
-    def get_event_summary(self, source: str, event_id: int, signature: str) -> Optional[dict]:
+    def get_event_summary(self, source: str, event_id: int, signature: str) -> dict | None:
         """
         Get a cached event summary from the database.
         
@@ -500,7 +539,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 """,
                 (source, event_id, signature),
             )
-            
+
             row = cursor.fetchone()
             if row:
                 return {
@@ -521,10 +560,10 @@ class SqliteRepo(IScanRepository, IEventRepository):
             conn.close()
 
     def save_event_summary(
-        self, 
-        source: str, 
-        event_id: int, 
-        signature: str, 
+        self,
+        source: str,
+        event_id: int,
+        signature: str,
         summary: dict
     ) -> bool:
         """
@@ -542,13 +581,13 @@ class SqliteRepo(IScanRepository, IEventRepository):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            
+
             # Handle both dict and EventSummary objects
-            if hasattr(summary, 'to_dict'):
+            if hasattr(summary, "to_dict"):
                 data = summary.to_dict()
             else:
                 data = summary
-            
+
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO event_summaries 
@@ -574,6 +613,188 @@ class SqliteRepo(IScanRepository, IEventRepository):
         except Exception as e:
             logger.error(f"Error saving event summary: {e}")
             return False
+        finally:
+            conn.close()
+
+    # ===========================================================================
+    # Event Explanations Cache (2-level: full and simplified)
+    # ===========================================================================
+
+    def get_event_explanation(
+        self,
+        provider: str,
+        event_id: int,
+        message_hash: str,
+        detail_level: str = "full",
+        locale: str = "en",
+    ) -> dict | None:
+        """
+        Get cached event explanation.
+        
+        Args:
+            provider: Event provider/source
+            event_id: Windows event ID
+            message_hash: Hash of event message (first 12 chars of MD5)
+            detail_level: "full" or "simple"
+            locale: Language code
+        
+        Returns:
+            Cached explanation dict or None if not found/expired
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT title, what_happened, why_it_happened, what_it_affects,
+                       is_normal, risk_level, what_to_do, when_to_worry,
+                       technical_brief, simplified_text, ai_provider, created_at, ttl_seconds
+                FROM event_explanations
+                WHERE provider = ? AND event_id = ? AND detail_level = ? 
+                      AND locale = ? AND message_hash = ?
+                LIMIT 1
+                """,
+                (provider, event_id, detail_level, locale, message_hash),
+            )
+
+            row = cursor.fetchone()
+            if row:
+                # Check TTL
+                created_at = datetime.fromisoformat(row[11]) if row[11] else datetime.now()
+                ttl = row[12] or 86400
+                age_seconds = (datetime.now() - created_at).total_seconds()
+
+                if age_seconds > ttl:
+                    # Expired, delete and return None
+                    cursor.execute(
+                        "DELETE FROM event_explanations WHERE provider = ? AND event_id = ? "
+                        "AND detail_level = ? AND locale = ? AND message_hash = ?",
+                        (provider, event_id, detail_level, locale, message_hash),
+                    )
+                    conn.commit()
+                    return None
+
+                return {
+                    "title": row[0],
+                    "what_happened": row[1],
+                    "why_it_happened": json.loads(row[2]) if row[2] else [],
+                    "what_it_affects": json.loads(row[3]) if row[3] else [],
+                    "is_normal": bool(row[4]),
+                    "risk_level": row[5],
+                    "what_to_do": json.loads(row[6]) if row[6] else [],
+                    "when_to_worry": json.loads(row[7]) if row[7] else [],
+                    "technical_brief": row[8],
+                    "simplified_text": row[9],
+                    "ai_provider": row[10],
+                    "cached": True,
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting event explanation: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def save_event_explanation(
+        self,
+        provider: str,
+        event_id: int,
+        message_hash: str,
+        explanation: dict,
+        detail_level: str = "full",
+        locale: str = "en",
+        ai_provider: str = "groq",
+        token_count: int = 0,
+        ttl_seconds: int = 86400,
+    ) -> bool:
+        """
+        Save event explanation to cache.
+        
+        Args:
+            provider: Event provider/source
+            event_id: Windows event ID
+            message_hash: Hash of event message
+            explanation: Explanation dict with all fields
+            detail_level: "full" or "simple"
+            locale: Language code
+            ai_provider: Which AI generated this
+            token_count: Tokens used
+            ttl_seconds: Cache TTL (default 24 hours)
+        
+        Returns:
+            True if saved successfully
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO event_explanations 
+                (provider, event_id, detail_level, locale, message_hash,
+                 title, what_happened, why_it_happened, what_it_affects,
+                 is_normal, risk_level, what_to_do, when_to_worry,
+                 technical_brief, simplified_text, ai_provider, token_count, ttl_seconds)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    provider,
+                    event_id,
+                    detail_level,
+                    locale,
+                    message_hash,
+                    explanation.get("title", ""),
+                    explanation.get("what_happened", explanation.get("answer", "")),
+                    json.dumps(explanation.get("why_it_happened", [])),
+                    json.dumps(explanation.get("what_it_affects", [])),
+                    1 if explanation.get("is_normal", True) else 0,
+                    explanation.get("risk_level", "low"),
+                    json.dumps(explanation.get("what_to_do", explanation.get("what_to_do_now", []))),
+                    json.dumps(explanation.get("when_to_worry", explanation.get("follow_up_suggestions", []))),
+                    explanation.get("technical_brief", ""),
+                    explanation.get("simplified_text", ""),
+                    ai_provider,
+                    token_count,
+                    ttl_seconds,
+                ),
+            )
+            conn.commit()
+            logger.debug(f"Saved event explanation: {provider}:{event_id} ({detail_level})")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving event explanation: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def cleanup_expired_explanations(self, max_age_days: int = 7) -> int:
+        """
+        Remove expired explanations from cache.
+        
+        Args:
+            max_age_days: Maximum age in days
+        
+        Returns:
+            Number of rows deleted
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM event_explanations 
+                WHERE julianday('now') - julianday(created_at) > ?
+                """,
+                (max_age_days,),
+            )
+            deleted = cursor.rowcount
+            conn.commit()
+            if deleted > 0:
+                logger.info(f"Cleaned up {deleted} expired event explanations")
+            return deleted
+        except Exception as e:
+            logger.error(f"Error cleaning up explanations: {e}")
+            return 0
         finally:
             conn.close()
 

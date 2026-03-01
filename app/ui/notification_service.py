@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal, Slot, Property
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 logger = logging.getLogger(__name__)
 

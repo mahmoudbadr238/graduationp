@@ -10,15 +10,15 @@ from PySide6.QtQml import QQmlApplicationEngine
 from .core.config import get_config
 from .core.container import configure
 from .core.logging_setup import setup_crash_handlers, setup_logging
+from .core.perf_monitor import start_perf_monitor
 from .core.startup_orchestrator import StartupOrchestrator
 from .infra.integrations import print_integration_status
 from .infra.privileges import is_admin
 from .ui.backend_bridge import BackendBridge
 from .ui.gpu_service import get_gpu_service
-from .ui.system_snapshot_service import SystemSnapshotService
-from .ui.settings_service import SettingsService
 from .ui.notification_service import NotificationService
-from .core.perf_monitor import start_perf_monitor
+from .ui.settings_service import SettingsService
+from .ui.system_snapshot_service import SystemSnapshotService
 
 
 class DesktopSecurityApplication:
@@ -73,6 +73,7 @@ class DesktopSecurityApplication:
         self.snapshot_service = None
         self.settings_service = None
         self.notification_service = None
+        self.sandbox_lab = None
         self._setup_backend()
 
     def _setup_paths(self):
@@ -128,6 +129,16 @@ class DesktopSecurityApplication:
             self.backend = BackendBridge()
             # Register backend BEFORE loading QML to avoid "Backend not available" warnings
             self.engine.rootContext().setContextProperty("Backend", self.backend)
+
+            # Register sandbox preview image provider for live preview
+            try:
+                from .ui.sandbox_preview_provider import register_preview_provider
+                preview_controller = register_preview_provider(self.engine, self.backend)
+                if preview_controller:
+                    self.engine.rootContext().setContextProperty("SandboxPreview", preview_controller)
+                    print("[OK] Sandbox preview provider registered")
+            except ImportError as e:
+                print(f"[WARNING] Sandbox preview provider not available: {e}")
 
             # DEFERRED: Heavy backend initialization (100ms after startup)
             def init_backend_heavy():
@@ -191,6 +202,20 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] Settings service failed: {e}")
                 self.settings_service = None
 
+            # IMMEDIATE: VMware Sandbox Lab controller (graceful if VMware is absent)
+            try:
+                from .sandbox_vmware import SandboxLabController
+
+                self.sandbox_lab = SandboxLabController()
+                self.engine.rootContext().setContextProperty(
+                    "SandboxLab", self.sandbox_lab
+                )
+                print("[OK] Sandbox Lab controller registered")
+            except Exception as e:
+                print(f"[WARNING] Sandbox Lab controller failed: {e}")
+                self.sandbox_lab = None
+                self.engine.rootContext().setContextProperty("SandboxLab", None)
+
             # IMMEDIATE: Notification Service (cross-platform)
             try:
                 self.notification_service = NotificationService()
@@ -249,6 +274,14 @@ class DesktopSecurityApplication:
                 print("[OK] Snapshot service stopped")
             except Exception as e:
                 print(f"[WARNING] Snapshot service cleanup failed: {e}")
+
+        # Stop Sandbox Lab timers
+        if self.sandbox_lab:
+            try:
+                self.sandbox_lab.shutdown()
+                print("[OK] Sandbox Lab controller stopped")
+            except Exception as e:
+                print(f"[WARNING] Sandbox Lab cleanup failed: {e}")
 
     def run(self):
         """Run the application."""

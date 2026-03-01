@@ -36,9 +36,8 @@ def test_settings_persistence():
     if settings2.fontSize == "large":
         print("\n✅ SUCCESS: Settings persisted correctly!")
         return True
-    else:
-        print(f"\n❌ FAILURE: Expected 'large', got '{settings2.fontSize}'")
-        return False
+    print(f"\n❌ FAILURE: Expected 'large', got '{settings2.fontSize}'")
+    return False
 
 
 if __name__ == "__main__":

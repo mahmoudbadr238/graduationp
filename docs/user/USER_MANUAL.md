@@ -31,7 +31,7 @@ Sentinel is your personal security assistant for Windows. Think of it as a guard
 - **Computer:** Windows 10 or Windows 11
 - **Python:** Version 3.10 or newer ([Download Python](https://www.python.org/downloads/))
 - **Space:** About 200 MB of free disk space
-- **Internet:** Optional (for VirusTotal checks)
+- **Internet:** Optional (for AI-powered explanations)
 
 ### First-Time Setup (5 Minutes)
 
@@ -57,13 +57,11 @@ Sentinel is your personal security assistant for Windows. Think of it as a guard
 
 **Want More Protection?** Enable these optional features:
 
-**VirusTotal Integration** (Free, requires signup)
-1. Go to [VirusTotal](https://www.virustotal.com/gui/join-us)
-2. Sign up for a free account (takes 2 minutes)
-3. Copy your API key from the profile page
-4. Create a file named `.env` in Sentinel folder
-5. Add this line: `VT_API_KEY=your_key_here`
-6. Restart Sentinel → You'll see a green checkmark ✅ on the Dashboard
+**AI-Powered Explanations** (Requires API key)
+1. Get an API key from [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/api-keys)
+2. Create a file named `.env` in Sentinel folder
+3. Add this line: `ANTHROPIC_API_KEY=your_key_here` (or `OPENAI_API_KEY=...`)
+4. Restart Sentinel → AI explanations now available! ✅
 
 **Nmap Network Scanner** (Free)
 1. Download Nmap from [nmap.org](https://nmap.org/download.html)
@@ -112,9 +110,9 @@ These colored badges show the status of features:
 - 🟢 "Running as Administrator" → Full features available
 - 🟠 "Not Administrator" → Some features limited (Security event logs)
 
-**VirusTotal:**
-- 🟢 "VT Connected" → File scanning with cloud database
-- 🟠 "VT API Key Missing" → Only local scanning
+**AI Status:**
+- 🟢 "AI Connected" → AI-powered explanations available
+- 🟠 "AI API Key Missing" → Local explanations only
 
 **Nmap:**
 - 🟢 "Nmap Installed" → Network scanning available
@@ -286,7 +284,7 @@ Message: "Application crash: chrome.exe"
 
 **Full Scan (5 minutes):**
 - Comprehensive analysis
-- Checks file reputation (with VirusTotal)
+- Checks file signatures and patterns
 - Analyzes behavior patterns
 - **Best for:** New software before installing
 
@@ -393,7 +391,7 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 8. **If Clean:** Open installer
 9. **If Infected:** Delete immediately (Shift+Delete to skip Recycle Bin)
 
-**Why Full Scan?** Uses VirusTotal to check against 70+ antivirus engines.
+**Why Full Scan?** Performs comprehensive analysis using multiple detection methods.
 
 ---
 
@@ -541,18 +539,18 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 
 ---
 
-### Problem: VirusTotal Always Says "API Key Missing"
+### Problem: AI Explanations Not Working
 
-**Symptom:** Orange badge on Dashboard, file scans show "VT unavailable".
+**Symptom:** No AI explanations appearing for events.
 
 **Solution:**
-1. Get free API key: [virustotal.com/gui/join-us](https://www.virustotal.com/gui/join-us)
-2. Copy key (looks like `a1b2c3d4e5f6...` 64 characters)
+1. Get an API key from [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/api-keys)
+2. Copy key from your dashboard
 3. Create `.env` file in Sentinel folder (no name, just `.env`)
-4. Add line: `VT_API_KEY=your_key_here`
+4. Add line: `ANTHROPIC_API_KEY=your_key_here`
 5. Save file
 6. Restart Sentinel
-7. Dashboard badge should turn green ✅
+7. AI explanations should now work ✅
 
 **Note:** File must be named exactly `.env` (not `.env.txt`)
 
@@ -616,9 +614,9 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 
 ### Q: Does Sentinel send my data to the cloud?
 
-**A:** Only if you enable VirusTotal.
-- **Without VT:** 100% local, zero data leaves your PC
-- **With VT:** Only file hashes (SHA256) sent, not actual files
+**A:** Only if you enable AI explanations.
+- **Without AI API:** 100% local, zero data leaves your PC
+- **With AI API:** Event descriptions sent for analysis
 - **Network Scan:** Local only, no cloud
 - **Event Logs:** Local only, never uploaded
 
@@ -631,7 +629,7 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 **A:** Yes! Free and unlimited.
 - Copy Sentinel folder to each computer
 - Each computer has its own scan history database
-- Share VirusTotal API key across all (but watch rate limits: 4 requests/min free tier)
+- Share AI API key across all computers
 
 ---
 
@@ -640,12 +638,8 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 **A:** $0 - Completely free!
 - Open source (GPL-3.0 license)
 - No hidden fees, no premium versions
-- VirusTotal API key is free (with rate limits)
+- AI API keys have free tiers available
 - Nmap is free
-
-**Optional paid upgrades:**
-- VirusTotal Premium ($10/mo) - Higher rate limits, file upload
-- Nmap (free, but donations appreciated)
 
 ---
 
@@ -654,7 +648,7 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 | Feature | Quick (30s) | Full (5min) | Deep (15min) |
 |---------|-------------|-------------|--------------|
 | **Pattern matching** | ✅ | ✅ | ✅ |
-| **VirusTotal check** | ❌ | ✅ | ✅ |
+| **Signature check** | ❌ | ✅ | ✅ |
 | **Behavior analysis** | ❌ | ✅ | ✅ |
 | **Rootkit detection** | ❌ | ❌ | ✅ |
 | **Registry scan** | ❌ | ❌ | ✅ |
@@ -765,7 +759,7 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 ## Final Tips
 
 1. **Run as Administrator** for full features (right-click `run_as_admin.bat`)
-2. **Get a VirusTotal API key** for best file scanning (free, 2 minutes)
+2. **Get an AI API key** for intelligent security explanations
 3. **Install Nmap** for network security auditing (free, 5 minutes)
 4. **Check Event Viewer** weekly for early warning signs
 5. **Export Scan History** monthly for records/insurance

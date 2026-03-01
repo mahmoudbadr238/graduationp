@@ -191,6 +191,29 @@ build_artifacts/
 artifacts/
 archive/
 _cleanup_archive/
+crash_traceback.txt
+crash_log*.txt
+
+# Environment and secrets (CRITICAL - never commit)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+credentials/
+
+# Sandbox artifacts
+sandbox_output/
+sandbox_temp/
+detonation_*/
+extracted_*/
+
+# Cache databases
+*.cache
+*.cache.db
+event_cache.db
+explanation_cache.db
 
 # Generated output and temporary files
 *.log

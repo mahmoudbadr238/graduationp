@@ -24,7 +24,8 @@ QtObject {
         
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             // Load from settings
-            var loadedTheme = SettingsService.themeMode
+            // Normalize theme string to avoid casing/whitespace issues
+            var loadedTheme = (SettingsService.themeMode || "system").toString().trim().toLowerCase()
             var loadedFontSize = SettingsService.fontSize
             
             console.log("[ThemeManager] Loaded themeMode:", loadedTheme)
@@ -56,7 +57,7 @@ QtObject {
     
     function onThemeModeChanged() {
         if (typeof SettingsService !== 'undefined' && SettingsService) {
-            themeMode = SettingsService.themeMode
+            themeMode = (SettingsService.themeMode || "system").toString().trim().toLowerCase()
         }
     }
     
@@ -69,6 +70,8 @@ QtObject {
     }
     
     function setThemeMode(mode) {
+        // Normalize and apply user-chosen theme
+        mode = (mode || "system").toString().trim().toLowerCase()
         themeMode = mode
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             SettingsService.themeMode = mode

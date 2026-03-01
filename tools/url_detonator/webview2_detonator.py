@@ -7,6 +7,7 @@ URLs and monitor for malicious behavior.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -232,16 +233,24 @@ class WebView2Detonator:
             result.error = "WebView2 runtime not available"
             result.end_time = time.time()
             return result
-        
+
+        # Prefer Edge headless path first; pywebview fallback is less deterministic.
+        edge_result = self._detonate_with_edge_cdp(url, result)
+        if edge_result.success:
+            return edge_result
+
         try:
-            # Try to use webview2 Python bindings if available
-            return self._detonate_with_pywebview(url, result)
+            logger.info("Edge detonation was not successful, trying pywebview fallback")
+            return self._detonate_with_pywebview(url, edge_result)
         except ImportError:
-            logger.info("pywebview not available, using Edge DevTools Protocol")
-            return self._detonate_with_edge_cdp(url, result)
+            logger.info("pywebview not available, using Edge result")
+            return edge_result
         except Exception as e:
-            logger.warning(f"pywebview failed, trying Edge CDP: {e}")
-            return self._detonate_with_edge_cdp(url, result)
+            logger.warning(f"pywebview fallback failed: {e}")
+            if not edge_result.error:
+                edge_result.error = f"pywebview fallback failed: {e}"
+            edge_result.end_time = time.time()
+            return edge_result
     
     def _detonate_with_pywebview(self, url: str, result: DetonationResult) -> DetonationResult:
         """Detonate using pywebview library."""
@@ -388,9 +397,13 @@ class WebView2Detonator:
                     text=True,
                 )
                 
-                result.success = True
                 result.load_time_ms = int((time.time() - start) * 1000)
                 result.final_url = url  # Can't easily get final URL in headless mode
+                if process.returncode == 0:
+                    result.success = True
+                else:
+                    result.success = False
+                    result.error = f"Edge exited with code {process.returncode}"
                 
                 # Parse any output for errors/warnings
                 if process.stderr:
@@ -575,3 +588,62 @@ def detonation_result_to_evidence(result: DetonationResult) -> List[dict]:
         })
     
     return evidence
+
+
+def _build_cli_parser() -> argparse.ArgumentParser:
+    """Build CLI parser for subprocess sandbox execution."""
+    parser = argparse.ArgumentParser(
+        description="Sentinel WebView2 URL detonator",
+    )
+    parser.add_argument("--url", required=True, help="URL to detonate")
+    parser.add_argument("--output", required=True, help="Path to write JSON result")
+    parser.add_argument("--timeout", type=int, default=30, help="Detonation timeout in seconds")
+    parser.add_argument(
+        "--block-downloads",
+        action="store_true",
+        help="Block download attempts during detonation",
+    )
+    return parser
+
+
+def main() -> int:
+    """CLI entrypoint used by app.scanning.url_scanner subprocess runner."""
+    parser = _build_cli_parser()
+    args = parser.parse_args()
+
+    output_path = Path(args.output)
+    result_payload = {}
+    exit_code = 0
+
+    try:
+        config = DetonationConfig(
+            timeout_seconds=max(1, int(args.timeout)),
+            block_downloads=bool(args.block_downloads),
+        )
+        result = detonate_url(args.url, config)
+        result_payload = result.to_dict()
+        result_payload["evidence"] = detonation_result_to_evidence(result)
+    except Exception as exc:
+        logger.exception(f"Detonation failed: {exc}")
+        result_payload = {
+            "url": args.url,
+            "final_url": args.url,
+            "success": False,
+            "error": str(exc),
+            "evidence": [],
+        }
+        exit_code = 1
+
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as handle:
+            json.dump(result_payload, handle, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        logger.exception(f"Failed to write detonation output: {exc}")
+        return 2
+
+    return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

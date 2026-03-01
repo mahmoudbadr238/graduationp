@@ -78,15 +78,3 @@ def test_nmap_integration():
     assert (
         nmap_available() or not nmap_available()
     )  # Should return bool without crashing
-
-
-@pytest.mark.skipif(
-    not os.getenv("VIRUSTOTAL_API_KEY"), reason="VirusTotal not configured"
-)
-def test_virustotal_integration():
-    """Test that VirusTotal integration can be imported."""
-    from app.infra.integrations import virustotal_enabled
-
-    assert (
-        virustotal_enabled() or not virustotal_enabled()
-    )  # Should return bool without crashing

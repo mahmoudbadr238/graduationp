@@ -23,7 +23,7 @@ class EventItem:
     source: str
     message: str
     event_id: int = 0
-    friendly_message: Optional[str] = None  # User-friendly summary for display
+    friendly_message: str | None = None  # User-friendly summary for display
 
 
 @dataclass

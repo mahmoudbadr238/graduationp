@@ -34,18 +34,18 @@ class SandboxResult:
     success: bool
     status: str  # completed, timeout, error, not_available
     duration: int  # seconds
-    
+
     # Behavioral data
-    processes: List[Dict[str, Any]] = field(default_factory=list)
-    files_created: List[str] = field(default_factory=list)
-    files_modified: List[str] = field(default_factory=list)
-    files_deleted: List[str] = field(default_factory=list)
-    registry_modified: List[str] = field(default_factory=list)
-    network_connections: List[str] = field(default_factory=list)
-    
+    processes: list[dict[str, Any]] = field(default_factory=list)
+    files_created: list[str] = field(default_factory=list)
+    files_modified: list[str] = field(default_factory=list)
+    files_deleted: list[str] = field(default_factory=list)
+    registry_modified: list[str] = field(default_factory=list)
+    network_connections: list[str] = field(default_factory=list)
+
     # Raw data
-    raw_report: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    raw_report: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class SandboxController:
@@ -61,41 +61,41 @@ class SandboxController:
     - All execution happens in isolated environment
     - VM snapshots are restored before each run
     """
-    
+
     # Configuration
     DEFAULT_TIMEOUT = 120  # seconds
     VM_NAME = "Sentinel_Sandbox"
     SNAPSHOT_NAME = "Clean"
     SHARED_FOLDER = "Sentinel_Shared"
-    
+
     def __init__(self):
         """Initialize the sandbox controller."""
-        self._vboxmanage_path: Optional[str] = None
+        self._vboxmanage_path: str | None = None
         self._vbox_available = False
         self._wsb_available = False
-        
+
         self._detect_capabilities()
-    
+
     def _detect_capabilities(self) -> None:
         """Detect available sandbox methods."""
         # Check VirtualBox
         self._vboxmanage_path = self._find_vboxmanage()
         if self._vboxmanage_path:
             self._vbox_available = self._check_vm_exists()
-        
+
         # Check Windows Sandbox
         if _IS_WINDOWS:
             self._wsb_available = self._check_windows_sandbox()
-        
+
         logger.info(f"Sandbox capabilities: VBox={self._vbox_available}, WSB={self._wsb_available}")
-    
-    def _find_vboxmanage(self) -> Optional[str]:
+
+    def _find_vboxmanage(self) -> str | None:
         """Find VBoxManage executable."""
         # Check PATH first
         path = shutil.which("VBoxManage") or shutil.which("VBoxManage.exe")
         if path:
             return path
-        
+
         # Common installation paths
         if _IS_WINDOWS:
             common_paths = [
@@ -113,14 +113,14 @@ class SandboxController:
             for p in common_paths:
                 if os.path.exists(p):
                     return p
-        
+
         return None
-    
+
     def _check_vm_exists(self) -> bool:
         """Check if the Sentinel sandbox VM exists."""
         if not self._vboxmanage_path:
             return False
-        
+
         try:
             result = subprocess.run(
                 [self._vboxmanage_path, "list", "vms"],
@@ -132,30 +132,42 @@ class SandboxController:
             return self.VM_NAME in result.stdout
         except Exception:
             return False
-    
+
     def _check_windows_sandbox(self) -> bool:
         """Check if Windows Sandbox is available."""
         try:
-            # Check if Windows Sandbox feature is enabled
+            # Query numeric enum value to avoid locale-dependent text parsing.
             result = subprocess.run(
                 ["powershell", "-Command",
-                 "Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM | Select-Object -ExpandProperty State"],
+                 "(Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -ErrorAction SilentlyContinue).State.value__"],
                 capture_output=True,
                 text=True,
                 timeout=15,
                 creationflags=_SUBPROCESS_FLAGS,
             )
-            return "Enabled" in result.stdout
+            state_raw = (result.stdout or "").strip()
+            if state_raw.isdigit():
+                # DismPackageFeatureState: Enabled == 2
+                if int(state_raw) == 2:
+                    return True
+            else:
+                state_text = state_raw.lower()
+                if "enabled" in state_text:
+                    return True
+
+            # Fallback: runtime binary present on supported editions.
+            sandbox_exe = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsSandbox.exe"
+            return sandbox_exe.exists()
         except Exception:
             return False
-    
+
     @property
     def is_available(self) -> bool:
         """Check if any sandbox method is available."""
         return self._vbox_available or self._wsb_available
-    
+
     @property
-    def available_methods(self) -> List[str]:
+    def available_methods(self) -> list[str]:
         """Get list of available sandbox methods."""
         methods = []
         if self._vbox_available:
@@ -163,7 +175,7 @@ class SandboxController:
         if self._wsb_available:
             methods.append("Windows Sandbox")
         return methods
-    
+
     def run_sample(self, file_path: str, timeout: int = DEFAULT_TIMEOUT) -> SandboxResult:
         """
         Run a sample in the sandbox and collect behavioral data.
@@ -182,7 +194,7 @@ class SandboxController:
                 duration=0,
                 error="File not found"
             )
-        
+
         if not self.is_available:
             return SandboxResult(
                 success=False,
@@ -190,20 +202,20 @@ class SandboxController:
                 duration=0,
                 error="No sandbox method available. Install VirtualBox or enable Windows Sandbox."
             )
-        
+
         # Prefer VirtualBox over Windows Sandbox
         if self._vbox_available:
             return self._run_in_virtualbox(file_path, timeout)
-        elif self._wsb_available:
+        if self._wsb_available:
             return self._run_in_windows_sandbox(file_path, timeout)
-        
+
         return SandboxResult(
             success=False,
             status="not_available",
             duration=0,
             error="No sandbox available"
         )
-    
+
     def _run_in_virtualbox(self, file_path: str, timeout: int) -> SandboxResult:
         """
         Run sample in VirtualBox VM.
@@ -215,7 +227,7 @@ class SandboxController:
         4. Sandbox agent script must be in VM
         """
         start_time = time.time()
-        
+
         try:
             # Step 1: Restore snapshot
             logger.info("Restoring VM snapshot...")
@@ -225,7 +237,7 @@ class SandboxController:
                     success=False, status="error", duration=0,
                     error=f"Failed to restore snapshot: {error}"
                 )
-            
+
             # Step 2: Start VM (headless)
             logger.info("Starting sandbox VM...")
             success, error = self._vbox_start_vm()
@@ -234,10 +246,10 @@ class SandboxController:
                     success=False, status="error", duration=0,
                     error=f"Failed to start VM: {error}"
                 )
-            
+
             # Wait for VM to boot
             time.sleep(30)
-            
+
             # Step 3: Copy sample to VM
             logger.info("Copying sample to VM...")
             sample_name = os.path.basename(file_path)
@@ -248,20 +260,20 @@ class SandboxController:
                     success=False, status="error", duration=0,
                     error=f"Failed to copy sample: {error}"
                 )
-            
+
             # Step 4: Run sandbox agent
             logger.info("Running sandbox agent...")
             success, error = self._vbox_run_agent(sample_name, timeout)
-            
+
             # Step 5: Collect results
             results = self._vbox_collect_results()
-            
+
             # Step 6: Stop VM
             logger.info("Stopping sandbox VM...")
             self._vbox_stop_vm()
-            
+
             duration = int(time.time() - start_time)
-            
+
             if results:
                 return SandboxResult(
                     success=True,
@@ -275,14 +287,13 @@ class SandboxController:
                     network_connections=results.get("network_connections", []),
                     raw_report=results
                 )
-            else:
-                return SandboxResult(
-                    success=True,
-                    status="completed",
-                    duration=duration,
-                    error="No behavioral data collected"
-                )
-            
+            return SandboxResult(
+                success=True,
+                status="completed",
+                duration=duration,
+                error="No behavioral data collected"
+            )
+
         except Exception as e:
             logger.error(f"VirtualBox sandbox error: {e}")
             self._vbox_stop_vm()
@@ -292,8 +303,8 @@ class SandboxController:
                 duration=int(time.time() - start_time),
                 error=str(e)
             )
-    
-    def _vbox_restore_snapshot(self) -> Tuple[bool, str]:
+
+    def _vbox_restore_snapshot(self) -> tuple[bool, str]:
         """Restore VM to clean snapshot."""
         try:
             result = subprocess.run(
@@ -306,8 +317,8 @@ class SandboxController:
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
-    
-    def _vbox_start_vm(self) -> Tuple[bool, str]:
+
+    def _vbox_start_vm(self) -> tuple[bool, str]:
         """Start VM in headless mode."""
         try:
             result = subprocess.run(
@@ -320,8 +331,8 @@ class SandboxController:
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
-    
-    def _vbox_stop_vm(self) -> Tuple[bool, str]:
+
+    def _vbox_stop_vm(self) -> tuple[bool, str]:
         """Stop VM (poweroff)."""
         try:
             result = subprocess.run(
@@ -334,8 +345,8 @@ class SandboxController:
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
-    
-    def _vbox_copy_to_vm(self, host_path: str, guest_path: str) -> Tuple[bool, str]:
+
+    def _vbox_copy_to_vm(self, host_path: str, guest_path: str) -> tuple[bool, str]:
         """Copy file from host to VM."""
         try:
             result = subprocess.run(
@@ -350,13 +361,13 @@ class SandboxController:
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
-    
-    def _vbox_run_agent(self, sample_name: str, timeout: int) -> Tuple[bool, str]:
+
+    def _vbox_run_agent(self, sample_name: str, timeout: int) -> tuple[bool, str]:
         """Run the sandbox agent in VM."""
         try:
             # Run agent script that monitors and executes sample
             agent_cmd = f"C:\\Sandbox\\sandbox_agent.py --sample C:\\Sandbox\\{sample_name} --timeout {timeout}"
-            
+
             result = subprocess.run(
                 [self._vboxmanage_path, "guestcontrol", self.VM_NAME, "run",
                  "--exe", "python.exe",
@@ -371,13 +382,13 @@ class SandboxController:
             return result.returncode == 0, result.stderr
         except Exception as e:
             return False, str(e)
-    
-    def _vbox_collect_results(self) -> Optional[Dict[str, Any]]:
+
+    def _vbox_collect_results(self) -> dict[str, Any] | None:
         """Collect results from VM shared folder."""
         try:
             # Copy report from VM
             report_path = tempfile.mktemp(suffix=".json")
-            
+
             result = subprocess.run(
                 [self._vboxmanage_path, "guestcontrol", self.VM_NAME, "copyfrom",
                  "C:\\Sandbox\\report.json", report_path,
@@ -387,17 +398,17 @@ class SandboxController:
                 timeout=30,
                 creationflags=_SUBPROCESS_FLAGS if _IS_WINDOWS else 0,
             )
-            
+
             if result.returncode == 0 and os.path.exists(report_path):
-                with open(report_path, "r") as f:
+                with open(report_path) as f:
                     data = json.load(f)
                 os.unlink(report_path)
                 return data
         except Exception as e:
             logger.debug(f"Failed to collect results: {e}")
-        
+
         return None
-    
+
     def _run_in_windows_sandbox(self, file_path: str, timeout: int) -> SandboxResult:
         """
         Run sample in Windows Sandbox.
@@ -409,16 +420,16 @@ class SandboxController:
         4. Collects results from mapped folder
         """
         start_time = time.time()
-        
+
         try:
             # Create temp working directory
             work_dir = Path(tempfile.mkdtemp(prefix="sentinel_sandbox_"))
             sample_name = os.path.basename(file_path)
-            
+
             # Copy sample to work directory
             sample_dest = work_dir / sample_name
             shutil.copy2(file_path, sample_dest)
-            
+
             # Copy agent script
             agent_src = Path(__file__).parent.parent.parent / "tools" / "sandbox_agent" / "agent.py"
             if agent_src.exists():
@@ -426,38 +437,40 @@ class SandboxController:
             else:
                 # Create minimal agent inline
                 self._create_minimal_agent(work_dir / "agent.py")
-            
+
             # Create .wsb configuration
             wsb_config = self._create_wsb_config(work_dir, sample_name, timeout)
             wsb_path = work_dir / "sandbox.wsb"
-            
+
             with open(wsb_path, "w") as f:
                 f.write(wsb_config)
-            
+
             # Launch Windows Sandbox
             logger.info("Starting Windows Sandbox...")
+            sandbox_exe = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsSandbox.exe"
+            launch_cmd = [str(sandbox_exe), str(wsb_path)] if sandbox_exe.exists() else ["cmd", "/c", str(wsb_path)]
             process = subprocess.Popen(
-                ["cmd", "/c", str(wsb_path)],
+                launch_cmd,
                 creationflags=_SUBPROCESS_FLAGS,
             )
-            
+
             # Wait for completion (sandbox should auto-close)
             try:
                 process.wait(timeout=timeout + 120)
             except subprocess.TimeoutExpired:
                 process.kill()
-            
+
             duration = int(time.time() - start_time)
-            
+
             # Collect results
             report_path = work_dir / "report.json"
             if report_path.exists():
-                with open(report_path, "r") as f:
+                with open(report_path) as f:
                     results = json.load(f)
-                
+
                 # Cleanup
                 shutil.rmtree(work_dir, ignore_errors=True)
-                
+
                 return SandboxResult(
                     success=True,
                     status="completed",
@@ -469,15 +482,14 @@ class SandboxController:
                     network_connections=results.get("network_connections", []),
                     raw_report=results
                 )
-            else:
-                shutil.rmtree(work_dir, ignore_errors=True)
-                return SandboxResult(
-                    success=True,
-                    status="completed",
-                    duration=duration,
-                    error="No results collected (sample may not have executed)"
-                )
-            
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return SandboxResult(
+                success=True,
+                status="completed",
+                duration=duration,
+                error="No results collected (sample may not have executed)"
+            )
+
         except Exception as e:
             logger.error(f"Windows Sandbox error: {e}")
             return SandboxResult(
@@ -486,7 +498,7 @@ class SandboxController:
                 duration=int(time.time() - start_time),
                 error=str(e)
             )
-    
+
     def _create_wsb_config(self, work_dir: Path, sample_name: str, timeout: int) -> str:
         """Create Windows Sandbox configuration XML."""
         return f"""<Configuration>
@@ -509,7 +521,7 @@ class SandboxController:
   <ClipboardRedirection>Disable</ClipboardRedirection>
   <MemoryInMB>2048</MemoryInMB>
 </Configuration>"""
-    
+
     def _create_minimal_agent(self, path: Path) -> None:
         """Create a minimal sandbox agent script."""
         agent_code = '''#!/usr/bin/env python3
@@ -584,9 +596,9 @@ if __name__ == "__main__":
     
     monitor_and_run(args.sample, args.timeout, args.output)
 '''
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             f.write(agent_code)
-    
+
     def get_setup_instructions(self) -> str:
         """Get instructions for setting up sandbox."""
         return """

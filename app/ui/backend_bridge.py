@@ -7,6 +7,7 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QObject, QProcess, QThreadPool, QTimer, Signal, Slot
 
@@ -56,35 +57,58 @@ class BackendBridge(QObject):
     # AI signals (100% local, no network)
     eventExplanationReady = Signal(str, str)  # eventId, explanationJson
     eventExplanationFailed = Signal(str, str)  # eventId, errorMessage
+    eventPreviewReady = Signal(str, str)  # eventId, briefJson
     chatMessageAdded = Signal(str, str)  # role ("user"|"assistant"), content
-    
+
+    # Agent step tracking signals
+    agentStepAdded = Signal(str)  # JSON step object
+    agentStepsCleared = Signal()  # reset timeline
+
     # Local scan signals (100% offline)
     localScanStarted = Signal()
     localScanProgress = Signal(str)  # stage name
     localScanFinished = Signal(dict)  # result
     localUrlCheckFinished = Signal(dict)  # result
-    
+
     # Integrated sandbox signals (bundled with app, no VirtualBox needed)
     integratedSandboxStarted = Signal()
     integratedSandboxProgress = Signal(str)  # stage name
     integratedSandboxFinished = Signal(dict)  # result with static + sandbox + scoring
-    
+
+    # Sandbox live view signals (real-time event streaming)
+    sandboxEventBatch = Signal(str)  # JSON array of sandbox events
+    sandboxStatsUpdate = Signal(str)  # JSON object with session stats
+    sandboxSessionEnded = Signal(str)  # JSON session summary
+
+    # Live preview signals (video-like window capture)
+    sandboxPreviewStarted = Signal()  # Preview capture started
+    sandboxPreviewStopped = Signal()  # Preview capture stopped
+    sandboxPreviewFrameReady = Signal(int)  # New frame available (frame number)
+    sandboxWindowFound = Signal(bool)  # Whether sandbox window was found
+    sandboxAutopilotAction = Signal(str)  # Autopilot performed an action (JSON)
+
     # URL scan signals (VirusTotal-like, 100% local)
     urlScanStarted = Signal()
     urlScanProgress = Signal(str, int)  # stage name, progress %
     urlScanFinished = Signal(dict)  # result with verdict, score, evidence, explanation
-    
+
     # Smart Assistant signals (new intelligent chatbot)
     smartAssistantResponse = Signal(str)  # JSON string of structured response (safer for QML)
     smartAssistantError = Signal(str)  # Error message
-    
+
+    # Resolution Report signals
+    resolutionSessionsLoaded = Signal(str)  # JSON string of sessions array
+
+    # Navigation signal (for cross-page navigation)
+    navigateTo = Signal(str)  # route name (e.g., "ai-assistant")
+
     # Internal signals for thread-safe communication (background thread -> main thread)
     _eventsLoadedInternal = Signal(list)
     _toastInternal = Signal(str, str)
 
     def __init__(self):
         super().__init__()
-        
+
         # Connect internal signals for thread-safe communication
         self._eventsLoadedInternal.connect(self.eventsLoaded.emit)
         self._toastInternal.connect(self.toast.emit)
@@ -141,51 +165,412 @@ class BackendBridge(QObject):
         self._event_explainer = None
         self._security_chatbot = None
         self._chat_conversation: list[dict[str, str]] = []
-        
+
         # Cache of loaded events (for AI explanation lookup)
         self._loaded_events: list = []
-        
+
         # AI Worker process (separate process for AI to never block UI)
         self._ai_process: QProcess | None = None
         self._ai_request_id = 0
         self._pending_ai_requests: dict[str, int] = {}  # request_id -> event_index
         self._current_ai_request: str | None = None  # Track current request to cancel old ones
         self._ai_ready = False
-        
+
         # Event summarizer for friendly messages
         self._event_summarizer = None
-        
+
         # Smart Assistant (new intelligent chatbot with memory and context)
         self._smart_assistant = None
-        
+
+        # Sandbox session for live event streaming
+        self._sandbox_session = None
+        self._sandbox_cancelled = False
+
+        # Live preview (video-like window capture)
+        self._window_capture = None  # WindowCaptureService instance
+        self._preview_provider = None  # SandboxPreviewProvider for QML
+        self._preview_controller = None  # SandboxPreviewController for signals
+        self._installer_autopilot = None  # InstallerAutopilot for safe interaction
+        self._autopilot_enabled = False
+
+        # Agent step tracking (for Agent Report / Replay pages)
+        self._agent_steps: list[dict] = []
+
         self._init_ai_services()
         self._init_smart_assistant()
-        
+
         # Pre-warm security snapshot cache (background, non-blocking)
         # This speeds up first chatbot security question by 3-5 seconds
         self._prewarm_security_snapshot()
-        
+
         # NOTE: AI worker (ai_worker.py) has been archived - now using agent-based SmartAssistant
         # The V4 event explainer handles all explanations deterministically
         # QTimer.singleShot(2000, self._start_ai_worker)  # Disabled - archived
-    
+
     def _event_to_dict(self, e) -> dict:
         """Convert an event object to a dictionary."""
-        if hasattr(e, 'to_dict'):
+        if hasattr(e, "to_dict"):
             return e.to_dict()
-        elif isinstance(e, dict):
+        if isinstance(e, dict):
             return e
-        else:
-            return {
-                "record_id": getattr(e, 'record_id', 0),
-                "log_name": getattr(e, 'log_name', 'System'),
-                "event_id": getattr(e, 'event_id', 0),
-                "provider": getattr(e, 'provider', getattr(e, 'source', 'Unknown')),
-                "level": getattr(e, 'level', 'Information'),
-                "message": getattr(e, 'message', '')[:500],
-                "time_created": str(getattr(e, 'time_created', '')),
+        return {
+            "record_id": getattr(e, "record_id", 0),
+            "log_name": getattr(e, "log_name", "System"),
+            "event_id": getattr(e, "event_id", 0),
+            "provider": getattr(e, "provider", getattr(e, "source", "Unknown")),
+            "level": getattr(e, "level", "Information"),
+            "message": getattr(e, "message", "")[:500],
+            "time_created": str(getattr(e, "time_created", "")),
+        }
+
+    def _normalize_file_scan_result_for_qml(self, result: dict | None) -> dict:
+        """Ensure file scan payload always contains QML-consumed keys."""
+        payload = result if isinstance(result, dict) else {}
+        normalized = dict(payload)
+
+        iocs = normalized.get("iocs")
+        if not isinstance(iocs, dict):
+            iocs = {}
+        normalized["iocs"] = iocs
+
+        yara_matches = normalized.get("yara_matches")
+        if not isinstance(yara_matches, list):
+            yara_matches = []
+
+        pe_info = normalized.get("pe_info")
+        if not isinstance(pe_info, dict):
+            pe_info = {}
+
+        pe_analysis = normalized.get("pe_analysis")
+        if not isinstance(pe_analysis, dict):
+            pe_analysis = {}
+
+        sandbox_data = normalized.get("sandbox_result")
+        if not isinstance(sandbox_data, dict):
+            sandbox_data = normalized.get("sandbox")
+        if not isinstance(sandbox_data, dict):
+            sandbox_data = {}
+
+        defaults = {
+            "file_name": "",
+            "file_path": "",
+            "file_size": 0,
+            "sha256": "",
+            "mime_type": "",
+            "verdict": "Unknown",
+            "score": 0,
+            "summary": "",
+            "explanation": "",
+            "yara_matches_count": None,
+            "iocs_found": None,
+            "pe_analyzed": None,
+            "has_sandbox": None,
+            "sandbox_duration": None,
+            "sandbox_error": "",
+            "report_content": "",
+            "report_path": "",
+            "error": "",
+        }
+        normalized = {**defaults, **normalized}
+
+        if normalized.get("yara_matches_count") is None:
+            if isinstance(normalized.get("yara_match_count"), int):
+                normalized["yara_matches_count"] = normalized.get("yara_match_count", 0)
+            else:
+                normalized["yara_matches_count"] = len(yara_matches)
+
+        if normalized.get("iocs_found") is None:
+            normalized["iocs_found"] = any(bool(v) for v in iocs.values())
+
+        if normalized.get("pe_analyzed") is None:
+            normalized["pe_analyzed"] = bool(pe_info or pe_analysis)
+
+        if normalized.get("has_sandbox") is None:
+            normalized["has_sandbox"] = bool(sandbox_data) and bool(
+                sandbox_data.get("success", True)
+            )
+
+        if normalized.get("sandbox_duration") is None:
+            normalized["sandbox_duration"] = sandbox_data.get(
+                "duration_seconds",
+                sandbox_data.get("duration", 0),
+            )
+
+        if not normalized.get("sandbox_error"):
+            normalized["sandbox_error"] = sandbox_data.get(
+                "error_message",
+                sandbox_data.get("error", ""),
+            )
+
+        normalized["summary"] = str(normalized.get("summary") or "")
+        normalized["explanation"] = str(normalized.get("explanation") or "")
+        normalized["error"] = str(normalized.get("error") or "")
+        normalized["report_content"] = str(normalized.get("report_content") or "")
+        normalized["report_path"] = str(normalized.get("report_path") or "")
+
+        return normalized
+
+    def _normalize_url_scan_result_for_qml(self, result: dict | None) -> dict:
+        """Ensure URL scan payload always contains QML-consumed keys."""
+        payload = result if isinstance(result, dict) else {}
+        normalized = dict(payload)
+
+        redirects = normalized.get("redirects")
+        if not isinstance(redirects, list):
+            redirects = []
+        normalized["redirects"] = redirects
+
+        evidence = normalized.get("evidence")
+        if not isinstance(evidence, list):
+            evidence = []
+        normalized["evidence"] = evidence
+
+        iocs = normalized.get("iocs")
+        if not isinstance(iocs, dict):
+            iocs = {}
+        normalized["iocs"] = iocs
+
+        yara_matches = normalized.get("yara_matches")
+        if not isinstance(yara_matches, list):
+            yara_matches = []
+
+        explanation = normalized.get("explanation")
+        if explanation and not isinstance(explanation, dict):
+            explanation = {"technical_summary": str(explanation)}
+        if isinstance(explanation, dict):
+            explanation_defaults = {
+                "what_it_is": "",
+                "why_risky": "",
+                "what_to_do": "",
+                "technical_summary": "",
+                "confidence": "",
             }
-    
+            explanation = {**explanation_defaults, **explanation}
+        normalized["explanation"] = explanation
+
+        defaults = {
+            "success": None,
+            "url": "",
+            "final_url": "",
+            "http_status": 0,
+            "redirect_count": None,
+            "verdict": "unknown",
+            "score": 0,
+            "summary": "",
+            "evidence_count": None,
+            "has_iocs": None,
+            "yara_match_count": None,
+            "report_content": "",
+            "error": "",
+        }
+        normalized = {**defaults, **normalized}
+
+        if not normalized.get("url"):
+            normalized["url"] = str(
+                normalized.get("input_url")
+                or normalized.get("normalized_url")
+                or normalized.get("final_url")
+                or ""
+            )
+
+        if not normalized.get("final_url"):
+            normalized["final_url"] = str(
+                normalized.get("normalized_url") or normalized.get("url") or ""
+            )
+
+        if normalized.get("redirect_count") is None:
+            normalized["redirect_count"] = len(redirects)
+
+        if normalized.get("evidence_count") is None:
+            normalized["evidence_count"] = len(evidence)
+
+        if normalized.get("has_iocs") is None:
+            normalized["has_iocs"] = any(bool(v) for v in iocs.values())
+
+        if normalized.get("yara_match_count") is None:
+            normalized["yara_match_count"] = len(yara_matches)
+
+        if normalized.get("success") is None:
+            normalized["success"] = not bool(normalized.get("error"))
+
+        normalized["summary"] = str(normalized.get("summary") or "")
+        normalized["error"] = str(normalized.get("error") or "")
+        normalized["report_content"] = str(normalized.get("report_content") or "")
+
+        return normalized
+
+    # ==================== AGENT STEP TRACKING ====================
+
+    def _add_agent_step(self, title: str, purpose: str, action: str, result: str) -> None:
+        """Add an agent step and emit to QML for the timeline/replay."""
+        import time
+        step = {
+            "index": len(self._agent_steps),
+            "timestamp": time.time(),
+            "title": title,
+            "purpose": purpose,
+            "action": action,
+            "result": result,
+        }
+        self._agent_steps.append(step)
+        self.agentStepAdded.emit(json.dumps(step))
+
+    @Slot(result=str)
+    def getAgentSteps(self) -> str:
+        """Return all agent steps as JSON array for QML."""
+        return json.dumps(self._agent_steps)
+
+    # ==================== EVENT PREVIEW (INSTANT, NO AI) ====================
+
+    @Slot(int)
+    def previewEvent(self, event_index: int) -> None:
+        """
+        Instant friendly preview for an event (no AI, no async).
+        Called when user selects an event row.
+        """
+        if not isinstance(event_index, int):
+            return
+
+        # Clear agent steps for this new event
+        self._agent_steps.clear()
+        self.agentStepsCleared.emit()
+        self._add_agent_step(
+            "Event Selected",
+            "User selected an event row",
+            "parsed event fields",
+            f"Event index {event_index} selected"
+        )
+
+        try:
+            events = self._loaded_events
+            if not events or event_index < 0 or event_index >= len(events):
+                return
+
+            event = events[event_index]
+            provider = getattr(event, "source", "Unknown")
+            event_id = getattr(event, "event_id", 0)
+            level = getattr(event, "level", "Information")
+            message = getattr(event, "message", "")
+
+            self._add_agent_step(
+                "Knowledge Base Lookup",
+                "Find a known explanation for this event",
+                "matched template by provider + event_id",
+                f"Looking up {provider}:{event_id}"
+            )
+
+            # Use rules engine for instant lookup (no AI)
+            brief = self._generate_friendly_preview(provider, event_id, level, message)
+
+            self._add_agent_step(
+                "Preview Generated",
+                "Format a short friendly summary",
+                "built meaning + risk + actions",
+                f"Risk: {brief.get('risk', 'Low')}"
+            )
+
+            preview_json = json.dumps(brief)
+            self.eventPreviewReady.emit(str(event_index), preview_json)
+            logger.info(f"Preview ready for event {event_index}: {brief.get('risk', 'Low')}")
+
+        except Exception as e:
+            logger.error(f"Failed to preview event: {e}")
+
+    def _generate_friendly_preview(self, provider: str, event_id: int,
+                                    level: str, message: str) -> dict:
+        """
+        Generate a friendly, non-technical preview from KB rules.
+        Returns {meaning, risk, risk_reason, actions[]}.
+        """
+        # Use the rules engine if available
+        if hasattr(self, "_event_explainer") and self._event_explainer:
+            try:
+                from ..ai.event_rules_engine import get_event_rules_engine
+                engine = get_event_rules_engine()
+                kb = engine.lookup(provider=provider, event_id=event_id,
+                                   level=level, raw_message=message)
+
+                # Map severity to risk
+                risk_map = {"Safe": "Low", "Minor": "Low",
+                            "Warning": "Medium", "Critical": "High"}
+                risk = risk_map.get(kb.severity, "Low")
+
+                # Build friendly meaning (no jargon)
+                meaning = kb.impact if kb.impact else kb.title
+                if not meaning or meaning == "System event recorded":
+                    meaning = self._make_friendly_meaning(provider, event_id, level)
+
+                # Build simple actions (max 3, <=10 words each)
+                actions = []
+                for act in (kb.actions or [])[:3]:
+                    simplified = act.split(".")[0].strip()
+                    words = simplified.split()
+                    if len(words) > 10:
+                        simplified = " ".join(words[:10])
+                    actions.append(simplified)
+                if not actions:
+                    actions = self._default_actions(level)
+
+                risk_reason = self._risk_reason(kb.severity, level, kb.matched)
+
+                return {
+                    "meaning": meaning,
+                    "risk": risk,
+                    "risk_reason": risk_reason,
+                    "actions": actions,
+                    "source_matched": kb.matched,
+                    "title": kb.title,
+                }
+            except Exception as e:
+                logger.debug(f"KB preview error: {e}")
+
+        # Fallback: generic template based on level
+        risk_map = {"Error": "Medium", "Critical": "High",
+                    "Warning": "Medium", "Information": "Low", "Info": "Low"}
+        risk = risk_map.get(level, "Low")
+        return {
+            "meaning": self._make_friendly_meaning(provider, event_id, level),
+            "risk": risk,
+            "risk_reason": f"This is a{'n ' + level.lower() if level else ' normal'} event",
+            "actions": self._default_actions(level),
+            "source_matched": False,
+            "title": f"Event {event_id}",
+        }
+
+    @staticmethod
+    def _make_friendly_meaning(provider: str, event_id: int, level: str) -> str:
+        """Create a simple, jargon-free meaning sentence."""
+        level_lower = level.lower() if level else "informational"
+        if level_lower in ("error", "critical"):
+            return f"Your computer noticed a problem reported by {provider}."
+        if level_lower == "warning":
+            return f"Your computer flagged something worth checking from {provider}."
+        return f"A routine system update was logged by {provider}. Nothing to worry about."
+
+    @staticmethod
+    def _default_actions(level: str) -> list:
+        """Return default simple actions based on event level."""
+        level_lower = (level or "").lower()
+        if level_lower in ("error", "critical"):
+            return ["Check if your apps work normally",
+                    "Restart your computer if needed",
+                    "Contact support if it repeats"]
+        if level_lower == "warning":
+            return ["Keep an eye on this event",
+                    "No action needed right now"]
+        return ["No action needed"]
+
+    @staticmethod
+    def _risk_reason(severity: str, level: str, matched: bool) -> str:
+        """Return a simple risk explanation."""
+        if severity in ("Safe", "Minor"):
+            return "This event is routine and safe"
+        if severity == "Warning":
+            return "This may need attention if it repeats often"
+        if severity == "Critical":
+            return "This event may indicate a real problem"
+        return f"Based on the event level: {level}"
+
     def _prewarm_security_snapshot(self):
         """Pre-warm security snapshot cache in background."""
         try:
@@ -195,203 +580,225 @@ class BackendBridge(QObject):
             pass  # Module not available
 
     def _init_ai_services(self):
-        """Initialize local AI services (no network calls).
+        """Initialize AI services with Groq Cloud as primary provider.
         
-        Uses V4 architecture with:
-        - EventRulesEngine: Deterministic lookup (instant, UI thread safe)
-        - EventExplainerV4: Deterministic-first with optional AI enhancement
-        - SecurityChatbotV3: Grounded on system context with evidence citations
+        Uses V5 architecture with:
+        - Groq Cloud AI as primary provider (free tier)
+        - Offline EventRulesEngine for instant KB lookups
+        - SQLite caching for persistence
+        - Claude/OpenAI as fallback providers
         """
         try:
-            from ..ai.local_llm_engine import get_llm_engine
             from ..ai.performance import Debouncer
-            
+
             # Create 250ms debouncer for event explanation
             self._explanation_debouncer = Debouncer(250, self)
             self._explanation_debouncer.triggered.connect(self._debounced_request_explanation)
-            
-            # Initialize deterministic rules engine (always available, instant)
-            from ..ai.event_rules_engine import get_event_rules_engine
-            self._rules_engine = get_event_rules_engine()
-            
-            # Try V4 first (preferred - deterministic-first)
+
+            # Try V5 (Groq-powered) first
             try:
-                from ..ai.event_explainer_v4 import get_event_explainer_v4
-                from ..ai.security_chatbot_v3 import get_security_chatbot_v3
-                from ..ai.chat_context_builder import get_context_builder
-                
-                llm_engine = get_llm_engine()
-                self._event_explainer = get_event_explainer_v4(llm_engine)
-                
-                # Context builder for grounded chatbot
-                context_builder = get_context_builder(
-                    snapshot_service=None,  # Set later via set_snapshot_service
-                    event_repo=self.event_repo,
-                )
-                
-                self._security_chatbot = get_security_chatbot_v3(
-                    llm_engine=llm_engine,
-                    context_builder=context_builder,
-                )
-                
-                logger.info("AI services V4 initialized (deterministic-first, instant lookup)")
-                
+                from ..ai.event_explainer_v5 import get_event_explainer_v5
+                from ..ai.providers.groq import is_groq_available
+                from ..ai.security_chatbot_v4 import get_security_chatbot_v4
+
+                # Initialize V5 explainer (Groq + offline KB)
+                self._event_explainer = get_event_explainer_v5(db_repo=self.scan_repo)
+
+                # Connect signals for async explanations
+                self._event_explainer.explanationReady.connect(self._on_v5_explanation_ready)
+                self._event_explainer.explanationFailed.connect(self._on_v5_explanation_failed)
+
+                # Initialize V4 chatbot (Groq with memory)
+                self._security_chatbot = get_security_chatbot_v4()
+                self._security_chatbot.chatResponseReady.connect(self._on_v4_chat_ready)
+                self._security_chatbot.chatResponseFailed.connect(self._on_v4_chat_failed)
+
+                # Update chatbot with system context
+                self._security_chatbot.set_system_context({
+                    "get_defender_status": self._get_defender_status_for_ai,
+                    "get_firewall_status": self._get_firewall_status_for_ai,
+                    "get_recent_events": lambda: self._loaded_events[:20],
+                })
+
+                if is_groq_available():
+                    logger.info("AI services initialized (Groq Cloud + offline KB)")
+                else:
+                    logger.info("AI services initialized (offline KB only - set GROQ_API_KEY for cloud AI)")
+
             except ImportError as e:
-                # Fall back to V3/V2 if V4 not available
-                logger.warning(f"AI V4 not available, falling back: {e}")
-                try:
-                    from ..ai.event_explainer_v3 import get_event_explainer_v3
-                    from ..ai.security_chatbot_v3 import get_security_chatbot_v3
-                    from ..ai.chat_context_builder import get_context_builder
-                    
-                    llm_engine = get_llm_engine()
-                    self._event_explainer = get_event_explainer_v3(llm_engine)
-                    
-                    context_builder = get_context_builder(
-                        snapshot_service=None,
-                        event_repo=self.event_repo,
-                    )
-                    
-                    self._security_chatbot = get_security_chatbot_v3(
-                        llm_engine=llm_engine,
-                        context_builder=context_builder,
-                    )
-                    
-                    logger.info("AI services V3 initialized (fallback)")
-                    
-                except ImportError as e2:
-                    # Fall back to V1 if V2/V3 not available
-                    logger.warning(f"AI V3 not available, falling back to V1: {e2}")
-                    from ..ai.event_explainer import get_event_explainer
-                    from ..ai.event_summarizer import get_event_summarizer
-                    from ..ai.security_chatbot import get_security_chatbot
+                # V5 not available - disable AI services
+                logger.warning(f"V5 AI not available: {e}. AI services disabled.")
+                self._event_explainer = None
+                self._security_chatbot = None
 
-                    llm_engine = get_llm_engine()
-                    self._event_explainer = get_event_explainer(llm_engine)
-                    self._event_summarizer = get_event_summarizer(llm_engine)
-
-                    # Chatbot needs event_repo for context
-                    self._security_chatbot = get_security_chatbot(
-                        llm_engine,
-                        snapshot_service=None,  # Set later via set_snapshot_service
-                        event_repo=self.event_repo,
-                    )
-                    logger.info("AI services V1 initialized (lazy loading - model loads on first use)")
-                
         except Exception as e:
             logger.warning(f"AI services not available: {e}")
             self._event_explainer = None
             self._security_chatbot = None
-            self._security_chatbot = None
-    
-    def _init_smart_assistant(self):
-        """Initialize the smart assistant with conversation memory and context."""
+
+    def _on_v5_explanation_ready(self, request_id: str, result_json: str):
+        """Handle V5 explainer async completion (Groq AI enhancement)."""
         try:
-            # Use the new agent-based SmartAssistant with caching and throttling
-            from ..ai.agents import SmartAssistant
-            
-            # Create callbacks for the assistant to gather context
-            def get_defender_status():
-                try:
-                    from ..utils.security_snapshot import get_security_snapshot
-                    snapshot = get_security_snapshot()
-                    if snapshot and snapshot.defender:
-                        d = snapshot.defender
-                        return {
-                            "realtime_protection": d.realtime_protection,
-                            "antivirus_enabled": d.antivirus_enabled,
-                            "tamper_protection": d.tamper_protection,
-                            "last_scan": d.last_quick_scan or "Unknown",
-                        }
-                except Exception as e:
-                    logger.warning(f"Failed to get Defender status: {e}")
-                return {"realtime_protection": True, "antivirus_enabled": True}
-            
-            def get_firewall_status():
-                try:
-                    from ..utils.security_snapshot import get_security_snapshot
-                    snapshot = get_security_snapshot()
-                    if snapshot and snapshot.firewall:
-                        f = snapshot.firewall
-                        return {
-                            "domain": f.domain_enabled,
-                            "private": f.private_enabled,
-                            "public": f.public_enabled,
-                            "all_enabled": f.all_profiles_enabled,
-                        }
-                except Exception as e:
-                    logger.warning(f"Failed to get Firewall status: {e}")
-                return {"domain": True, "private": True, "public": True}
-            
+            # Look up event_index from pending requests
+            pending = getattr(self, "_pending_v5_requests", {})
+            event_index = pending.pop(request_id, None)
+
+            if event_index is None:
+                # Try extracting from request_id
+                event_index = request_id.replace("explain_", "")
+
+            # Parse and add source marker
+            result_dict = json.loads(result_json)
+            result_dict["ai_enhanced"] = True
+            result_dict["source"] = result_dict.get("source", "groq")
+
+            # Add legacy compatibility fields
+            result_dict["short_title"] = result_dict.get("title", "Event Information")
+            result_dict["explanation"] = result_dict.get("what_happened", "")
+            result_dict["recommendation"] = "; ".join(result_dict.get("what_to_do", []) if isinstance(result_dict.get("what_to_do"), list) else [result_dict.get("what_to_do", "")])
+            result_dict["why_it_happens"] = "; ".join(result_dict.get("why_it_happened", []) if isinstance(result_dict.get("why_it_happened"), list) else [])
+            result_dict["what_you_can_do"] = result_dict["recommendation"]
+            result_dict["severity_label"] = result_dict.get("severity", "Minor")
+
+            explanation_json = json.dumps(result_dict)
+            self.eventExplanationReady.emit(str(event_index), explanation_json)
+            logger.info(f"Groq AI enhancement ready for event {event_index}")
+            self._add_agent_step(
+                "AI Enhancement Complete",
+                "Groq Cloud AI returned detailed analysis",
+                "post-processed output",
+                "AI-enhanced explanation displayed"
+            )
+        except Exception as e:
+            logger.error(f"Failed to emit V5 explanation: {e}")
+
+    def _on_v5_explanation_failed(self, request_id: str, error_msg: str):
+        """Handle V5 explainer async failure."""
+        event_index = request_id.replace("explain_", "")
+        self.eventExplanationFailed.emit(event_index, error_msg)
+
+    def _on_v4_chat_ready(self, request_id: str, response_json: str):
+        """Handle V4 chatbot async completion."""
+        try:
+            response = json.loads(response_json)
+            answer = response.get("answer", "")
+            # Add to conversation history
+            self._chat_conversation.append({"role": "assistant", "content": answer})
+            # Emit to QML
+            self.chatMessageAdded.emit("assistant", answer)
+        except Exception as e:
+            logger.error(f"Failed to emit V4 chat response: {e}")
+            error_msg = "I encountered an error processing your request."
+            self._chat_conversation.append({"role": "assistant", "content": error_msg})
+            self.chatMessageAdded.emit("assistant", error_msg)
+
+    def _on_v4_chat_failed(self, request_id: str, error_msg: str):
+        """Handle V4 chatbot async failure."""
+        error_response = f"Sorry, I encountered an error: {error_msg}"
+        self._chat_conversation.append({"role": "assistant", "content": error_response})
+        self.chatMessageAdded.emit("assistant", error_response)
+
+    def _get_defender_status_for_ai(self) -> dict:
+        """Get Defender status for AI context."""
+        try:
+            from ..utils.security_snapshot import get_security_snapshot
+            snapshot = get_security_snapshot()
+            if snapshot and snapshot.defender:
+                d = snapshot.defender
+                return {
+                    "realtime_protection": d.realtime_protection,
+                    "antivirus_enabled": d.antivirus_enabled,
+                    "tamper_protection": d.tamper_protection,
+                    "last_scan": d.last_quick_scan or "Unknown",
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get Defender status: {e}")
+        return {"realtime_protection": True, "antivirus_enabled": True}
+
+    def _get_firewall_status_for_ai(self) -> dict:
+        """Get Firewall status for AI context."""
+        try:
+            from ..utils.security_snapshot import get_security_snapshot
+            snapshot = get_security_snapshot()
+            if snapshot and snapshot.firewall:
+                f = snapshot.firewall
+                return {
+                    "domain": f.domain_enabled,
+                    "private": f.private_enabled,
+                    "public": f.public_enabled,
+                    "all_enabled": f.all_profiles_enabled,
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get Firewall status: {e}")
+        return {"domain": True, "private": True, "public": True}
+
+    def _init_smart_assistant(self):
+        """Initialize the smart assistant using Groq AI (primary) or Claude/OpenAI (fallback)."""
+        try:
+            # Helper function for recent events
             def get_recent_events(limit=20, log_name=None):
-                # Return cached loaded events - convert EventItem to dict if needed
                 events = []
                 for e in (self._loaded_events[:limit] if self._loaded_events else []):
-                    if hasattr(e, 'to_dict'):
-                        events.append(e.to_dict())
-                    elif isinstance(e, dict):
-                        events.append(e)
-                    else:
-                        # Extract key attributes
-                        events.append({
-                            "record_id": getattr(e, 'record_id', 0),
-                            "log_name": getattr(e, 'log_name', 'System'),
-                            "event_id": getattr(e, 'event_id', 0),
-                            "provider": getattr(e, 'provider', getattr(e, 'source', 'Unknown')),
-                            "level": getattr(e, 'level', 'Information'),
-                            "message": getattr(e, 'message', '')[:500],
-                            "time_created": str(getattr(e, 'time_created', '')),
-                        })
+                    events.append(self._event_to_dict(e))
                 return events
-            
+
             def get_event_details(record_id=None, event_id=None, log_name=None):
-                """Get details for a specific event by record_id or event_id."""
-                # Search in loaded events first
                 for e in (self._loaded_events or []):
-                    e_record_id = getattr(e, 'record_id', e.get('record_id') if isinstance(e, dict) else 0)
-                    e_event_id = getattr(e, 'event_id', e.get('event_id') if isinstance(e, dict) else 0)
-                    
-                    # Match by record_id (exact) or event_id (first match)
+                    e_record_id = getattr(e, "record_id", e.get("record_id") if isinstance(e, dict) else 0)
+                    e_event_id = getattr(e, "event_id", e.get("event_id") if isinstance(e, dict) else 0)
                     if record_id and e_record_id == record_id:
                         return self._event_to_dict(e)
                     if event_id and e_event_id == event_id:
                         return self._event_to_dict(e)
-                
                 return None
-            
+
             def search_events(query, limit=20):
-                """Search events by query string."""
                 query_lower = query.lower()
                 matches = []
                 for e in (self._loaded_events or []):
-                    msg = getattr(e, 'message', e.get('message', '') if isinstance(e, dict) else '')
-                    provider = getattr(e, 'provider', e.get('provider', '') if isinstance(e, dict) else '')
-                    event_id = str(getattr(e, 'event_id', e.get('event_id', 0) if isinstance(e, dict) else 0))
-                    
-                    if (query_lower in msg.lower() or 
-                        query_lower in provider.lower() or 
+                    msg = getattr(e, "message", e.get("message", "") if isinstance(e, dict) else "")
+                    provider = getattr(e, "provider", e.get("provider", "") if isinstance(e, dict) else "")
+                    event_id = str(getattr(e, "event_id", e.get("event_id", 0) if isinstance(e, dict) else 0))
+
+                    if (query_lower in msg.lower() or
+                        query_lower in provider.lower() or
                         query_lower in event_id):
                         matches.append(self._event_to_dict(e))
                         if len(matches) >= limit:
                             break
                 return matches
-            
-            # Initialize new agent-based smart assistant with callbacks
-            # This version has built-in caching, throttling, and timeouts
-            self._smart_assistant = SmartAssistant(
-                tool_callbacks={
-                    "get_defender_status": get_defender_status,
-                    "get_firewall_status": get_firewall_status,
-                    "get_recent_events": get_recent_events,
-                    "get_event_details": get_event_details,
-                    "search_events": search_events,
-                },
-                enable_cache=True,      # 5-min LRU cache
-                enable_throttle=True,   # 2 req/sec max
+
+            tool_callbacks = {
+                "get_defender_status": self._get_defender_status_for_ai,
+                "get_firewall_status": self._get_firewall_status_for_ai,
+                "get_recent_events": get_recent_events,
+                "get_event_details": get_event_details,
+                "search_events": search_events,
+            }
+
+            # Try Groq first (free tier)
+            try:
+                from ..ai.groq_smart_assistant import create_groq_smart_assistant
+                from ..ai.providers.groq import is_groq_available
+
+                if is_groq_available():
+                    self._smart_assistant = create_groq_smart_assistant(
+                        tool_callbacks=tool_callbacks,
+                    )
+                    logger.info("Smart Assistant initialized (Groq AI)")
+                    return
+                logger.info("Groq not configured, will use assistant with helpful error messages")
+
+            except ImportError as e:
+                logger.debug(f"Groq smart assistant not available: {e}")
+
+            # Use Groq assistant - will show helpful error if no API key
+            from ..ai.groq_smart_assistant import create_groq_smart_assistant
+            self._smart_assistant = create_groq_smart_assistant(
+                tool_callbacks=tool_callbacks,
             )
-            
-            logger.info("Smart Assistant initialized (agent-based with caching)")
-            
+            logger.info("Smart Assistant initialized (Groq)")
+
         except Exception as e:
             logger.warning(f"Smart Assistant not available: {e}")
             import traceback
@@ -403,25 +810,25 @@ class BackendBridge(QObject):
         try:
             # Find the ai_worker.py script
             ai_worker_path = Path(__file__).parent.parent / "ai" / "ai_worker.py"
-            
+
             if not ai_worker_path.exists():
                 logger.warning(f"AI worker script not found: {ai_worker_path}")
                 return
-            
+
             self._ai_process = QProcess(self)
             self._ai_process.readyReadStandardOutput.connect(self._on_ai_output)
             self._ai_process.readyReadStandardError.connect(self._on_ai_error)
             self._ai_process.finished.connect(self._on_ai_finished)
-            
+
             # Start the process
             self._ai_process.start(sys.executable, [str(ai_worker_path)])
-            
+
             if self._ai_process.waitForStarted(5000):
                 logger.info("AI worker process started")
             else:
                 logger.warning("Failed to start AI worker process")
                 self._ai_process = None
-                
+
         except Exception as e:
             logger.error(f"Failed to start AI worker: {e}")
             self._ai_process = None
@@ -430,39 +837,39 @@ class BackendBridge(QObject):
         """Handle output from AI worker process."""
         if not self._ai_process:
             return
-            
+
         while self._ai_process.canReadLine():
             line = bytes(self._ai_process.readLine().data()).decode("utf-8").strip()
             if not line:
                 continue
-            
+
             logger.debug(f"AI worker output: {line[:200]}...")  # Log first 200 chars
-                
+
             try:
                 response = json.loads(line)
                 request_id = response.get("id", "")
-                
+
                 # Handle init response
                 if request_id == "init":
                     if response.get("ok"):
                         self._ai_ready = True
                         logger.info("AI worker ready")
                     continue
-                
+
                 # Log response handling
                 logger.debug(f"Processing AI response id={request_id}, current={self._current_ai_request}")
-                
+
                 # Check if this is the current request (ignore old cancelled ones)
                 if request_id != self._current_ai_request:
                     logger.debug(f"Ignoring stale AI response: {request_id}")
                     continue
-                
+
                 # Get event index for this request
                 event_index = self._pending_ai_requests.pop(request_id, None)
                 if event_index is None:
                     logger.warning(f"No pending request found for id={request_id}")
                     continue
-                
+
                 if response.get("ok"):
                     result = response.get("result", {})
                     explanation_json = json.dumps(result)
@@ -472,7 +879,7 @@ class BackendBridge(QObject):
                     error_msg = response.get("error", "Unknown error")
                     logger.warning(f"AI explanation failed: {error_msg}")
                     self.eventExplanationFailed.emit(str(event_index), error_msg)
-                    
+
             except json.JSONDecodeError as e:
                 logger.warning(f"Invalid JSON from AI worker: {e} - line: {line[:100]}")
             except Exception as e:
@@ -491,12 +898,12 @@ class BackendBridge(QObject):
         """Handle AI worker process termination."""
         logger.warning(f"AI worker process finished: code={exit_code}, status={exit_status}")
         self._ai_ready = False
-        
+
         # Fail any pending requests
         for request_id, event_index in list(self._pending_ai_requests.items()):
             self.eventExplanationFailed.emit(str(event_index), "AI service stopped")
         self._pending_ai_requests.clear()
-        
+
         # NOTE: AI worker restart disabled - now using agent-based SmartAssistant
         # QTimer.singleShot(2000, self._start_ai_worker)  # Disabled - archived
 
@@ -505,14 +912,13 @@ class BackendBridge(QObject):
         self._ai_request_id += 1
         request_id = f"req_{self._ai_request_id}"
         request["id"] = request_id
-        
+
         if self._ai_process and self._ai_process.state() == QProcess.Running:
             request_json = json.dumps(request) + "\n"
             self._ai_process.write(request_json.encode("utf-8"))
             return request_id
-        else:
-            logger.warning("AI worker not running")
-            return ""
+        logger.warning("AI worker not running")
+        return ""
 
     def _cancel_current_ai_request(self):
         """Cancel the current AI request (by marking it stale)."""
@@ -523,11 +929,11 @@ class BackendBridge(QObject):
         """Set snapshot service for chatbot context (called from application.py)."""
         if self._security_chatbot:
             # V2/V3 chatbot uses context builder
-            if hasattr(self._security_chatbot, '_context_builder'):
+            if hasattr(self._security_chatbot, "_context_builder"):
                 self._security_chatbot._context_builder._snapshot = snapshot_service  # type: ignore[union-attr]
                 logger.info("Snapshot service connected to AI chatbot context builder")
             # V1 chatbot uses direct service
-            elif hasattr(self._security_chatbot, '_snapshot_service'):
+            elif hasattr(self._security_chatbot, "_snapshot_service"):
                 self._security_chatbot._snapshot_service = snapshot_service  # type: ignore[union-attr]
                 logger.info("Snapshot service connected to AI chatbot V1")
 
@@ -563,7 +969,7 @@ class BackendBridge(QObject):
         source = str(event.get("source", event.get("provider", "")))
         event_id = str(event.get("event_id", 0))
         message = str(event.get("message", ""))
-        
+
         raw = f"{source}|{event_id}|{message}"
         return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
@@ -574,17 +980,17 @@ class BackendBridge(QObject):
         def load_in_thread():
             try:
                 events = list(self.event_reader.tail(limit=300))
-                
+
                 # Cache the loaded events for AI explanation lookup
                 self._loaded_events = events
-                
+
                 # Store in database
                 self.event_repo.add_many(events)
 
                 # Convert EventItem objects to dicts for QML with friendly messages
                 event_dicts = []
                 events_needing_summary = []
-                
+
                 for idx, evt in enumerate(events):
                     event_dict = {
                         "timestamp": evt.timestamp.isoformat() if hasattr(evt.timestamp, "isoformat") else str(evt.timestamp),
@@ -596,65 +1002,64 @@ class BackendBridge(QObject):
                         "event_id": getattr(evt, "event_id", 0),
                         "log_name": getattr(evt, "log_name", "Windows"),
                     }
-                    
+
                     # Compute signature for caching
                     signature = self._compute_event_signature(event_dict)
                     event_dict["_signature"] = signature
-                    
+
                     # Try to get cached summary from SQLite
                     source = event_dict["source"]
                     event_id = event_dict["event_id"]
-                    
+
                     # Check if we have a cached summary in the database
                     cached = None
                     try:
                         # Use the scan_repo which is SqliteRepo
-                        if hasattr(self.scan_repo, 'get_event_summary'):
+                        if hasattr(self.scan_repo, "get_event_summary"):
                             cached = self.scan_repo.get_event_summary(source, event_id, signature)
                     except Exception as e:
                         logger.debug(f"Cache lookup error: {e}")
-                    
+
                     if cached:
                         # Use cached friendly message
                         event_dict["friendly_message"] = cached.get("table_summary", event_dict["message"])
                         event_dict["_has_summary"] = True
-                    else:
-                        # Generate summary using EventSummarizer (rule-based, fast)
-                        if self._event_summarizer:
-                            try:
-                                summary = self._event_summarizer.summarize(event_dict)
-                                event_dict["friendly_message"] = summary.table_summary
-                                event_dict["_has_summary"] = True
-                                
-                                # Save to database cache for future use
-                                if hasattr(self.scan_repo, 'save_event_summary'):
-                                    try:
-                                        self.scan_repo.save_event_summary(
-                                            source, event_id, signature, summary.to_dict()
-                                        )
-                                    except Exception as e:
-                                        logger.debug(f"Cache save error: {e}")
-                            except Exception as e:
-                                logger.debug(f"Summary generation error: {e}")
-                                # Fallback to truncated message
-                                event_dict["friendly_message"] = event_dict["message"][:100] + "..." if len(event_dict["message"]) > 100 else event_dict["message"]
-                                event_dict["_has_summary"] = False
-                        else:
-                            # No summarizer available - use truncated message
+                    # Generate summary using EventSummarizer (rule-based, fast)
+                    elif self._event_summarizer:
+                        try:
+                            summary = self._event_summarizer.summarize(event_dict)
+                            event_dict["friendly_message"] = summary.table_summary
+                            event_dict["_has_summary"] = True
+
+                            # Save to database cache for future use
+                            if hasattr(self.scan_repo, "save_event_summary"):
+                                try:
+                                    self.scan_repo.save_event_summary(
+                                        source, event_id, signature, summary.to_dict()
+                                    )
+                                except Exception as e:
+                                    logger.debug(f"Cache save error: {e}")
+                        except Exception as e:
+                            logger.debug(f"Summary generation error: {e}")
+                            # Fallback to truncated message
                             event_dict["friendly_message"] = event_dict["message"][:100] + "..." if len(event_dict["message"]) > 100 else event_dict["message"]
                             event_dict["_has_summary"] = False
-                    
+                    else:
+                        # No summarizer available - use truncated message
+                        event_dict["friendly_message"] = event_dict["message"][:100] + "..." if len(event_dict["message"]) > 100 else event_dict["message"]
+                        event_dict["_has_summary"] = False
+
                     event_dicts.append(event_dict)
 
                 # Emit signals via thread-safe internal signals
                 self._eventsLoadedInternal.emit(event_dicts)
                 self._toastInternal.emit("success", f"Loaded {len(events)} events")
-                
+
             except Exception as e:
                 logger.error(f"Failed to load events: {e}")
                 self._toastInternal.emit("error", f"Failed to load events: {e}")
                 self._eventsLoadedInternal.emit([])
-        
+
         # Start background thread
         thread = threading.Thread(target=load_in_thread, daemon=True)
         thread.start()
@@ -788,50 +1193,62 @@ class BackendBridge(QObject):
                 logger.debug(f"Watchdog unregister failed: {e}")
 
     @Slot(result=bool)
-    def nmapAvailable(self):
-        """Check if Nmap is available for scanning."""
-        return self.net_scanner is not None
-
-    @Slot(result=bool)
     def virusTotalEnabled(self):
         """Check if VirusTotal integration is enabled."""
         return self.file_scanner is not None and self.url_scanner is not None
 
     @Slot()
     def loadScanHistory(self):
-        """Load all scan records from database."""
-        try:
-            scans = self.scan_repo.get_all()
+        """Load all scan records from database (async, never blocks UI)."""
+        def load_in_thread():
+            try:
+                scans = self.scan_repo.get_all()
 
-            # Convert ScanRecord objects to dicts for QML
-            scan_dicts = []
-            for scan in scans:
-                scan_dicts.append(
-                    {
-                        "id": scan.id or 0,
-                        "type": (
-                            scan.type.value
-                            if hasattr(scan.type, "value")
-                            else str(scan.type)
-                        ),
-                        "target": scan.target or "",
-                        "status": scan.status or "unknown",
-                        "started_at": (
-                            scan.started_at.isoformat() if scan.started_at else ""
-                        ),
-                        "finished_at": (
-                            scan.finished_at.isoformat() if scan.finished_at else ""
-                        ),
-                        "findings": scan.findings or {},
-                    }
-                )
+                # Convert ScanRecord objects to dicts for QML
+                scan_dicts = []
+                for scan in scans:
+                    scan_dicts.append(
+                        {
+                            "id": scan.id or 0,
+                            "type": (
+                                scan.type.value
+                                if hasattr(scan.type, "value")
+                                else str(scan.type)
+                            ),
+                            "target": scan.target or "",
+                            "status": scan.status or "unknown",
+                            "started_at": (
+                                scan.started_at.isoformat() if scan.started_at else ""
+                            ),
+                            "finished_at": (
+                                scan.finished_at.isoformat() if scan.finished_at else ""
+                            ),
+                            "findings": scan.findings or {},
+                        }
+                    )
 
-            self.scansLoaded.emit(scan_dicts)
-            if len(scan_dicts) > 0:
-                self.toast.emit("info", f"Loaded {len(scan_dicts)} scan records")
-        except (OSError, ValueError, KeyError) as e:
-            self.toast.emit("error", f"Failed to load scan history: {e!s}")
-            self.scansLoaded.emit([])
+                # Emit on main thread via QTimer
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self._emit_scans_loaded(scan_dicts))
+            except (OSError, ValueError, KeyError) as e:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda err=e: self._emit_scans_error(str(err)))
+
+        # Run in background thread
+        import threading
+        thread = threading.Thread(target=load_in_thread, daemon=True, name="LoadScanHistory")
+        thread.start()
+
+    def _emit_scans_loaded(self, scan_dicts):
+        """Emit scansLoaded signal on main thread."""
+        self.scansLoaded.emit(scan_dicts)
+        if len(scan_dicts) > 0:
+            self.toast.emit("info", f"Loaded {len(scan_dicts)} scan records")
+
+    def _emit_scans_error(self, error_msg):
+        """Emit error toast on main thread."""
+        self.toast.emit("error", f"Failed to load scan history: {error_msg}")
+        self.scansLoaded.emit([])
 
     @Slot(str)
     def exportScanHistoryCSV(self, path: str):
@@ -1097,18 +1514,18 @@ class BackendBridge(QObject):
         logger.info(f"URL scan started for {url}")
 
     # ============ Local Scan Methods (100% Offline) ============
-    
+
     # Local scan state - exposed to QML as properties
     _local_scan_in_progress = False
     _local_scan_stage = ""
     _local_scan_result = None
     _last_report_path = ""
-    
+
     # Integrated sandbox state
     _integrated_sandbox_in_progress = False
     _integrated_sandbox_stage = ""
     _integrated_sandbox_available = None  # Cached availability
-    
+
     # URL scan state (VirusTotal-like, 100% local)
     _url_scan_in_progress = False
     _url_scan_stage = ""
@@ -1116,7 +1533,7 @@ class BackendBridge(QObject):
     _url_scan_result = None
     _last_url_report_path = ""
     _webview2_available = None  # Cached availability
-    
+
     @Slot(str, bool)
     def scanFileLocal(self, path: str, run_sandbox: bool = False):
         """
@@ -1135,32 +1552,32 @@ class BackendBridge(QObject):
         if not path:
             self.toast.emit("error", "File path cannot be empty")
             return
-        
+
         if self._local_scan_in_progress:
             self.toast.emit("warning", "A local scan is already in progress")
             return
-        
+
         worker_id = f"local-file-scan-{hash(path) % 10000}"
-        
+
         if worker_id in self._active_workers:
             return
-        
+
         self._local_scan_in_progress = True
         self._local_scan_stage = "Initializing"
         self.localScanStarted.emit()
         self.toast.emit("info", f"Scanning file locally: {Path(path).name}")
         scan_start_time = datetime.now()
-        
+
         def scan_task(worker):
             """Background local scan task"""
-            from ..scanning import StaticScanner, SandboxController, ReportWriter
-            
+            from ..scanning import ReportWriter, SandboxController, StaticScanner
+
             worker.signals.heartbeat.emit(worker_id)
-            
+
             # Initialize components
             scanner = StaticScanner()  # type: ignore[call-arg]
             report_writer = ReportWriter()  # type: ignore[call-arg]
-            
+
             try:
                 result = scanner.scan_file(path)  # type: ignore[union-attr]
             except Exception as e:
@@ -1182,7 +1599,7 @@ class BackendBridge(QObject):
                     "report_path": "",
                     "errors": [str(e)],
                 }
-            
+
             # Run sandbox if requested and available
             if run_sandbox and not result.sandbox:
                 try:
@@ -1201,7 +1618,7 @@ class BackendBridge(QObject):
                             }
                 except Exception as e:
                     logger.warning(f"Sandbox error: {e}")
-            
+
             # Generate report
             try:
                 report_path = report_writer.write_file_report(result)
@@ -1209,7 +1626,7 @@ class BackendBridge(QObject):
             except Exception as e:
                 logger.warning(f"Report generation error: {e}")
                 report_path_str = ""
-            
+
             # Convert to dict for QML
             return {
                 "file_name": result.file_name or Path(path).name,
@@ -1227,7 +1644,7 @@ class BackendBridge(QObject):
                 "report_path": report_path_str,
                 "errors": result.errors if result.errors else [],
             }
-        
+
         def on_success(wid, result):
             """Local scan completed"""
             if worker_id not in self._active_workers:
@@ -1237,7 +1654,7 @@ class BackendBridge(QObject):
                 self._last_report_path = result.get("report_path", "")
                 self._local_scan_in_progress = False
                 self._local_scan_stage = ""
-                
+
                 # Save to scan history
                 scan_rec = ScanRecord(
                     id=None,
@@ -1251,9 +1668,9 @@ class BackendBridge(QObject):
                 )
                 scan_id = self.scan_repo.add(scan_rec)
                 result["scan_id"] = scan_id
-                
+
                 self.localScanFinished.emit(result)
-                
+
                 # Show toast based on verdict
                 verdict = result.get("verdict", "Unknown")
                 if verdict == "Malicious":
@@ -1262,12 +1679,12 @@ class BackendBridge(QObject):
                     self.toast.emit("warning", f"⚠️ File is suspicious (Score: {result.get('score', 0)}/100)")
                 else:
                     self.toast.emit("success", f"✓ File appears clean (Score: {result.get('score', 0)}/100)")
-                    
+
             finally:
                 if worker_id in self._active_workers:
                     del self._active_workers[worker_id]
                 self._watchdog.unregister_worker(worker_id)
-        
+
         def on_error(wid, error_msg):
             """Local scan failed"""
             if worker_id not in self._active_workers:
@@ -1280,26 +1697,26 @@ class BackendBridge(QObject):
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
             self._watchdog.unregister_worker(worker_id)
-        
+
         # Create and start worker with 180s timeout (sandbox can take time)
         worker = CancellableWorker(worker_id, scan_task, timeout_ms=180000)
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
-        
+
         self._active_workers[worker_id] = worker
         # Register with longer stall threshold if sandbox is enabled
         stall_threshold = 90 if run_sandbox else 30  # 90s for sandbox, 30s for static only
         self._watchdog.register_worker(worker_id, stale_threshold_sec=stall_threshold)
         self._thread_pool.start(worker)
-        
+
         logger.info(f"Local file scan started for {path}")
-    
+
     @Slot(str)
     def _updateLocalScanStage(self, stage: str):
         """Update scan stage (called from worker thread via Qt signal)."""
         self._local_scan_stage = stage
         self.localScanProgress.emit(stage)
-    
+
     @Slot(str)
     def checkUrlLocal(self, url: str):
         """
@@ -1316,28 +1733,28 @@ class BackendBridge(QObject):
         if not url:
             self.toast.emit("error", "URL cannot be empty")
             return
-        
+
         worker_id = f"local-url-check-{hash(url) % 10000}"
-        
+
         if worker_id in self._active_workers:
             self.toast.emit("warning", "URL check already in progress")
             return
-        
-        self.toast.emit("info", f"Checking URL locally...")
+
+        self.toast.emit("info", "Checking URL locally...")
         scan_start_time = datetime.now()
-        
+
         def check_task(worker):
             """Background URL check task"""
-            from ..scanning import URLChecker, ReportWriter
-            
+            from ..scanning import ReportWriter, URLChecker
+
             worker.signals.heartbeat.emit(worker_id)
-            
+
             checker = URLChecker()
             report_writer = ReportWriter()
-            
+
             result = checker.check_url(url)
             report_path = report_writer.write_url_report(result)
-            
+
             # Convert to dict for QML
             return {
                 "original_url": result.original_url,
@@ -1352,14 +1769,14 @@ class BackendBridge(QObject):
                 "parsed": result.parsed,
                 "report_path": str(report_path),
             }
-        
+
         def on_success(wid, result):
             """URL check completed"""
             if worker_id not in self._active_workers:
                 return
             try:
                 self._last_report_path = result.get("report_path", "")
-                
+
                 # Save to scan history
                 scan_rec = ScanRecord(
                     id=None,
@@ -1373,9 +1790,9 @@ class BackendBridge(QObject):
                 )
                 scan_id = self.scan_repo.add(scan_rec)
                 result["scan_id"] = scan_id
-                
+
                 self.localUrlCheckFinished.emit(result)
-                
+
                 # Show toast based on verdict
                 verdict = result.get("verdict", "Unknown")
                 if verdict == "Malicious":
@@ -1384,12 +1801,12 @@ class BackendBridge(QObject):
                     self.toast.emit("warning", f"⚠️ URL is suspicious (Score: {result.get('score', 0)}/100)")
                 else:
                     self.toast.emit("success", f"✓ URL appears safe (Score: {result.get('score', 0)}/100)")
-                    
+
             finally:
                 if worker_id in self._active_workers:
                     del self._active_workers[worker_id]
                 self._watchdog.unregister_worker(worker_id)
-        
+
         def on_error(wid, error_msg):
             """URL check failed"""
             if worker_id not in self._active_workers:
@@ -1400,44 +1817,45 @@ class BackendBridge(QObject):
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
             self._watchdog.unregister_worker(worker_id)
-        
+
         # Create and start worker
         worker = CancellableWorker(worker_id, check_task, timeout_ms=30000)
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
-        
+
         self._active_workers[worker_id] = worker
         self._watchdog.register_worker(worker_id)
         self._thread_pool.start(worker)
-        
+
         logger.info(f"Local URL check started for {url}")
-    
+
     @Slot(result=bool)
     def localScanInProgress(self) -> bool:
         """Check if a local scan is in progress."""
         return self._local_scan_in_progress
-    
+
     @Slot(result=str)
     def localScanStage(self) -> str:
         """Get current local scan stage."""
         return self._local_scan_stage
-    
+
     @Slot(result=str)
     def lastReportPath(self) -> str:
         """Get path to last generated report."""
         return self._last_report_path
-    
+
     @Slot(str)
     def openReportFolder(self, path: str = ""):
         """Open the reports folder in file explorer."""
         import subprocess
+
         from ..scanning import ReportWriter
-        
+
         if path:
             folder = Path(path).parent
         else:
             folder = ReportWriter().reports_dir
-        
+
         if folder.exists():
             if sys.platform == "win32":
                 subprocess.run(["explorer", str(folder)], check=False)
@@ -1445,7 +1863,7 @@ class BackendBridge(QObject):
                 subprocess.run(["open", str(folder)], check=False)
             else:
                 subprocess.run(["xdg-open", str(folder)], check=False)
-    
+
     @Slot(result=bool)
     def sandboxAvailable(self) -> bool:
         """Check if sandbox (VirtualBox/Windows Sandbox) is available."""
@@ -1455,7 +1873,7 @@ class BackendBridge(QObject):
             return controller.is_available
         except Exception:
             return False
-    
+
     @Slot(result=list)
     def sandboxMethods(self) -> list:
         """Get available sandbox methods."""
@@ -1465,22 +1883,22 @@ class BackendBridge(QObject):
             return controller.available_methods
         except Exception:
             return []
-    
+
     # ============ Integrated Sandbox (Bundled, No VirtualBox) ============
-    
+
     @Slot(result=bool)
     def integratedSandboxAvailable(self) -> bool:
         """
         Check if integrated sandbox is available.
         
         This sandbox is bundled with the app and requires:
-        - Windows: Admin privileges for Job Objects and firewall rules
+        - Windows: Windows Sandbox VM (preferred) or Job Object fallback
         - Linux: User namespace support (most modern kernels)
         - macOS: Static analysis only
         """
         if self._integrated_sandbox_available is not None:
             return self._integrated_sandbox_available
-        
+
         try:
             from ..scanning.integrated_sandbox import get_integrated_sandbox
             sandbox = get_integrated_sandbox()
@@ -1491,7 +1909,7 @@ class BackendBridge(QObject):
             logger.warning(f"Integrated sandbox check failed: {e}")
             self._integrated_sandbox_available = False
             return False
-    
+
     @Slot(result=str)
     def integratedSandboxStatus(self) -> str:
         """Get a human-readable status of the integrated sandbox."""
@@ -1499,34 +1917,33 @@ class BackendBridge(QObject):
             from ..scanning.integrated_sandbox import get_integrated_sandbox
             sandbox = get_integrated_sandbox()
             avail = sandbox.availability()
-            
+
             if avail.get("available"):
                 method = avail.get("method", "unknown")
                 return f"Available ({method})"
-            else:
-                reason = avail.get("reason", "Unknown reason")
-                return f"Not available: {reason}"
+            reason = avail.get("reason", "Unknown reason")
+            return f"Not available: {reason}"
         except (ImportError, OSError) as e:
             # OSError includes DLL loading errors
             # Don't show full error message for optional dependencies
             if "libyara.dll" in str(e) or "DLL" in str(e):
-                return "Available (Windows Job Object)"
+                return "Available (Windows Sandbox/Job Object)"
             return f"Not available: {str(e)[:50]}"
         except Exception as e:
             return f"Not available: {str(e)[:50]}"
-    
+
     @Slot(result=bool)
     def integratedSandboxInProgress(self) -> bool:
         """Check if integrated sandbox scan is in progress."""
         return self._integrated_sandbox_in_progress
-    
+
     @Slot(result=str)
     def integratedSandboxStage(self) -> str:
         """Get current integrated sandbox stage."""
         return self._integrated_sandbox_stage
-    
+
     @Slot(str, bool, bool, int)
-    def runIntegratedScan(self, path: str, run_sandbox: bool = True, 
+    def runIntegratedScan(self, path: str, run_sandbox: bool = True,
                           block_network: bool = True, timeout_seconds: int = 30):
         """
         Run a comprehensive scan with integrated sandbox.
@@ -1546,36 +1963,37 @@ class BackendBridge(QObject):
         if not path:
             self.toast.emit("error", "File path cannot be empty")
             return
-        
+
         if self._integrated_sandbox_in_progress:
             self.toast.emit("warning", "An integrated scan is already in progress")
             return
-        
+
         file_path = Path(path)
         if not file_path.exists():
             self.toast.emit("error", f"File not found: {path}")
             return
-        
+
         worker_id = f"integrated-scan-{hash(path) % 10000}"
-        
+
         if worker_id in self._active_workers:
             return
-        
+
         self._integrated_sandbox_in_progress = True
         self._integrated_sandbox_stage = "Initializing"
         self.integratedSandboxStarted.emit()
         self.integratedSandboxProgress.emit("Initializing...")
         self.toast.emit("info", f"Starting integrated scan: {file_path.name}")
         scan_start_time = datetime.now()
-        
+
         def scan_task(worker):
             """Background integrated scan task."""
-            from ..scanning.static_scanner import StaticScanner, ScanResult
+            from dataclasses import asdict, is_dataclass
+
+            from ..scanning.friendly_report import get_friendly_report_generator
             from ..scanning.integrated_sandbox import get_integrated_sandbox
             from ..scanning.scoring import score_scan_results
-            from ..scanning.friendly_report import get_friendly_report_generator
-            from dataclasses import asdict, is_dataclass
-            
+            from ..scanning.static_scanner import StaticScanner
+
             def result_to_dict(result):
                 """Convert ScanResult dataclass to dict for scoring."""
                 if result is None:
@@ -1585,32 +2003,32 @@ class BackendBridge(QObject):
                 if is_dataclass(result):
                     d = asdict(result)
                     # Handle nested dataclasses
-                    if hasattr(result, 'pe_analysis') and result.pe_analysis:
-                        d['pe_info'] = asdict(result.pe_analysis)
-                    if hasattr(result, 'iocs') and result.iocs:
+                    if hasattr(result, "pe_analysis") and result.pe_analysis:
+                        d["pe_info"] = asdict(result.pe_analysis)
+                    if hasattr(result, "iocs") and result.iocs:
                         ioc_dict = asdict(result.iocs)
-                        d['iocs'] = {
-                            'ips': ioc_dict.get('ips', []),
-                            'urls': ioc_dict.get('urls', []),
-                            'domains': ioc_dict.get('domains', []),
-                            'registry_paths': ioc_dict.get('registry_keys', []),
-                            'file_paths': ioc_dict.get('file_paths', []),
-                            'emails': ioc_dict.get('emails', []),
+                        d["iocs"] = {
+                            "ips": ioc_dict.get("ips", []),
+                            "urls": ioc_dict.get("urls", []),
+                            "domains": ioc_dict.get("domains", []),
+                            "registry_paths": ioc_dict.get("registry_keys", []),
+                            "file_paths": ioc_dict.get("file_paths", []),
+                            "emails": ioc_dict.get("emails", []),
                         }
                     return d
                 return result
-            
+
             worker.signals.heartbeat.emit(worker_id)
-            
+
             static_result = None
             sandbox_result = None
             scoring_result = None
             report_path = ""
-            
+
             # Step 1: Static analysis
             self._integrated_sandbox_stage = "Static Analysis"
             self.integratedSandboxProgress.emit("Running static analysis...")
-            
+
             try:
                 scanner = StaticScanner()
                 scan_result = scanner.scan_file(str(file_path))
@@ -1623,25 +2041,109 @@ class BackendBridge(QObject):
                     "file_size": file_path.stat().st_size if file_path.exists() else 0,
                     "error": str(e),
                 }
-            
+
             # Step 2: Sandbox execution (if requested)
+            sandbox_session = None
             if run_sandbox:
                 self._integrated_sandbox_stage = "Sandbox Execution"
                 self.integratedSandboxProgress.emit("Running in sandbox...")
-                
+
                 try:
+                    from ..scanning.sandbox_session import SandboxSession
+
+                    # Create sandbox session for live event tracking
+                    def event_batch_callback(events):
+                        """Emit event batch to QML."""
+                        try:
+                            event_dicts = [e.to_dict() for e in events]
+                            self.sandboxEventBatch.emit(json.dumps(event_dicts))
+                        except Exception as ex:
+                            logger.warning(f"Event batch callback error: {ex}")
+
+                    def stats_callback(stats):
+                        """Emit stats update to QML."""
+                        try:
+                            self.sandboxStatsUpdate.emit(json.dumps(stats.to_dict()))
+                        except Exception as ex:
+                            logger.warning(f"Stats callback error: {ex}")
+
+                    sandbox_session = SandboxSession(
+                        event_callback=event_batch_callback,
+                        stats_callback=stats_callback,
+                        batch_interval_ms=300  # 300ms batched updates
+                    )
+                    self._sandbox_session = sandbox_session
+                    self._sandbox_cancelled = False
+
+                    # Start the session
+                    sandbox_session.start(str(file_path), static_result.get("sha256", ""))
+
                     sandbox = get_integrated_sandbox()
                     avail = sandbox.availability()
-                    
+
                     if avail.get("available"):
+                        # Event callback bridge from sandbox to session
+                        from ..scanning.sandbox_session import SandboxEvent
+
+                        # Track if preview started
+                        preview_started = [False]  # Use list for closure mutation
+
+                        def sandbox_event_callback(event_type: str, data: dict):
+                            if sandbox_session:
+                                # Create SandboxEvent from raw data
+                                event = SandboxEvent(
+                                    event_type=event_type,
+                                    timestamp=data.get("timestamp", datetime.now().isoformat()),
+                                    pid=data.get("pid"),
+                                    process_name=data.get("name") or data.get("process_name"),
+                                    file_path=data.get("path") or data.get("file_path"),
+                                    exit_code=data.get("exit_code"),
+                                    description=data.get("description"),
+                                )
+                                sandbox_session.add_event(event)
+                                worker.signals.heartbeat.emit(worker_id)
+
+                                # Start live preview on first process_start event
+                                if event_type == "process_start" and not preview_started[0]:
+                                    process_pid = data.get("pid")
+                                    if process_pid:
+                                        try:
+                                            # Get exe name from the file being scanned
+                                            exe_name = Path(str(file_path)).name if file_path else None
+                                            logger.info(f"Starting live preview for PID {process_pid}, exe={exe_name}")
+                                            self._start_live_preview(process_pid, sandbox_session.workspace, exe_name=exe_name)
+                                            preview_started[0] = True
+                                        except Exception as prev_err:
+                                            logger.warning(f"Could not start live preview: {prev_err}")
+
+                        # Cancel check callback
+                        def cancel_check():
+                            return self._sandbox_cancelled
+
                         result = sandbox.run_file(
                             str(file_path),
                             timeout=timeout_seconds,
-                            block_network=block_network
+                            block_network=block_network,
+                            event_callback=sandbox_event_callback,
+                            cancel_check=cancel_check
                         )
+
                         sandbox_result = result.to_dict()
+
+                        # Stop live preview
+                        self._stop_live_preview()
+                        self._stop_autopilot()
+
+                        # Stop session and get summary
+                        session_summary = sandbox_session.stop(cancelled=self._sandbox_cancelled)
+                        sandbox_result["session_summary"] = session_summary
+
+                        # Emit session ended signal
+                        self.sandboxSessionEnded.emit(json.dumps(session_summary))
+
                         worker.signals.heartbeat.emit(worker_id)
                     else:
+                        sandbox_session.stop()
                         sandbox_result = {
                             "success": False,
                             "error_message": avail.get("reason", "Sandbox not available"),
@@ -1649,27 +2151,47 @@ class BackendBridge(QObject):
                         }
                 except Exception as e:
                     logger.warning(f"Sandbox execution error: {e}")
+                    if sandbox_session:
+                        sandbox_session.stop()
+                    self._sandbox_session = None
                     sandbox_result = {
                         "success": False,
                         "error_message": str(e),
                         "platform": sys.platform,
                     }
-            
+
             # Step 3: Scoring
             self._integrated_sandbox_stage = "Scoring"
             self.integratedSandboxProgress.emit("Calculating threat score...")
-            
+
             try:
                 scoring_result = score_scan_results(static_result, sandbox_result)
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.error(f"Scoring error: {e}")
                 scoring_result = None
-            
-            # Step 4: Report generation (friendly, user-readable)
+
+            # Step 4: AI Analysis (optional - uses Groq if available)
+            ai_analysis = None
+            self._integrated_sandbox_stage = "AI Analysis"
+            self.integratedSandboxProgress.emit("AI analyzing results...")
+
+            try:
+                from ..ai.providers.groq import is_groq_available
+
+                if is_groq_available():
+                    # AI analysis is now handled by the report generator
+                    # which uses Groq prompts internally
+                    logger.info("Groq available for enhanced report generation")
+                worker.signals.heartbeat.emit(worker_id)
+            except Exception as e:
+                logger.warning(f"AI analysis error: {e}")
+                ai_analysis = None
+
+            # Step 5: Report generation (friendly, user-readable)
             self._integrated_sandbox_stage = "Report Generation"
             self.integratedSandboxProgress.emit("Generating report...")
-            
+
             report_content = ""
             try:
                 report_gen = get_friendly_report_generator()
@@ -1683,7 +2205,7 @@ class BackendBridge(QObject):
             except Exception as e:
                 logger.warning(f"Report generation error: {e}")
                 report_content = f"Error generating report: {e}"
-            
+
             # Build final result dict for QML
             result = {
                 "file_name": file_path.name,
@@ -1691,20 +2213,20 @@ class BackendBridge(QObject):
                 "file_size": static_result.get("file_size", 0) if static_result else 0,
                 "sha256": static_result.get("sha256", "") if static_result else "",
                 "mime_type": static_result.get("mime_type", "") if static_result else "",
-                
+
                 # Scoring
                 "score": scoring_result.score if scoring_result else 0,
                 "verdict": scoring_result.verdict_label if scoring_result else "Unknown",
                 "verdict_code": scoring_result.verdict if scoring_result else "unknown",
                 "summary": scoring_result.summary if scoring_result else "Analysis complete",
                 "explanation": scoring_result.explanation if scoring_result else "",
-                
+
                 # Static analysis summary
                 "has_static": static_result is not None,
                 "yara_matches_count": len(static_result.get("yara_matches", [])) if static_result else 0,
                 "iocs_found": bool(static_result.get("iocs")) if static_result else False,
                 "pe_analyzed": bool(static_result.get("pe_info")) if static_result else False,
-                
+
                 # Sandbox summary
                 "has_sandbox": sandbox_result is not None and sandbox_result.get("success"),
                 "sandbox_available": sandbox_result is not None,
@@ -1713,26 +2235,37 @@ class BackendBridge(QObject):
                 "sandbox_exit_code": sandbox_result.get("exit_code") if sandbox_result else None,
                 "sandbox_timed_out": sandbox_result.get("timed_out", False) if sandbox_result else False,
                 "sandbox_error": sandbox_result.get("error_message", "") if sandbox_result else "",
-                
+
+                # AI Analysis (if available)
+                "has_ai_analysis": ai_analysis is not None,
+                "ai_verdict": ai_analysis.get("verdict", "") if ai_analysis else "",
+                "ai_confidence": ai_analysis.get("confidence", "") if ai_analysis else "",
+                "ai_malware_family": ai_analysis.get("malware_family", "") if ai_analysis else "",
+                "ai_summary": ai_analysis.get("summary", "") if ai_analysis else "",
+                "ai_behaviors": ai_analysis.get("behaviors", []) if ai_analysis else [],
+                "ai_recommendation": ai_analysis.get("recommendation", "") if ai_analysis else "",
+                "ai_technical_details": ai_analysis.get("technical_details", "") if ai_analysis else "",
+
                 # Report content (for preview dialog)
                 "report_content": report_content,
                 "report_path": "",  # Empty - user chooses to save
-                
+
                 # Breakdown for UI
                 "score_breakdown": scoring_result.breakdown if scoring_result else {},
             }
-            
+
             return result
-        
+
         def on_success(wid, result):
             """Integrated scan completed."""
             if worker_id not in self._active_workers:
                 return
             try:
+                result = self._normalize_file_scan_result_for_qml(result)
                 self._integrated_sandbox_in_progress = False
                 self._integrated_sandbox_stage = ""
                 self._last_report_path = result.get("report_path", "")
-                
+
                 # Save to scan history
                 scan_rec = ScanRecord(
                     id=None,
@@ -1746,13 +2279,13 @@ class BackendBridge(QObject):
                 )
                 scan_id = self.scan_repo.add(scan_rec)
                 result["scan_id"] = scan_id
-                
+
                 self.integratedSandboxFinished.emit(result)
-                
+
                 # Show toast based on verdict
                 verdict = result.get("verdict", "Unknown")
                 score = result.get("score", 0)
-                
+
                 if verdict == "Malicious" or score > 80:
                     self.toast.emit("error", f"⚠️ MALICIOUS - Score: {score}/100")
                 elif verdict == "Likely Malicious" or score > 50:
@@ -1761,12 +2294,12 @@ class BackendBridge(QObject):
                     self.toast.emit("warning", f"⚠️ Suspicious - Score: {score}/100")
                 else:
                     self.toast.emit("success", f"✓ Safe - Score: {score}/100")
-                    
+
             finally:
                 if worker_id in self._active_workers:
                     del self._active_workers[worker_id]
                 self._watchdog.unregister_worker(worker_id)
-        
+
         def on_error(wid, error_msg):
             """Integrated scan failed."""
             if worker_id not in self._active_workers:
@@ -1775,23 +2308,164 @@ class BackendBridge(QObject):
             self._integrated_sandbox_stage = ""
             logger.error(f"Integrated scan failed: {error_msg}")
             self.toast.emit("error", f"Scan failed: {error_msg}")
-            self.integratedSandboxFinished.emit({"error": error_msg})
+            self.integratedSandboxFinished.emit(
+                self._normalize_file_scan_result_for_qml(
+                    {"error": error_msg, "summary": f"Scan failed: {error_msg}"}
+                )
+            )
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
             self._watchdog.unregister_worker(worker_id)
-        
+
         # Create and start worker with generous timeout (sandbox can take a while)
         worker = CancellableWorker(worker_id, scan_task, timeout_ms=300000)  # 5 min
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
-        
+        worker.signals.heartbeat.connect(self._watchdog.heartbeat)
+
         self._active_workers[worker_id] = worker
-        # Register with longer stall threshold for sandbox (timeout + buffer)
-        self._watchdog.register_worker(worker_id, stale_threshold_sec=timeout_seconds + 60)
+        # Register with a conservative threshold to avoid false-positive stalls.
+        stall_threshold = max(timeout_seconds + 120, 180) if run_sandbox else 120
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=stall_threshold)
         self._thread_pool.start(worker)
-        
+
         logger.info(f"Integrated scan started for {path}")
-    
+
+    @Slot()
+    def cancelSandbox(self):
+        """Cancel the currently running sandbox execution."""
+        if self._sandbox_session is not None:
+            logger.info("Sandbox cancellation requested by user")
+            self._sandbox_cancelled = True
+            self._stop_live_preview()
+            self.toast.emit("info", "Cancelling sandbox execution...")
+        else:
+            logger.warning("No active sandbox session to cancel")
+
+    @Slot(bool)
+    def setAutopilotEnabled(self, enabled: bool):
+        """Enable or disable installer autopilot during sandbox execution."""
+        self._autopilot_enabled = enabled
+        if enabled:
+            self._start_autopilot()
+            logger.info("Installer autopilot enabled")
+            self.toast.emit("info", "🤖 Autopilot enabled - will safely click installer buttons")
+        else:
+            self._stop_autopilot()
+            logger.info("Installer autopilot disabled")
+            self.toast.emit("info", "Autopilot disabled")
+
+    @Slot(result=bool)
+    def isAutopilotEnabled(self) -> bool:
+        """Check if autopilot is enabled."""
+        return self._autopilot_enabled
+
+    def _start_live_preview(self, pid: int, session_path: Path, exe_name: str | None = None):
+        """Start live preview capture for a sandboxed process."""
+        try:
+            from ..scanning.window_capture import WindowCaptureService
+
+            if self._window_capture is not None:
+                self._window_capture.stop()
+
+            # Frame callback to update QML image provider
+            def on_frame_received(frame_data: bytes, width: int, height: int):
+                if self._preview_provider:
+                    self._preview_provider.update_frame(frame_data, width, height)
+                # Emit frame number for QML to refresh image
+                frame_num = self._window_capture._frame_count if self._window_capture else 0
+                self.sandboxPreviewFrameReady.emit(frame_num)
+
+            # Window found callback to update QML status
+            def on_window_status(found: bool, title: str):
+                self.sandboxWindowFound.emit(found)
+                if self._preview_controller:
+                    if found:
+                        self._preview_controller.set_window_found(title)
+                    else:
+                        self._preview_controller.set_status("No visible app window (console/background process)")
+
+            # Status callback for detailed status updates
+            def on_status_update(status: str):
+                if self._preview_controller:
+                    self._preview_controller.set_status(status)
+
+            # Create window capture service with proper callbacks
+            self._window_capture = WindowCaptureService(
+                target_pid=pid,
+                session_folder=session_path,
+                fps=8,  # 8 FPS is good balance for smooth preview without high CPU
+                max_frames=500,
+                frame_callback=on_frame_received,
+                window_found_callback=on_window_status,
+                status_callback=on_status_update,
+                exe_name=exe_name,  # Pass exe name for fallback window search
+            )
+
+            # Start capturing
+            if self._window_capture.start():
+                self.sandboxPreviewStarted.emit()
+                logger.info(f"Live preview started for PID {pid}")
+            else:
+                logger.warning(f"Failed to start live preview for PID {pid}")
+
+        except ImportError as e:
+            logger.warning(f"WindowCaptureService not available: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to start live preview: {e}")
+
+    def _stop_live_preview(self):
+        """Stop live preview capture."""
+        if self._window_capture is not None:
+            self._window_capture.stop()
+            self._window_capture = None
+            self.sandboxPreviewStopped.emit()
+            logger.info("Live preview stopped")
+
+    def _start_autopilot(self):
+        """Start installer autopilot if sandbox is running."""
+        if self._sandbox_session is None:
+            return
+
+        try:
+            from ..scanning.installer_autopilot import InstallerAutopilot
+
+            if self._installer_autopilot is not None:
+                self._installer_autopilot.stop()
+
+            # Get PID from window capture if available
+            pid = self._window_capture.pid if self._window_capture else None
+            if pid is None:
+                logger.warning("No PID available for autopilot")
+                return
+
+            self._installer_autopilot = InstallerAutopilot(pid=pid)
+
+            # Action callback to notify QML
+            def on_action(action):
+                import json
+                self.sandboxAutopilotAction.emit(json.dumps({
+                    "button_text": action.button_text,
+                    "window_title": action.window_title,
+                    "timestamp": action.timestamp.isoformat()
+                }))
+
+            self._installer_autopilot.on_action = on_action
+            self._installer_autopilot.start()
+            logger.info(f"Installer autopilot started for PID {pid}")
+
+        except ImportError:
+            logger.warning("InstallerAutopilot not available")
+        except Exception as e:
+            logger.warning(f"Failed to start autopilot: {e}")
+
+    def _stop_autopilot(self):
+        """Stop installer autopilot."""
+        if self._installer_autopilot is not None:
+            self._installer_autopilot.stop()
+            self._installer_autopilot = None
+            logger.info("Installer autopilot stopped")
+
     @Slot(str)
     def _emitIntegratedSandboxProgress(self, stage: str):
         """Thread-safe progress emission (called via QMetaObject.invokeMethod)."""
@@ -1814,23 +2488,23 @@ class BackendBridge(QObject):
             # Ensure .txt extension
             if not path.suffix:
                 path = path.with_suffix(".txt")
-            
+
             # Create parent directories if needed
             path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Write content
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             logger.info(f"Report saved to: {path}")
             self.toast.emit("success", f"Report saved: {path.name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to save report: {e}")
             self.toast.emit("error", f"Failed to save report: {e}")
             return False
-    
+
     @Slot(str)
     def copyToClipboard(self, text: str):
         """Copy text to system clipboard."""
@@ -1844,18 +2518,18 @@ class BackendBridge(QObject):
             self.toast.emit("error", "Failed to copy to clipboard")
 
     # ============ URL Scanning (VirusTotal-like, 100% Local) ============
-    
+
     @Slot(result=bool)
     def urlScanAvailable(self) -> bool:
         """Check if URL scanning is available (always True, basic scan works without deps)."""
         return True
-    
+
     @Slot(result=bool)
     def urlSandboxAvailable(self) -> bool:
         """Check if URL sandbox detonation is available (requires WebView2/Edge)."""
         if self._webview2_available is not None:
             return self._webview2_available
-        
+
         try:
             from tools.url_detonator.webview2_detonator import check_webview2_available
             self._webview2_available = check_webview2_available()
@@ -1864,35 +2538,34 @@ class BackendBridge(QObject):
             logger.warning(f"WebView2 check failed: {e}")
             self._webview2_available = False
             return False
-    
+
     @Slot(result=str)
     def urlSandboxStatus(self) -> str:
         """Get human-readable status of URL sandbox capability."""
         if self.urlSandboxAvailable():
             return "Available (WebView2/Edge)"
-        else:
-            return "Static analysis only (WebView2 not available)"
-    
+        return "Static analysis only (WebView2 not available)"
+
     @Slot(result=bool)
     def urlScanInProgress(self) -> bool:
         """Check if URL scan is in progress."""
         return self._url_scan_in_progress
-    
+
     @Slot(result=str)
     def urlScanStage(self) -> str:
         """Get current URL scan stage."""
         return self._url_scan_stage
-    
+
     @Slot(result=int)
     def urlScanProgressValue(self) -> int:
         """Get current URL scan progress (0-100)."""
         return self._url_scan_progress
-    
+
     @Slot(result=str)
     def lastUrlReportPath(self) -> str:
         """Get path to the last generated URL scan report."""
         return self._last_url_report_path
-    
+
     @Slot(str, bool, bool, int)
     def scanUrlStatic(self, url: str, block_private_ips: bool = True,
                       generate_report: bool = True, timeout_seconds: int = 30):
@@ -1917,7 +2590,7 @@ class BackendBridge(QObject):
         """
         self._run_url_scan(url, use_sandbox=False, block_private_ips=block_private_ips,
                            generate_report=generate_report, timeout_seconds=timeout_seconds)
-    
+
     @Slot(str, bool, bool, bool, int)
     def scanUrlSandbox(self, url: str, block_downloads: bool = True,
                        block_private_ips: bool = True, generate_report: bool = True,
@@ -1941,7 +2614,7 @@ class BackendBridge(QObject):
         self._run_url_scan(url, use_sandbox=True, block_downloads=block_downloads,
                            block_private_ips=block_private_ips, generate_report=generate_report,
                            timeout_seconds=timeout_seconds)
-    
+
     def _run_url_scan(self, url: str, use_sandbox: bool = False, block_downloads: bool = True,
                       block_private_ips: bool = True, generate_report: bool = True,
                       timeout_seconds: int = 30):
@@ -1949,18 +2622,18 @@ class BackendBridge(QObject):
         if not url or not url.strip():
             self.toast.emit("error", "URL cannot be empty")
             return
-        
+
         url = url.strip()
-        
+
         if self._url_scan_in_progress:
             self.toast.emit("warning", "A URL scan is already in progress")
             return
-        
+
         worker_id = f"url-scan-{hash(url) % 10000}"
-        
+
         if worker_id in self._active_workers:
             return
-        
+
         self._url_scan_in_progress = True
         self._url_scan_stage = "Initializing"
         self._url_scan_progress = 0
@@ -1968,27 +2641,27 @@ class BackendBridge(QObject):
         self.urlScanProgress.emit("Initializing...", 0)
         self.toast.emit("info", f"Scanning URL: {url[:50]}...")
         scan_start_time = datetime.now()
-        
+
         def scan_task(worker):
             """Background URL scan task."""
-            from app.scanning.url_scanner import UrlScanner
-            from app.scanning.url_scoring import score_url_scan
             from app.ai.url_explainer import explain_url_scan, explanation_to_dict
             from app.scanning.friendly_report import get_friendly_report_generator
-            
+            from app.scanning.url_scanner import UrlScanner
+            from app.scanning.url_scoring import score_url_scan
+
             worker.signals.heartbeat.emit(worker_id)
-            
+
             scan_result = None
             scoring_result = None
             explanation = None
             report_content = ""
-            
+
             # Step 1: Run URL scan
             # Note: Progress updates happen via signals from main thread after task completes
-            
+
             try:
                 scanner = UrlScanner()
-                
+
                 if use_sandbox and self.urlSandboxAvailable():
                     scan_result = scanner.scan_sandbox(
                         url,
@@ -2000,7 +2673,7 @@ class BackendBridge(QObject):
                         url,
                         block_private_ips=block_private_ips
                     )
-                
+
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.error(f"URL scan error: {e}")
@@ -2009,7 +2682,7 @@ class BackendBridge(QObject):
                     "url": url,
                     "success": False,
                 }
-            
+
             # Step 2: Score the results
             try:
                 scoring_result = score_url_scan(scan_result)
@@ -2019,15 +2692,28 @@ class BackendBridge(QObject):
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.warning(f"URL scoring error: {e}")
-            
+
             # Step 3: Generate explanation
             try:
                 explanation = explain_url_scan(scan_result)
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.warning(f"URL explanation error: {e}")
-            
-            # Step 4: Generate friendly report content
+
+            # Step 4: AI Analysis (optional - Groq-powered)
+            ai_analysis = None
+            try:
+                from ..ai.providers.groq import is_groq_available
+
+                if is_groq_available():
+                    # AI analysis is now handled by the report generator
+                    logger.info("Groq available for enhanced URL report generation")
+                worker.signals.heartbeat.emit(worker_id)
+            except Exception as e:
+                logger.warning(f"AI analysis error: {e}")
+                ai_analysis = None
+
+            # Step 5: Generate friendly report content
             if generate_report:
                 try:
                     report_gen = get_friendly_report_generator()
@@ -2046,27 +2732,27 @@ class BackendBridge(QObject):
                 except Exception as e:
                     logger.warning(f"Report generation error: {e}")
                     report_content = f"Error generating report: {e}"
-            
+
             # Build result dict for QML
             result = {
                 "success": True,
                 "url": url,
                 "normalized_url": scan_result.normalized_url,
                 "final_url": scan_result.final_url,
-                
+
                 # Verdict
                 "score": scan_result.score,
                 "verdict": scan_result.verdict,
-                
+
                 # HTTP info
                 "http_status": scan_result.http.get("status_code") if scan_result.http else None,
                 "http_content_type": scan_result.http.get("content_type", "") if scan_result.http else "",
                 "http_content_length": scan_result.http.get("content_length", 0) if scan_result.http else 0,
-                
+
                 # Redirects
                 "redirects": scan_result.redirects,
                 "redirect_count": len(scan_result.redirects),
-                
+
                 # Evidence
                 "evidence": [
                     {
@@ -2078,33 +2764,42 @@ class BackendBridge(QObject):
                     for e in scan_result.evidence
                 ],
                 "evidence_count": len(scan_result.evidence),
-                
+
                 # IOCs
                 "iocs": scan_result.iocs or {},
                 "has_iocs": bool(scan_result.iocs),
-                
+
                 # YARA
                 "yara_matches": scan_result.yara_matches or [],
                 "yara_match_count": len(scan_result.yara_matches) if scan_result.yara_matches else 0,
-                
+
                 # Signals
                 "signals": scan_result.signals,
-                
+
                 # Sandbox
                 "has_sandbox": scan_result.sandbox_result is not None,
                 "sandbox_result": (
-                    scan_result.sandbox_result.to_dict() 
-                    if hasattr(scan_result.sandbox_result, 'to_dict') 
+                    scan_result.sandbox_result.to_dict()
+                    if hasattr(scan_result.sandbox_result, "to_dict")
                     else scan_result.sandbox_result
                 ) if scan_result.sandbox_result else None,
-                
+
                 # Explanation
                 "explanation": explanation_to_dict(explanation) if explanation else None,
-                
+
                 # Report content (for preview dialog)
                 "report_content": report_content,
                 "report_path": "",  # Empty - user chooses to save
-                
+
+                # AI Analysis (if available)
+                "has_ai_analysis": ai_analysis is not None,
+                "ai_verdict": ai_analysis.get("verdict", "") if ai_analysis else "",
+                "ai_confidence": ai_analysis.get("confidence", "") if ai_analysis else "",
+                "ai_threat_type": ai_analysis.get("threat_type", "") if ai_analysis else "",
+                "ai_summary": ai_analysis.get("summary", "") if ai_analysis else "",
+                "ai_risks": ai_analysis.get("risks", []) if ai_analysis else [],
+                "ai_recommendation": ai_analysis.get("recommendation", "") if ai_analysis else "",
+
                 # Scoring breakdown
                 "scoring": {
                     "score": scoring_result.score if scoring_result else 0,
@@ -2112,19 +2807,20 @@ class BackendBridge(QObject):
                     "breakdown": scoring_result.breakdown if scoring_result else {},
                 } if scoring_result else None,
             }
-            
+
             return result
-        
+
         def on_success(wid, result):
             """URL scan completed."""
             if worker_id not in self._active_workers:
                 return
             try:
+                result = self._normalize_url_scan_result_for_qml(result)
                 self._url_scan_in_progress = False
                 self._url_scan_stage = ""
                 self._url_scan_progress = 100
                 self._url_scan_result = result
-                
+
                 # Save to scan history
                 scan_rec = ScanRecord(
                     id=None,
@@ -2138,13 +2834,13 @@ class BackendBridge(QObject):
                 )
                 scan_id = self.scan_repo.add(scan_rec)
                 result["scan_id"] = scan_id
-                
+
                 self.urlScanFinished.emit(result)
-                
+
                 # Show toast based on verdict
                 verdict = result.get("verdict", "unknown")
                 score = result.get("score", 0)
-                
+
                 if verdict == "malicious" or score > 80:
                     self.toast.emit("error", f"⚠️ MALICIOUS URL - Score: {score}/100")
                 elif verdict == "likely_malicious" or score > 50:
@@ -2153,12 +2849,12 @@ class BackendBridge(QObject):
                     self.toast.emit("warning", f"⚠️ Suspicious URL - Score: {score}/100")
                 else:
                     self.toast.emit("success", f"✓ URL appears safe - Score: {score}/100")
-                    
+
             finally:
                 if worker_id in self._active_workers:
                     del self._active_workers[worker_id]
                 self._watchdog.unregister_worker(worker_id)
-        
+
         def on_error(wid, error_msg):
             """URL scan failed."""
             if worker_id not in self._active_workers:
@@ -2168,27 +2864,38 @@ class BackendBridge(QObject):
             self._url_scan_progress = 0
             logger.error(f"URL scan failed: {error_msg}")
             self.toast.emit("error", f"URL scan failed: {error_msg}")
-            self.urlScanFinished.emit({"error": error_msg, "success": False})
+            self.urlScanFinished.emit(
+                self._normalize_url_scan_result_for_qml(
+                    {
+                        "error": error_msg,
+                        "success": False,
+                        "summary": f"URL scan failed: {error_msg}",
+                        "url": url,
+                    }
+                )
+            )
             if worker_id in self._active_workers:
                 del self._active_workers[worker_id]
             self._watchdog.unregister_worker(worker_id)
-        
+
         # Create and start worker
         worker = CancellableWorker(worker_id, scan_task, timeout_ms=120000)  # 2 min
         worker.signals.finished.connect(on_success)
         worker.signals.error.connect(on_error)
-        
+        worker.signals.heartbeat.connect(self._watchdog.heartbeat)
+
         self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
+        url_stall_threshold = max(timeout_seconds + (60 if use_sandbox else 30), 90)
+        self._watchdog.register_worker(worker_id, stale_threshold_sec=url_stall_threshold)
         self._thread_pool.start(worker)
-        
+
         logger.info(f"URL scan started for {url}")
-    
+
     @Slot(str, int)
     def _emitUrlScanProgress(self, stage: str, progress: int):
         """Thread-safe URL scan progress emission (called via QMetaObject.invokeMethod)."""
         self.urlScanProgress.emit(stage, progress)
-    
+
     @Slot()
     def cancelUrlScan(self):
         """Cancel the current URL scan."""
@@ -2247,15 +2954,16 @@ class BackendBridge(QObject):
             scan_type: One of the scan profile types (host_discovery, port_scan, etc.)
             target_host: Target IP/hostname (empty string for network-wide scans)
         """
+        import subprocess
+        import sys
+
+        from ..core.workers import WorkerWatchdog
         from ..infra.nmap_cli import (
             SCAN_PROFILES,
             NmapCli,
             get_local_subnet,
             get_reports_dir,
         )
-        from ..core.workers import WorkerWatchdog
-        import subprocess
-        import sys
 
         # Check nmap availability first
         if not self._nmap_available:
@@ -2379,8 +3087,8 @@ class BackendBridge(QObject):
                 # Save report
                 report_path = get_reports_dir() / f"nmap_{scan_id}.txt"
                 with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(f"Nmap Scan Report\n")
-                    f.write(f"================\n")
+                    f.write("Nmap Scan Report\n")
+                    f.write("================\n")
                     f.write(f"Scan Type: {profile['description']}\n")
                     f.write(f"Target: {scan_target}\n")
                     f.write(f"Date: {datetime.now().isoformat()}\n")
@@ -2417,7 +3125,7 @@ class BackendBridge(QObject):
             report_path = result.get("report_path", "")
 
             if success:
-                self.nmapScanOutput.emit(scan_id, f"\n[SUCCESS] Scan completed\n")
+                self.nmapScanOutput.emit(scan_id, "\n[SUCCESS] Scan completed\n")
                 self.nmapScanOutput.emit(
                     scan_id, f"[INFO] Report saved: {report_path}\n"
                 )
@@ -2495,16 +3203,14 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def aiMode(self) -> str:
-        """Get the current AI mode (transformers or fallback)."""
+        """Get the current AI mode (online or unavailable)."""
         if self._event_explainer is None:
             return "unavailable"
         try:
-            from ..ai.local_llm_engine import get_llm_engine
-
-            engine = get_llm_engine()
-            return "transformers" if engine.is_available else "fallback"
+            from ..ai.providers.groq import is_groq_available
+            return "online" if is_groq_available() else "offline-kb"
         except Exception:
-            return "fallback"
+            return "offline-kb"
 
     @Slot(int)
     def requestEventExplanation(self, event_index: int) -> None:
@@ -2517,13 +3223,13 @@ class BackendBridge(QObject):
             event_index: Index of the event in the current events list
         """
         # Use debouncer if available (250ms delay to handle rapid selection changes)
-        if hasattr(self, '_explanation_debouncer') and self._explanation_debouncer:
+        if hasattr(self, "_explanation_debouncer") and self._explanation_debouncer:
             self._explanation_debouncer.call(event_index)
             return
-        
+
         # Fallback to direct request if debouncer not initialized
         self._debounced_request_explanation(event_index)
-    
+
     @Slot(object)
     def _debounced_request_explanation(self, event_index: int) -> None:
         """
@@ -2539,17 +3245,25 @@ class BackendBridge(QObject):
         """
         if not isinstance(event_index, int):
             return
-            
+
         # Cancel any previous pending AI request
         self._cancel_current_ai_request()
-        
+
+        # Track agent steps for the detailed explanation
+        self._add_agent_step(
+            "Explain Event Requested",
+            "User clicked Explain Event button",
+            "started detailed AI explanation pipeline",
+            f"Event index {event_index}"
+        )
+
         try:
             # Get event from cache
             events = self._loaded_events
             if not events:
                 self.eventExplanationFailed.emit(str(event_index), "No events loaded. Please refresh.")
                 return
-                
+
             if event_index < 0 or event_index >= len(events):
                 self.eventExplanationFailed.emit(str(event_index), f"Event index {event_index} out of range (0-{len(events)-1})")
                 return
@@ -2570,17 +3284,23 @@ class BackendBridge(QObject):
                     else str(getattr(event, "timestamp", ""))
                 ),
             }
-            
+
             # V4 Path: Deterministic-first (instant, UI thread safe)
-            if hasattr(self, '_event_explainer') and hasattr(self._event_explainer, 'explain_event_instant'):
+            if hasattr(self, "_event_explainer") and hasattr(self._event_explainer, "explain_event_instant"):
                 logger.debug(f"V4 instant lookup for event {event_index}: provider={event_dict['provider']}, event_id={event_dict['event_id']}")
-                
+
                 # Get instant deterministic explanation (no AI, no blocking)
                 structured = self._event_explainer.explain_event_instant(event_dict)
-                
+                self._add_agent_step(
+                    "KB Lookup Complete",
+                    "Deterministic explanation from knowledge base",
+                    "matched template",
+                    f"Title: {getattr(structured, 'title', 'N/A')}"
+                )
+
                 # Convert StructuredExplanation to dict for QML
-                result_dict = structured.to_dict() if hasattr(structured, 'to_dict') else dict(structured)
-                
+                result_dict = structured.to_dict() if hasattr(structured, "to_dict") else dict(structured)
+
                 # Add legacy compatibility fields
                 result_dict["short_title"] = result_dict.get("title", "Event Information")
                 result_dict["explanation"] = result_dict.get("what_happened", "")
@@ -2589,16 +3309,36 @@ class BackendBridge(QObject):
                 result_dict["why_it_happens"] = "; ".join(result_dict.get("why_it_happened", []))
                 result_dict["what_you_can_do"] = result_dict["recommendation"]
                 result_dict["severity_label"] = result_dict.get("severity", "Minor")
-                
+
                 # Emit result immediately
                 explanation_json = json.dumps(result_dict)
                 self.eventExplanationReady.emit(str(event_index), explanation_json)
                 logger.info(f"V4 deterministic explanation ready for event {event_index}")
+
+                # If Groq is available, automatically request AI enhancement in background
+                if hasattr(self._event_explainer, "explain_event_async"):
+                    try:
+                        from ..ai.providers.groq import is_groq_available
+                        if is_groq_available():
+                            # Store event_index for async callback
+                            self._pending_v5_requests = getattr(self, "_pending_v5_requests", {})
+                            request_id = self._event_explainer.explain_event_async(event_dict, detail_level="full")
+                            self._pending_v5_requests[request_id] = event_index
+                            logger.info(f"Groq AI enhancement requested for event {event_index}")
+                            self._add_agent_step(
+                                "AI Enhancement Requested",
+                                "Sending to Groq Cloud AI for deeper analysis",
+                                "called AI explain endpoint",
+                                "Waiting for AI response..."
+                            )
+                    except ImportError:
+                        pass  # Groq not available
+
                 return
-            
+
             # Fallback: Use AI worker or thread pool
             logger.debug("V4 not available, falling back to AI worker/thread")
-            
+
             if not self._ai_process or self._ai_process.state() != QProcess.ProcessState.Running:
                 self._request_explanation_fallback(event_index)
                 return
@@ -2606,7 +3346,7 @@ class BackendBridge(QObject):
             # Send request to AI worker
             request = {"type": "explain_event", "data": event_dict}
             request_id = self._send_ai_request(request)
-            
+
             if request_id:
                 self._current_ai_request = request_id
                 self._pending_ai_requests[request_id] = event_index
@@ -2617,7 +3357,7 @@ class BackendBridge(QObject):
         except Exception as e:
             logger.error(f"Failed to request explanation: {e}")
             self.eventExplanationFailed.emit(str(event_index), str(e))
-    
+
     @Slot(int)
     def requestAIEnhancement(self, event_index: int) -> None:
         """
@@ -2631,15 +3371,15 @@ class BackendBridge(QObject):
         """
         if not isinstance(event_index, int):
             return
-            
+
         try:
             events = self._loaded_events
             if not events or event_index < 0 or event_index >= len(events):
                 self.eventExplanationFailed.emit(str(event_index), "Invalid event index")
                 return
-            
+
             event = events[event_index]
-            
+
             # Build event dict
             event_dict = {
                 "log_name": getattr(event, "log_name", "Windows"),
@@ -2654,31 +3394,31 @@ class BackendBridge(QObject):
                     else str(getattr(event, "timestamp", ""))
                 ),
             }
-            
+
             # V4 Path: Async AI enhancement
-            if hasattr(self, '_event_explainer') and hasattr(self._event_explainer, 'request_ai_enhancement'):
+            if hasattr(self, "_event_explainer") and hasattr(self._event_explainer, "request_ai_enhancement"):
                 logger.info(f"Requesting AI enhancement for event {event_index}")
-                
+
                 def on_ai_ready(structured_explanation):
                     """Callback when AI enhancement completes."""
-                    result_dict = structured_explanation.to_dict() if hasattr(structured_explanation, 'to_dict') else dict(structured_explanation)
-                    
+                    result_dict = structured_explanation.to_dict() if hasattr(structured_explanation, "to_dict") else dict(structured_explanation)
+
                     # Add legacy compatibility fields
                     result_dict["short_title"] = result_dict.get("title", "Event Information")
                     result_dict["explanation"] = result_dict.get("what_happened", "")
                     result_dict["recommendation"] = "; ".join(result_dict.get("recommended_actions", []))
                     result_dict["what_to_do"] = result_dict["recommendation"]
                     result_dict["severity_label"] = result_dict.get("severity", "Minor")
-                    
+
                     explanation_json = json.dumps(result_dict)
                     self.eventExplanationReady.emit(str(event_index), explanation_json)
                     logger.info(f"AI enhanced explanation ready for event {event_index}")
-                
+
                 def on_ai_failed(error_msg):
                     """Callback when AI enhancement fails."""
                     logger.warning(f"AI enhancement failed for event {event_index}: {error_msg}")
                     self.eventExplanationFailed.emit(str(event_index), f"AI enhancement failed: {error_msg}")
-                
+
                 # Request async AI enhancement
                 self._event_explainer.request_ai_enhancement(
                     event_dict,
@@ -2686,7 +3426,7 @@ class BackendBridge(QObject):
                     on_failed=on_ai_failed
                 )
                 return
-            
+
             # Fallback: Use AI worker
             if self._ai_process and self._ai_process.state() == QProcess.ProcessState.Running:
                 request = {"type": "explain_event", "data": event_dict}
@@ -2695,10 +3435,10 @@ class BackendBridge(QObject):
                     self._pending_ai_requests[request_id] = event_index
                     logger.info(f"AI enhancement requested via worker: event {event_index}")
                     return
-            
+
             # Last resort: thread pool
             self._request_explanation_fallback(event_index)
-            
+
         except Exception as e:
             logger.error(f"Failed to request AI enhancement: {e}")
             self.eventExplanationFailed.emit(str(event_index), str(e))
@@ -2723,7 +3463,7 @@ class BackendBridge(QObject):
             events = self._loaded_events
             if not events:
                 raise ValueError("No events loaded. Please refresh.")
-                
+
             if event_index < 0 or event_index >= len(events):
                 raise ValueError(f"Event index {event_index} out of range (0-{len(events)-1})")
 
@@ -2745,19 +3485,19 @@ class BackendBridge(QObject):
             }
 
             worker.signals.heartbeat.emit(worker_id)
-            
+
             # Check cache first
             signature = self._compute_event_signature(event_dict)
             source = event_dict["source"]
             evt_id = event_dict["event_id"]
-            
+
             cached = None
             try:
-                if hasattr(self.scan_repo, 'get_event_summary'):
+                if hasattr(self.scan_repo, "get_event_summary"):
                     cached = self.scan_repo.get_event_summary(source, evt_id, signature)
             except Exception as e:
                 logger.debug(f"Cache lookup error: {e}")
-            
+
             if cached:
                 # Return cached explanation in the new 5-section format
                 return (str(event_index), {
@@ -2776,11 +3516,11 @@ class BackendBridge(QObject):
                     "recommendation": cached.get("what_to_do", cached.get("what_you_can_do", "")),
                     "what_you_can_do": cached.get("what_to_do", cached.get("what_you_can_do", "")),
                 })
-            
+
             # Generate using EventExplainer (preferred - detailed 5-section format)
             if self._event_explainer:
                 explanation = self._event_explainer.explain_event(event_dict)
-                
+
                 # Build result dict in 5-section format
                 result_dict = {
                     "title": explanation.get("short_title", "Event information"),
@@ -2798,27 +3538,27 @@ class BackendBridge(QObject):
                     "recommendation": explanation.get("what_to_do", explanation.get("recommendation", "")),
                     "what_you_can_do": explanation.get("what_to_do", explanation.get("recommendation", "")),
                 }
-                
+
                 # Save to cache for future use
                 try:
-                    if hasattr(self.scan_repo, 'save_event_summary'):
+                    if hasattr(self.scan_repo, "save_event_summary"):
                         self.scan_repo.save_event_summary(source, evt_id, signature, result_dict)
                 except Exception as e:
                     logger.debug(f"Cache save error: {e}")
-                
+
                 return (str(event_index), result_dict)
-            
+
             # Fallback to EventSummarizer if EventExplainer unavailable
             if self._event_summarizer:
                 summary = self._event_summarizer.summarize(event_dict)
-                
+
                 # Save to cache
                 try:
-                    if hasattr(self.scan_repo, 'save_event_summary'):
+                    if hasattr(self.scan_repo, "save_event_summary"):
                         self.scan_repo.save_event_summary(source, evt_id, signature, summary.to_dict())
                 except Exception as e:
                     logger.debug(f"Cache save error: {e}")
-                
+
                 return (str(event_index), {
                     "title": summary.title,
                     "severity": summary.severity_label,
@@ -2835,7 +3575,7 @@ class BackendBridge(QObject):
                     "recommendation": summary.what_you_can_do,
                     "what_you_can_do": summary.what_you_can_do,
                 })
-            
+
             raise ValueError("No AI services available")
 
         def on_success(wid: str, result: tuple) -> None:
@@ -2872,6 +3612,106 @@ class BackendBridge(QObject):
 
         logger.info(f"AI explanation requested (fallback): event {event_index}")
 
+    @Slot(int)
+    def requestSimplifiedExplanation(self, event_index: int) -> None:
+        """
+        Request a simplified (non-technical) explanation for an event.
+        
+        This is triggered when user clicks "Explain simpler" button.
+        Uses simplified prompts with no jargon for non-technical users.
+        
+        Args:
+            event_index: Index of the event in the loaded events list
+        """
+        if not isinstance(event_index, int):
+            return
+
+        try:
+            events = self._loaded_events
+            if not events or event_index < 0 or event_index >= len(events):
+                self.eventExplanationFailed.emit(str(event_index), "Invalid event index")
+                return
+
+            event = events[event_index]
+
+            # Build event dict
+            event_dict = {
+                "log_name": getattr(event, "log_name", "Windows"),
+                "provider": getattr(event, "source", "Unknown"),
+                "source": getattr(event, "source", "Unknown"),
+                "event_id": getattr(event, "event_id", 0),
+                "level": getattr(event, "level", "Information"),
+                "message": getattr(event, "message", ""),
+                "time_created": (
+                    getattr(event, "timestamp", "").isoformat()
+                    if hasattr(getattr(event, "timestamp", None), "isoformat")
+                    else str(getattr(event, "timestamp", ""))
+                ),
+            }
+
+            # Use event explainer with simplified detail level
+            if hasattr(self, "_event_explainer") and hasattr(self._event_explainer, "_get_ai_explanation"):
+                logger.info(f"Requesting simplified explanation for event {event_index}")
+
+                worker_id = f"ai-simplified-{event_index}"
+
+                # Prevent duplicate requests
+                if worker_id in self._active_workers:
+                    return
+
+                def simplified_task(worker):
+                    """Background simplified explanation task."""
+                    worker.signals.heartbeat.emit(worker_id)
+
+                    # Get explanation with simplified detail level
+                    result = self._event_explainer._get_ai_explanation(event_dict, detail_level="simplified")
+
+                    if result:
+                        result_dict = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+                        # Mark as simplified
+                        result_dict["detail_level"] = "simplified"
+                        result_dict["source"] = "ai"
+                        return (str(event_index), result_dict)
+                    raise ValueError("Failed to get simplified explanation")
+
+                def on_success(wid: str, result: tuple) -> None:
+                    """Simplified explanation completed."""
+                    event_id, explanation = result
+                    try:
+                        explanation_json = json.dumps(explanation)
+                        self.eventExplanationReady.emit(event_id, explanation_json)
+                    except Exception as e:
+                        logger.error(f"Failed to serialize explanation: {e}")
+                        self.eventExplanationFailed.emit(event_id, "Failed to process response")
+                    finally:
+                        self._watchdog.unregister_worker(worker_id)
+                        if worker_id in self._active_workers:
+                            del self._active_workers[worker_id]
+
+                def on_error(wid: str, error_msg: str) -> None:
+                    """Simplified explanation failed."""
+                    logger.error(f"Simplified explanation failed: {error_msg}")
+                    self.eventExplanationFailed.emit(str(event_index), error_msg)
+                    self._watchdog.unregister_worker(worker_id)
+                    if worker_id in self._active_workers:
+                        del self._active_workers[worker_id]
+
+                # Create and start worker with 10 second timeout
+                worker = CancellableWorker(worker_id, simplified_task, timeout_ms=10000)
+                worker.signals.finished.connect(on_success)
+                worker.signals.error.connect(on_error)
+
+                self._active_workers[worker_id] = worker
+                self._watchdog.register_worker(worker_id)
+                self._thread_pool.start(worker)
+                return
+
+            self.eventExplanationFailed.emit(str(event_index), "Simplified explanation not available")
+
+        except Exception as e:
+            logger.error(f"Failed to request simplified explanation: {e}")
+            self.eventExplanationFailed.emit(str(event_index), str(e))
+
     @Slot(str)
     def sendChatMessage(self, user_text: str) -> None:
         """
@@ -2894,61 +3734,21 @@ class BackendBridge(QObject):
             )
             return
 
-        # Add user message to conversation
+        # Add user message to conversation and emit immediately for UI
         self._chat_conversation.append({"role": "user", "content": user_text})
         self.chatMessageAdded.emit("user", user_text)
 
-        worker_id = f"ai-chat-{len(self._chat_conversation)}"
-
-        def chat_task(worker):
-            """Background chat task."""
-            worker.signals.heartbeat.emit(worker_id)
-
-            # Get response from chatbot
-            response = self._security_chatbot.answer(
-                self._chat_conversation[
-                    :-1
-                ],  # Exclude current message (already in prompt)
-                user_text,
-            )
-
-            return response
-
-        def on_success(wid: str, response: str) -> None:
-            """Chat response ready."""
-            # Add assistant response to conversation
-            self._chat_conversation.append({"role": "assistant", "content": response})
-            self.chatMessageAdded.emit("assistant", response)
-
-            self._watchdog.unregister_worker(worker_id)
-            if worker_id in self._active_workers:
-                del self._active_workers[worker_id]
-
-        def on_error(wid: str, error_msg: str) -> None:
-            """Chat failed."""
-            logger.error(f"AI chat failed: {error_msg}")
-            error_response = (
-                "I encountered an error processing your request. Please try again."
-            )
-            self._chat_conversation.append(
-                {"role": "assistant", "content": error_response}
-            )
+        # Use v4 chatbot's ask() method which handles everything via signals
+        # The chatbot creates its own worker and will emit chatResponseReady/Failed
+        # Those signals are connected to _on_v4_chat_ready/_on_v4_chat_failed
+        try:
+            request_id = self._security_chatbot.ask(user_text)
+            logger.debug(f"AI chat message sent: {user_text[:50]}... (request_id={request_id})")
+        except Exception as e:
+            logger.error(f"Failed to send chat message: {e}")
+            error_response = "I encountered an error processing your request. Please try again."
+            self._chat_conversation.append({"role": "assistant", "content": error_response})
             self.chatMessageAdded.emit("assistant", error_response)
-
-            self._watchdog.unregister_worker(worker_id)
-            if worker_id in self._active_workers:
-                del self._active_workers[worker_id]
-
-        # Create and start worker
-        worker = CancellableWorker(worker_id, chat_task, timeout_ms=60000)
-        worker.signals.finished.connect(on_success)
-        worker.signals.error.connect(on_error)
-
-        self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
-        self._thread_pool.start(worker)
-
-        logger.debug(f"AI chat message sent: {user_text[:50]}...")
 
     @Slot()
     def clearChatHistory(self) -> None:
@@ -2958,6 +3758,131 @@ class BackendBridge(QObject):
         if self._smart_assistant:
             self._smart_assistant.clear_conversation()
         logger.info("Chat history cleared")
+
+    # ========================================================================
+    # RESOLUTION REPORTS - Track what AI did during help sessions
+    # ========================================================================
+
+    @Slot()
+    def getResolutionSessions(self) -> None:
+        """
+        Get all resolution sessions for the Resolution Report page.
+        
+        Emits resolutionSessionsLoaded signal with JSON array of sessions.
+        """
+        try:
+            from ..ai.action_record import get_action_log
+            action_log = get_action_log()
+            sessions = action_log.get_all_sessions()
+
+            # Convert to JSON-serializable list
+            sessions_data = [s.to_dict() for s in sessions]
+
+            # Sort by started_at descending (newest first)
+            sessions_data.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+
+            sessions_json = json.dumps(sessions_data)
+            self.resolutionSessionsLoaded.emit(sessions_json)
+            logger.debug(f"Loaded {len(sessions_data)} resolution sessions")
+
+        except Exception as e:
+            logger.error(f"Failed to get resolution sessions: {e}")
+            self.resolutionSessionsLoaded.emit("[]")
+
+    @Slot(int, str, str)
+    def startResolutionSession(self, event_id: int, event_source: str, event_summary: str) -> None:
+        """
+        Start a new resolution session when user asks chatbot to help resolve.
+        
+        Args:
+            event_id: Event ID being resolved
+            event_source: Source of the event
+            event_summary: Brief summary of the event
+        """
+        try:
+            if self._security_chatbot and hasattr(self._security_chatbot, "start_resolution_session"):
+                session_id = self._security_chatbot.start_resolution_session(
+                    event_id=event_id,
+                    event_source=event_source,
+                    event_summary=event_summary,
+                )
+                logger.info(f"Started resolution session: {session_id}")
+            else:
+                logger.warning("Security chatbot not available for resolution session")
+        except Exception as e:
+            logger.error(f"Failed to start resolution session: {e}")
+
+    @Slot(str)
+    def endResolutionSession(self, summary: str) -> None:
+        """
+        End the current resolution session.
+        
+        Args:
+            summary: Summary of what was done
+        """
+        try:
+            if self._security_chatbot and hasattr(self._security_chatbot, "end_resolution_session"):
+                session_data = self._security_chatbot.end_resolution_session(summary)
+                if session_data:
+                    logger.info(f"Ended resolution session with {len(session_data.get('actions', []))} actions")
+        except Exception as e:
+            logger.error(f"Failed to end resolution session: {e}")
+
+    @Slot(str)
+    def setEventContextForChat(self, event_json: str) -> None:
+        """
+        Set event context for the chatbot to help resolve.
+        
+        Called from EventViewer when user clicks "Ask Chatbot to Help Resolve".
+        
+        Args:
+            event_json: JSON string with event data and explanation
+        """
+        import json
+        try:
+            event_data = json.loads(event_json)
+
+            # Store context for smart assistant
+            if self._smart_assistant and hasattr(self._smart_assistant, "set_selected_event"):
+                self._smart_assistant.set_selected_event(event_data)
+
+            # Build initial message to send to chatbot
+            event_id = event_data.get("event_id", "Unknown")
+            provider = event_data.get("provider", "Unknown")
+            level = event_data.get("level", "Information")
+
+            # Get explanation summary if available
+            explanation = event_data.get("explanation", {})
+            summary = explanation.get("summary") or explanation.get("what_happened", "")
+
+            # Start a resolution session for audit logging
+            try:
+                event_id_int = int(event_id) if str(event_id).isdigit() else 0
+                self.startResolutionSession(event_id_int, str(provider), str(summary)[:200])
+            except Exception as e:
+                logger.debug(f"Could not start resolution session: {e}")
+
+            # Create a help request message
+            help_message = "I need help resolving this Windows event:\n\n"
+            help_message += f"**Event ID:** {event_id}\n"
+            help_message += f"**Source:** {provider}\n"
+            help_message += f"**Level:** {level}\n"
+            if summary:
+                help_message += f"**Summary:** {summary}\n"
+            help_message += "\nPlease help me understand what caused this and what I should do to fix it."
+
+            # Send the message to chatbot
+            self.sendSmartMessage(help_message)
+
+            # Navigate to AI Assistant page
+            self.navigateTo.emit("ai-assistant")
+
+            logger.info(f"Event context set for chatbot: Event {event_id} from {provider}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse event context JSON: {e}")
+        except Exception as e:
+            logger.exception(f"Error setting event context for chat: {e}")
 
     # ========================================================================
     # SMART ASSISTANT - New intelligent chatbot with memory and context
@@ -2997,7 +3922,7 @@ class BackendBridge(QObject):
         def smart_chat_task(worker):
             """Background smart assistant task."""
             worker.signals.heartbeat.emit(worker_id)
-            
+
             # Process message through new agent-based smart assistant
             # Uses ask_structured() which returns full response dict
             # Has built-in timeout and throttling
@@ -3018,7 +3943,7 @@ class BackendBridge(QObject):
             """Smart assistant failed."""
             logger.error(f"Smart assistant failed: {error_msg}")
             self.smartAssistantError.emit(error_msg)
-            
+
             # Emit error as chat message
             error_response = f"I encountered an error: {error_msg}"
             self.chatMessageAdded.emit("assistant", error_response)
@@ -3041,32 +3966,32 @@ class BackendBridge(QObject):
     def _format_smart_response(self, response: dict) -> str:
         """Format smart assistant response for display."""
         parts = []
-        
+
         # Answer (main response)
         if response.get("answer"):
             parts.append(f"**Answer**\n{response['answer']}")
-        
+
         # Why it happened
         why = response.get("why_it_happened", [])
         if why:
             parts.append("\n**Why This Happened**")
             for reason in why[:5]:
                 parts.append(f"• {reason}")
-        
+
         # What it affects
         affects = response.get("what_it_affects", [])
         if affects:
             parts.append("\n**What This Affects**")
             for effect in affects[:5]:
                 parts.append(f"• {effect}")
-        
+
         # What to do now
         actions = response.get("what_to_do_now", [])
         if actions:
             parts.append("\n**What You Should Do**")
             for action in actions[:5]:
                 parts.append(f"• {action}")
-        
+
         # Technical details and confidence
         tech = response.get("technical_details", {})
         if tech:
@@ -3074,14 +3999,14 @@ class BackendBridge(QObject):
             confidence = tech.get("confidence", "medium")
             conf_emoji = {"high": "🟢", "medium": "🟡", "low": "🟠"}.get(confidence, "")
             parts.append(f"\n*Source: {source} | Confidence: {conf_emoji} {confidence.title()}*")
-        
+
         # Follow-up suggestions (if any)
         suggestions = response.get("follow_up_suggestions", [])
         if suggestions and len(suggestions) > 0:
             parts.append("\n**Ask me about:**")
             for s in suggestions[:3]:
                 parts.append(f"• {s}")
-        
+
         return "\n".join(parts)
 
     @Slot(str)
@@ -3094,7 +4019,7 @@ class BackendBridge(QObject):
         """
         if not self._smart_assistant:
             return
-        
+
         try:
             event = json.loads(event_json)
             self._smart_assistant.set_selected_event(event)
@@ -3120,7 +4045,7 @@ class BackendBridge(QObject):
         """Get performance and cache statistics as JSON."""
         if not self._smart_assistant:
             return "{}"
-        
+
         stats = {
             "cache": self._smart_assistant.get_cache_stats(),
             "performance": self._smart_assistant.get_performance_stats(),
@@ -3139,7 +4064,6 @@ class BackendBridge(QObject):
             count = int(count_str)
         except ValueError:
             count = 5
-        
+
         message = f"Explain the {count} most recent events"
         self.sendSmartMessage(message)
-

@@ -162,7 +162,7 @@ class ResultCache:
         Generate cache key from arguments.
 
         Example:
-            key = ResultCache.make_key("virustotal", file_hash="abc123")
+            key = ResultCache.make_key("scan", file_hash="abc123")
         """
         parts = [str(arg) for arg in args]
         parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
@@ -177,7 +177,6 @@ class ResultCache:
 
 # Global cache instances for different subsystems
 _scan_cache: ResultCache | None = None
-_vt_cache: ResultCache | None = None
 
 
 def get_scan_cache() -> ResultCache:
@@ -189,14 +188,3 @@ def get_scan_cache() -> ResultCache:
             persist_path="data/cache/scans.json",
         )
     return _scan_cache
-
-
-def get_vt_cache() -> ResultCache:
-    """Get VirusTotal results cache (1 hour TTL, persisted)"""
-    global _vt_cache
-    if _vt_cache is None:
-        _vt_cache = ResultCache(
-            default_ttl_seconds=3600,  # 1 hour
-            persist_path="data/cache/virustotal.json",
-        )
-    return _vt_cache

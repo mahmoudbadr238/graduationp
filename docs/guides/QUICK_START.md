@@ -20,7 +20,7 @@
 | Event Viewer | ✅ LIVE | Events from database with filtering |
 | Scan History | ✅ LIVE | Historical scans from database |
 | Network Scan | ✅ WIRED | nmap integration with host discovery |
-| Scan Tool | ✅ WIRED | File scanner + VirusTotal URL scanning |
+| Scan Tool | ✅ WIRED | File scanner + URL scanning |
 | Data Loss Prevention | ✅ WIRED | 8 interactive DLP rules |
 | Settings | ✅ WIRED | Persistent configuration via JSON |
 

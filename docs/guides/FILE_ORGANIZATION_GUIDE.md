@@ -49,9 +49,7 @@ app/
 │   ├── nmap_cli.py
 │   ├── privileges.py
 │   ├── sqlite_repo.py
-│   ├── system_monitor_psutil.py
-│   ├── url_scanner.py
-│   └── vt_client.py
+│   └── system_monitor_psutil.py
 ├── ui/                              # UI/QML bridge
 │   ├── __init__.py
 │   ├── backend_bridge.py

@@ -1,10 +1,9 @@
 """Windows event log reader implementation."""
 
+import logging
 import platform
-import sys
 from collections.abc import Iterable
 from datetime import datetime
-import logging
 
 from ..core.interfaces import IEventReader
 from ..core.types import EventItem
@@ -41,18 +40,18 @@ def summarize_event_for_table(event) -> str:
         A short, user-friendly summary string
     """
     # Handle both dict and object access
-    if hasattr(event, 'level'):
+    if hasattr(event, "level"):
         level = (event.level or "").upper()
         src = event.source or event.provider or "System"
-        message = getattr(event, 'message', '') or ''
+        message = getattr(event, "message", "") or ""
     else:
         level = (event.get("level", "") or "").upper()
         src = event.get("source") or event.get("provider") or "System"
         message = event.get("message", "") or ""
-    
+
     # Truncate source for display
     src_display = src[:25] + "..." if len(src) > 25 else src
-    
+
     # Generate context-aware summary based on level
     if level == "ERROR":
         if "timeout" in message.lower():
@@ -62,14 +61,14 @@ def summarize_event_for_table(event) -> str:
         if "connection" in message.lower() or "network" in message.lower():
             return f"{src_display} had a network or connection problem."
         return f"{src_display} reported a problem that may have interrupted something."
-    
+
     if level == "WARNING":
         if "disk" in message.lower() or "space" in message.lower():
             return f"{src_display} noticed a disk or storage concern."
         if "memory" in message.lower():
             return f"{src_display} noticed a memory-related concern."
         return f"{src_display} noticed something unusual that might need attention."
-    
+
     if level in ("SUCCESS", "INFORMATION", "INFO"):
         if "start" in message.lower():
             return f"{src_display} started successfully."
@@ -78,10 +77,10 @@ def summarize_event_for_table(event) -> str:
         if "update" in message.lower():
             return f"{src_display} recorded an update activity."
         return f"{src_display} recorded normal activity or a status update."
-    
+
     if level in ("CRITICAL", "FAILURE"):
         return f"{src_display} reported a critical issue requiring attention."
-    
+
     return f"{src_display} logged an event."
 
 
@@ -108,7 +107,7 @@ def build_friendly_message(source: str, event_id: int, raw_message: str) -> str:
             return friendly
     except ImportError:
         pass
-    
+
     # Rephrase unknown events based on message content
     return _rephrase_event_message(source, event_id, raw_message)
 
@@ -121,10 +120,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     """
     if not raw_message:
         return f"{source} activity logged (Event {event_id})"
-    
+
     text = raw_message.lower().strip()
     original = (raw_message or "").strip().replace("\r\n", " ").replace("\n", " ")
-    
+
     # =========================================================================
     # SUCCESS / COMPLETION PATTERNS
     # =========================================================================
@@ -146,7 +145,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "sync" in text:
             return "Synchronization completed"
         return "Operation completed successfully"
-    
+
     # =========================================================================
     # FAILURE / ERROR PATTERNS
     # =========================================================================
@@ -170,7 +169,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "disk" in text or "drive" in text:
             return "Disk error detected"
         return "An error occurred"
-    
+
     # =========================================================================
     # START / STOP PATTERNS
     # =========================================================================
@@ -186,7 +185,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "scan" in text:
             return "Scan started"
         return "An operation started"
-    
+
     if any(w in text for w in ["stopped", "stopping", "ended", "terminated", "exited", "closed"]):
         if "service" in text:
             return "A Windows service stopped"
@@ -195,7 +194,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "session" in text:
             return "User session ended"
         return "An operation ended"
-    
+
     # =========================================================================
     # NETWORK PATTERNS
     # =========================================================================
@@ -207,7 +206,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "ip address" in text or "dhcp" in text:
             return "Network address assigned"
         return "Network activity logged"
-    
+
     # =========================================================================
     # SECURITY PATTERNS
     # =========================================================================
@@ -219,7 +218,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "password" in text:
             return "Password-related activity"
         return "Security event logged"
-    
+
     # =========================================================================
     # UPDATE / INSTALL PATTERNS
     # =========================================================================
@@ -233,12 +232,12 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "check" in text:
             return "Checking for updates"
         return "Update activity logged"
-    
+
     if any(w in text for w in ["install", "uninstall", "setup"]):
         if "uninstall" in text or "remov" in text:
             return "Software was uninstalled"
         return "Software installation activity"
-    
+
     # =========================================================================
     # POWER / HARDWARE PATTERNS
     # =========================================================================
@@ -252,7 +251,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "restart" in text or "reboot" in text:
             return "System restart logged"
         return "Power state changed"
-    
+
     if any(w in text for w in ["driver", "device", "hardware", "usb", "bluetooth"]):
         if "load" in text or "start" in text:
             return "Device driver loaded"
@@ -263,9 +262,9 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "bluetooth" in text:
             return "Bluetooth activity"
         return "Hardware activity logged"
-    
+
     # =========================================================================
-    # DISK / STORAGE PATTERNS  
+    # DISK / STORAGE PATTERNS
     # =========================================================================
     if any(w in text for w in ["disk", "storage", "volume", "partition", "filesystem", "ntfs"]):
         if "error" in text:
@@ -275,7 +274,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "mount" in text:
             return "Volume mounted"
         return "Disk activity logged"
-    
+
     # =========================================================================
     # BACKUP / RESTORE PATTERNS
     # =========================================================================
@@ -287,7 +286,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "fail" in text:
             return "Backup/restore failed"
         return "Backup activity logged"
-    
+
     # =========================================================================
     # SCHEDULE / TASK PATTERNS
     # =========================================================================
@@ -297,7 +296,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "complet" in text:
             return "Scheduled task completed"
         return "Scheduled task activity"
-    
+
     # =========================================================================
     # WINDOWS DEFENDER / ANTIVIRUS
     # =========================================================================
@@ -311,7 +310,7 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "update" in text:
             return "Security definitions updated"
         return "Security scan activity"
-    
+
     # =========================================================================
     # PRINT PATTERNS
     # =========================================================================
@@ -319,31 +318,31 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
         if "job" in text:
             return "Print job processed"
         return "Printer activity logged"
-    
+
     # =========================================================================
     # APPLICATION PATTERNS
     # =========================================================================
     if any(w in text for w in ["crash", "hang", "not responding", "stopped working"]):
         return "Application stopped responding"
-    
+
     if any(w in text for w in ["exception", "fault", "access violation"]):
         return "Application encountered an error"
-    
+
     # =========================================================================
     # GENERIC FALLBACK - Extract key info from first sentence
     # =========================================================================
     # Take first sentence or first 100 chars
     first_sentence = original.split(".")[0].strip() if "." in original else original
-    
+
     if len(first_sentence) > 80:
         # Find a good breaking point
         words = first_sentence[:80].split()
         first_sentence = " ".join(words[:-1]) + "..." if len(words) > 1 else first_sentence[:77] + "..."
-    
+
     # If we have something meaningful, return it slightly cleaned
     if first_sentence and len(first_sentence) > 5:
         return first_sentence
-    
+
     # Last resort
     return f"{source} activity (Event ID {event_id})"
 
@@ -458,13 +457,13 @@ class WindowsEventReader(IEventReader):
                             timestamp = datetime.fromtimestamp(
                                 int(event.TimeGenerated.timestamp())
                             )
-                            
+
                             # Extract event ID (mask to get actual ID)
                             event_id = event.EventID & 0xFFFF
 
                             # Get user-friendly message (encoding-safe)
                             raw_message = self._simplify_message(event, source)
-                            
+
                             # Build friendly message using knowledge base or heuristics
                             friendly = build_friendly_message(source, event_id, raw_message)
 

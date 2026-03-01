@@ -9,7 +9,7 @@ Sentinel respects your privacy. This document describes what data we collect and
 - **No cloud uploads** – All analysis runs locally on your machine
 - **No user tracking** – No analytics or tracking cookies
 - **No browsing history** – We don't monitor or store your activity
-- **No file scanning by default** – VirusTotal is disabled unless explicitly configured
+- **No automatic file uploads** – All scanning is local unless explicitly configured
 
 ### Data We Collect Locally
 
@@ -31,11 +31,11 @@ Sentinel respects your privacy. This document describes what data we collect and
 - **How to enable**: Set `SENTRY_DSN` environment variable
 - **Opt-out**: Do not set `SENTRY_DSN`
 
-#### VirusTotal (File Scanning)
-- **When**: You manually scan a file/URL (optional feature, disabled by default)
-- **What**: File hash, file content, scan results
-- **How to enable**: Set `VT_API_KEY` environment variable
-- **Opt-out**: Do not set `VT_API_KEY`
+#### AI Services (Claude/OpenAI)
+- **When**: You request AI-powered security explanations
+- **What**: Event descriptions and context
+- **How to enable**: Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` environment variable
+- **Opt-out**: Do not set AI API keys
 
 #### Nmap (Network Scanning)
 - **When**: You manually scan a network (optional feature, disabled by default)
@@ -59,7 +59,6 @@ Sentinel respects your privacy. This document describes what data we collect and
   "feature_toggles": {
     "enable_gpu_monitoring": true,
     "enable_network_scanner": false,
-    "enable_virustotal": false,
     "enable_crash_reporting": false
   },
   "ui": {
@@ -93,13 +92,13 @@ Sentinel respects your privacy. This document describes what data we collect and
 - **Settings**: Indefinite (until user resets)
 - **Logs**: 10 MB rolling buffer (oldest files deleted when exceeded)
 - **Crash reports** (Sentry): 30 days (depends on Sentry's retention policy)
-- **File scans** (VirusTotal): None stored locally; VirusTotal's privacy policy applies
+- **Scan results**: Stored locally in SQLite database
 
 ## Security
 
 - **File permissions**: 0600 (readable only by you) on Unix-like systems
 - **Encryption**: Not encrypted at rest (recommend full-disk encryption for sensitive systems)
-- **In-transit**: HTTPS for VirusTotal and Sentry (if enabled)
+- **In-transit**: HTTPS for AI APIs and Sentry (if enabled)
 
 ## Your Rights
 
@@ -110,11 +109,17 @@ Sentinel respects your privacy. This document describes what data we collect and
 
 ## Third-Party Services
 
-### VirusTotal
+### Anthropic (Claude AI)
 
-- **Website**: https://www.virustotal.com
-- **Privacy**: https://www.virustotal.com/gui/privacy
-- **Data**: File hashes and content when you manually scan
+- **Website**: https://www.anthropic.com
+- **Privacy**: https://www.anthropic.com/privacy
+- **Data**: Event descriptions when you request AI explanations
+
+### OpenAI
+
+- **Website**: https://openai.com
+- **Privacy**: https://openai.com/policies/privacy-policy
+- **Data**: Event descriptions when you request AI explanations
 
 ### Sentry
 

@@ -22,14 +22,14 @@ except ImportError:
     HAS_NVIDIA = False
 
 try:
-    import GPUtil  # noqa: F401
+    import GPUtil
 
     HAS_GPUTIL = True
 except ImportError:
     HAS_GPUTIL = False
 
 try:
-    import wmi  # noqa: F401
+    import wmi
 
     HAS_WMI = True
 except ImportError:
@@ -764,17 +764,17 @@ class PsutilSystemMonitor(ISystemMonitor):
         # Return placeholder immediately on first call, load in background
         if not self._security_cache and not self._security_loading:
             self._security_loading = True
-            
+
             def load_security_info():
                 try:
                     self._security_cache = self._get_security_info()
                     self._security_cache_time = time.time()
                 finally:
                     self._security_loading = False
-            
+
             thread = threading.Thread(target=load_security_info, daemon=True)
             thread.start()
-            
+
             # Return placeholder while loading
             return {
                 "windows_defender": {"status": "Loading...", "enabled": False},
@@ -789,14 +789,14 @@ class PsutilSystemMonitor(ISystemMonitor):
         # Refresh cache in background if expired
         if not self._security_loading:
             self._security_loading = True
-            
+
             def refresh_security_info():
                 try:
                     self._security_cache = self._get_security_info()
                     self._security_cache_time = time.time()
                 finally:
                     self._security_loading = False
-            
+
             thread = threading.Thread(target=refresh_security_info, daemon=True)
             thread.start()
 

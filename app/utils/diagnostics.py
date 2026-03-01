@@ -114,11 +114,10 @@ def collect_diagnostics() -> dict[str, Any]:
 
     # Optional integrations
     try:
-        from app.infra.integrations import nmap_available, virustotal_enabled
+        from app.infra.integrations import nmap_available
 
         diagnostics["integrations"] = {
             "nmap_available": nmap_available(),
-            "virustotal_available": virustotal_enabled(),
         }
     except ImportError as e:
         diagnostics["integrations"] = {"error": str(e)}
@@ -216,13 +215,6 @@ def run_diagnostics() -> int:
             print("  [OK] Nmap: Available for network scanning")
         else:
             print("  [WARNING] Nmap: Not found (network scanning disabled)")
-
-        if integrations.get("virustotal_available"):
-            print("  [OK] VirusTotal: API key configured")
-        else:
-            print(
-                "  [WARNING] VirusTotal: VT_API_KEY not set (file/URL scanning limited)"
-            )
     else:
         print(f"  [WARNING] Could not check integrations: {integrations['error']}")
 

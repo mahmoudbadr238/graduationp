@@ -1,19 +1,16 @@
 """
-AI Providers Module
-===================
+AI Providers Module - Simplified Groq-only Architecture
+========================================================
 
-Hybrid AI provider system supporting:
-- Offline-only mode (rules + KB)
-- Hybrid mode (offline facts + online explanation)
-- Online-only mode (with safety guardrails)
+Sentinel uses Groq Cloud AI as the sole provider for:
+- Event explanations (llama-3.3-70b-versatile)
+- Chatbot responses (llama-3.1-8b-instant)
 
-CRITICAL DESIGN PRINCIPLES:
-1. Offline logic runs FIRST and is source of truth
-2. Online LLM enhances but never overrides facts
-3. No raw logs sent to online APIs
-4. Sensitive data redacted by default
-5. Caching to avoid repeated calls
-6. Circuit breaker for failing providers
+DESIGN PRINCIPLES:
+1. Groq handles all AI requests (fast, free tier)
+2. EventRulesEngine provides offline KB lookups (source of truth)
+3. Sensitive data redacted before API calls
+4. Persistent SQLite caching for repeated queries
 """
 
 from .base import (
@@ -22,10 +19,7 @@ from .base import (
     AIResponse,
     ProviderConfig,
 )
-
-from .local import LocalProvider, get_local_provider
-from .online import OnlineProvider, ClaudeProvider, OpenAIProvider
-from .router import AIRouter, get_ai_router
+from .groq import GroqProvider, get_groq_provider, is_groq_available
 from .privacy import RedactionEngine, redact_sensitive
 
 __all__ = [
@@ -33,17 +27,12 @@ __all__ = [
     "AIMode",
     # Base
     "AIProvider",
-    "AIResponse", 
+    "AIResponse",
     "ProviderConfig",
-    # Providers
-    "LocalProvider",
-    "get_local_provider",
-    "OnlineProvider",
-    "ClaudeProvider",
-    "OpenAIProvider",
-    # Router
-    "AIRouter",
-    "get_ai_router",
+    # Groq Provider (primary)
+    "GroqProvider",
+    "get_groq_provider",
+    "is_groq_available",
     # Privacy
     "RedactionEngine",
     "redact_sensitive",

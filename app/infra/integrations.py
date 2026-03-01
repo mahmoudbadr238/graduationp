@@ -1,6 +1,5 @@
-"""Integration availability helpers - Nmap, VirusTotal, etc."""
+"""Integration availability helpers - Nmap, etc."""
 
-import os
 import shutil
 
 
@@ -13,16 +12,6 @@ def nmap_available() -> bool:
     return shutil.which("nmap") is not None
 
 
-def virustotal_enabled() -> bool:
-    """Check if VirusTotal API key is configured.
-
-    Returns:
-        True if VT_API_KEY environment variable is set and non-empty
-    """
-    key = os.getenv("VT_API_KEY", "").strip()
-    return len(key) > 0
-
-
 def get_integration_status() -> dict[str, bool]:
     """Get status of all optional integrations.
 
@@ -31,7 +20,6 @@ def get_integration_status() -> dict[str, bool]:
     """
     return {
         "nmap": nmap_available(),
-        "virustotal": virustotal_enabled(),
     }
 
 
@@ -41,6 +29,3 @@ def print_integration_status():
 
     if not status["nmap"]:
         print("[SKIP] Network scanner: nmap not found")
-
-    if not status["virustotal"]:
-        print("[SKIP] VirusTotal: VT_API_KEY not set")

@@ -7,11 +7,10 @@ Integrates with ClamAV if installed on the system.
 
 import logging
 import os
-import subprocess
 import shutil
-from typing import Dict, Any, Optional, Tuple
+import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +25,9 @@ class ClamAVResult:
     available: bool
     scanned: bool
     infected: bool
-    signature_name: Optional[str]
+    signature_name: str | None
     raw_output: str
-    error: Optional[str]
+    error: str | None
 
 
 class ClamAVAdapter:
@@ -41,18 +40,18 @@ class ClamAVAdapter:
     - Parses results into structured format
     - Gracefully handles missing ClamAV
     """
-    
+
     def __init__(self):
         """Initialize the ClamAV adapter."""
-        self._clamscan_path: Optional[str] = None
+        self._clamscan_path: str | None = None
         self._available = False
         self._detect_clamscan()
-    
+
     def _detect_clamscan(self) -> None:
         """Detect clamscan executable in PATH."""
         # Common names for clamscan
         executables = ["clamscan", "clamscan.exe", "clamdscan", "clamdscan.exe"]
-        
+
         for exe in executables:
             path = shutil.which(exe)
             if path:
@@ -60,7 +59,7 @@ class ClamAVAdapter:
                 self._available = True
                 logger.info(f"ClamAV detected at: {path}")
                 return
-        
+
         # Check common installation paths on Windows
         if _IS_WINDOWS:
             common_paths = [
@@ -74,19 +73,19 @@ class ClamAVAdapter:
                     self._available = True
                     logger.info(f"ClamAV detected at: {path}")
                     return
-        
+
         logger.debug("ClamAV not detected - optional integration disabled")
-    
+
     @property
     def is_available(self) -> bool:
         """Check if ClamAV is available."""
         return self._available
-    
+
     @property
-    def clamscan_path(self) -> Optional[str]:
+    def clamscan_path(self) -> str | None:
         """Get the path to clamscan executable."""
         return self._clamscan_path
-    
+
     def scan_file(self, file_path: str, timeout: int = 120) -> ClamAVResult:
         """
         Scan a file with ClamAV.
@@ -107,7 +106,7 @@ class ClamAVAdapter:
                 raw_output="",
                 error="ClamAV not installed"
             )
-        
+
         try:
             # Run clamscan with no-summary for cleaner output
             cmd = [
@@ -116,7 +115,7 @@ class ClamAVAdapter:
                 "--infected",
                 file_path
             ]
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -124,15 +123,15 @@ class ClamAVAdapter:
                 timeout=timeout,
                 creationflags=_SUBPROCESS_FLAGS if _IS_WINDOWS else 0,
             )
-            
+
             output = result.stdout.strip()
             stderr = result.stderr.strip()
-            
+
             # Parse result
             # Return code: 0 = clean, 1 = infected, 2 = error
             infected = result.returncode == 1
             signature_name = None
-            
+
             if infected and output:
                 # Parse signature name from output
                 # Format: "/path/to/file: SignatureName FOUND"
@@ -142,7 +141,7 @@ class ClamAVAdapter:
                         sig_part = parts[-1].strip()
                         sig_part = sig_part.replace("FOUND", "").strip()
                         signature_name = sig_part
-            
+
             return ClamAVResult(
                 available=True,
                 scanned=True,
@@ -151,7 +150,7 @@ class ClamAVAdapter:
                 raw_output=output,
                 error=stderr if result.returncode == 2 else None
             )
-            
+
         except subprocess.TimeoutExpired:
             logger.warning(f"ClamAV scan timed out for {file_path}")
             return ClamAVResult(
@@ -172,12 +171,12 @@ class ClamAVAdapter:
                 raw_output="",
                 error=str(e)
             )
-    
-    def get_version(self) -> Optional[str]:
+
+    def get_version(self) -> str | None:
         """Get ClamAV version string."""
         if not self._available:
             return None
-        
+
         try:
             result = subprocess.run(
                 [self._clamscan_path, "--version"],
@@ -189,12 +188,12 @@ class ClamAVAdapter:
             return result.stdout.strip()
         except Exception:
             return None
-    
-    def get_database_info(self) -> Dict[str, Any]:
+
+    def get_database_info(self) -> dict[str, Any]:
         """Get ClamAV database info."""
         if not self._available:
             return {"available": False}
-        
+
         try:
             # Try to find database files
             db_paths = []
@@ -208,24 +207,24 @@ class ClamAVAdapter:
                     "/var/lib/clamav",
                     "/usr/local/share/clamav",
                 ]
-            
+
             for db_path in db_paths:
                 if os.path.exists(db_path):
                     files = os.listdir(db_path)
                     return {
                         "available": True,
                         "path": db_path,
-                        "files": [f for f in files if f.endswith(('.cvd', '.cld'))],
+                        "files": [f for f in files if f.endswith((".cvd", ".cld"))],
                     }
-            
+
             return {"available": True, "path": None, "files": []}
-            
+
         except Exception as e:
             return {"available": True, "error": str(e)}
 
 
 # Singleton instance
-_adapter: Optional[ClamAVAdapter] = None
+_adapter: ClamAVAdapter | None = None
 
 
 def get_clamav_adapter() -> ClamAVAdapter:

@@ -12,7 +12,8 @@ from __future__ import annotations
 import functools
 import threading
 import time
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
@@ -33,9 +34,9 @@ class Debouncer(QObject):
         # In input handler:
         debouncer.call(search_text)
     """
-    
+
     triggered = Signal(object)  # Emits the latest args
-    
+
     def __init__(self, delay_ms: int = 300, parent: QObject = None):
         """
         Initialize debouncer.
@@ -50,7 +51,7 @@ class Debouncer(QObject):
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
         self._pending_args: Any = None
-    
+
     @Slot(object)
     def call(self, args: Any = None) -> None:
         """
@@ -62,17 +63,17 @@ class Debouncer(QObject):
         self._pending_args = args
         self._timer.stop()
         self._timer.start(self._delay_ms)
-    
+
     def _on_timeout(self) -> None:
         """Handle timeout - emit the signal."""
         self.triggered.emit(self._pending_args)
         self._pending_args = None
-    
+
     def cancel(self) -> None:
         """Cancel any pending call."""
         self._timer.stop()
         self._pending_args = None
-    
+
     @property
     def is_pending(self) -> bool:
         """Check if a call is pending."""
@@ -93,9 +94,9 @@ class Throttler(QObject):
         # In scroll handler:
         throttler.call(scroll_position)
     """
-    
+
     triggered = Signal(object)
-    
+
     def __init__(self, interval_ms: int = 100, parent: QObject = None):
         """
         Initialize throttler.
@@ -111,7 +112,7 @@ class Throttler(QObject):
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
-    
+
     @Slot(object)
     def call(self, args: Any = None) -> None:
         """
@@ -122,7 +123,7 @@ class Throttler(QObject):
         """
         now = time.time() * 1000  # ms
         elapsed = now - self._last_call
-        
+
         if elapsed >= self._interval_ms:
             # Enough time passed, execute immediately
             self._last_call = now
@@ -133,7 +134,7 @@ class Throttler(QObject):
             if not self._timer.isActive():
                 remaining = self._interval_ms - elapsed
                 self._timer.start(int(remaining))
-    
+
     def _on_timeout(self) -> None:
         """Handle timeout - emit pending args."""
         self._last_call = time.time() * 1000
@@ -153,7 +154,7 @@ class LazyLoader:
         # Later, when needed:
         engine = ai_engine.get()  # Now it initializes
     """
-    
+
     def __init__(self, factory: Callable[[], T]):
         """
         Initialize lazy loader.
@@ -165,7 +166,7 @@ class LazyLoader:
         self._instance: T | None = None
         self._lock = threading.Lock()
         self._initialized = False
-    
+
     def get(self) -> T:
         """
         Get the instance, initializing if needed.
@@ -179,11 +180,11 @@ class LazyLoader:
                     self._instance = self._factory()
                     self._initialized = True
         return self._instance
-    
+
     def is_initialized(self) -> bool:
         """Check if the instance has been initialized."""
         return self._initialized
-    
+
     def reset(self) -> None:
         """Reset the loader, forcing reinitialization on next get()."""
         with self._lock:
@@ -208,26 +209,26 @@ def debounce(delay_ms: int = 300):
         timer: QTimer = None
         pending_args = None
         pending_kwargs = None
-        
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             nonlocal timer, pending_args, pending_kwargs
-            
+
             pending_args = args
             pending_kwargs = kwargs
-            
+
             if timer is None:
                 timer = QTimer()
                 timer.setSingleShot(True)
-                
+
                 def on_timeout():
                     func(*pending_args, **pending_kwargs)
-                
+
                 timer.timeout.connect(on_timeout)
-            
+
             timer.stop()
             timer.start(delay_ms)
-        
+
         return wrapper
     return decorator
 
@@ -248,7 +249,7 @@ def throttle(interval_ms: int = 100):
     def decorator(func: Callable) -> Callable:
         last_call: list[float] = [0]
         lock = threading.Lock()
-        
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             now = time.time() * 1000
@@ -258,7 +259,7 @@ def throttle(interval_ms: int = 100):
                     last_call[0] = now
                     return func(*args, **kwargs)
             return None
-        
+
         return wrapper
     return decorator
 
@@ -281,7 +282,7 @@ class BatchProcessor:
         
         processor.flush()  # Process remaining items
     """
-    
+
     def __init__(
         self,
         process_func: Callable[[list], None],
@@ -303,41 +304,41 @@ class BatchProcessor:
         self._lock = threading.Lock()
         self._timer: QTimer | None = None
         self._last_add: float = 0
-    
+
     def add(self, item: Any) -> None:
         """Add an item to the batch."""
         with self._lock:
             self._items.append(item)
             self._last_add = time.time() * 1000
-            
+
             if len(self._items) >= self._batch_size:
                 self._process_batch()
             elif self._timer is None:
                 self._start_timer()
-    
+
     def flush(self) -> None:
         """Process any remaining items."""
         with self._lock:
             if self._items:
                 self._process_batch()
-    
+
     def _process_batch(self) -> None:
         """Process current batch."""
         if not self._items:
             return
-        
+
         batch = self._items
         self._items = []
-        
+
         if self._timer:
             self._timer.stop()
             self._timer = None
-        
+
         try:
             self._process(batch)
         except Exception:
             pass  # Log error but don't stop
-    
+
     def _start_timer(self) -> None:
         """Start the max-wait timer."""
         self._timer = QTimer()
@@ -362,13 +363,13 @@ class RequestDeduplicator:
             
             return await dedup.request(event_id, fetch)
     """
-    
+
     def __init__(self):
         """Initialize deduplicator."""
         self._pending: dict[str, threading.Event] = {}
         self._results: dict[str, Any] = {}
         self._lock = threading.Lock()
-    
+
     def request(
         self,
         key: str,
@@ -392,20 +393,20 @@ class RequestDeduplicator:
                 # Start new request
                 event = threading.Event()
                 self._pending[key] = event
-                
+
                 try:
                     result = fetch_func()
                     self._results[key] = result
                 finally:
                     event.set()
                     del self._pending[key]
-                
+
                 return result
-        
+
         # Wait for the result
         event.wait()
         return self._results.get(key)
-    
+
     def clear(self, key: str | None = None) -> None:
         """Clear cached results."""
         with self._lock:

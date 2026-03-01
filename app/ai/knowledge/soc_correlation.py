@@ -49,15 +49,15 @@ class CorrelationRule:
     description: str
     primary_event_id: int
     related_event_ids: list[int]
-    attack_pattern: Optional[AttackPattern] = None
-    
+    attack_pattern: AttackPattern | None = None
+
     # Thresholds for threat escalation
     count_threshold: int = 5  # Number before escalation
     time_window_minutes: int = 15  # Time window for counting
-    
+
     # Context keys to match (e.g., same account, same IP)
     match_fields: list[str] = field(default_factory=list)
-    
+
     # Scoring adjustment when pattern detected
     threat_score_bonus: int = 20
 
@@ -69,20 +69,20 @@ class EventScore:
     base_score: int  # 0-100, from event type alone
     context_score: int  # Adjustment based on context
     pattern_score: int  # Bonus if part of attack pattern
-    
+
     @property
     def total_score(self) -> int:
         return min(100, max(0, self.base_score + self.context_score + self.pattern_score))
-    
+
     @property
     def threat_level(self) -> ThreatLevel:
         if self.total_score >= 80:
             return ThreatLevel.CRITICAL
-        elif self.total_score >= 60:
+        if self.total_score >= 60:
             return ThreatLevel.HIGH
-        elif self.total_score >= 40:
+        if self.total_score >= 40:
             return ThreatLevel.MEDIUM
-        elif self.total_score >= 20:
+        if self.total_score >= 20:
             return ThreatLevel.LOW
         return ThreatLevel.SAFE
 
@@ -104,7 +104,7 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["TargetUserName", "IpAddress"],
         threat_score_bonus=30,
     ),
-    
+
     # New service installation → process creation (malware persistence)
     7045: CorrelationRule(
         name="Service Persistence Check",
@@ -117,7 +117,7 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["ServiceName", "ImagePath"],
         threat_score_bonus=25,
     ),
-    
+
     # Special privileges → sensitive operations (privilege escalation)
     4672: CorrelationRule(
         name="Privilege Escalation Check",
@@ -130,7 +130,7 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["SubjectUserName", "LogonType"],
         threat_score_bonus=20,
     ),
-    
+
     # Defender detections → actions taken
     1116: CorrelationRule(
         name="Defender Detection Correlation",
@@ -143,7 +143,7 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["ThreatName", "Path"],
         threat_score_bonus=40,
     ),
-    
+
     # Audit policy change → potential defense evasion
     4719: CorrelationRule(
         name="Audit Tampering Check",
@@ -180,7 +180,7 @@ EVENT_BASE_SCORES: dict[int, int] = {
     4769: 10,   # Kerberos service ticket - normal
     4771: 20,   # Kerberos preauth failed
     4776: 15,   # NTLM auth attempt
-    
+
     # Service events
     7000: 25,   # Service failed to start
     7001: 20,   # Service dependency failure
@@ -191,17 +191,17 @@ EVENT_BASE_SCORES: dict[int, int] = {
     7036: 5,    # Service state change - informational
     7040: 10,   # Startup type changed
     7045: 30,   # New service installed
-    
+
     # Power events
     41: 35,     # Unexpected shutdown
     42: 5,      # Sleep - informational
-    
+
     # Defender events
     1116: 60,   # Malware detected
     1117: 40,   # Malware action taken
     1118: 30,   # Malware action failed
     1119: 20,   # Malware action completed
-    
+
     # DCOM
     10016: 5,   # DCOM permission - usually noise
 }
@@ -211,14 +211,14 @@ EVENT_BASE_SCORES: dict[int, int] = {
 # CONTEXT ADJUSTMENTS
 # =============================================================================
 
-@dataclass 
+@dataclass
 class ContextFactor:
     """A factor that adjusts threat score based on context."""
     name: str
     description: str
     score_adjustment: int
     applies_to_events: list[int]  # Empty = all events
-    
+
     def matches(self, event: dict, context: dict) -> bool:
         """Check if this factor applies to the given event/context."""
         raise NotImplementedError
@@ -226,7 +226,7 @@ class ContextFactor:
 
 class NetworkLoginFactor(ContextFactor):
     """Network logins (type 3) are more suspicious for failed attempts."""
-    
+
     def __init__(self):
         super().__init__(
             name="Network Login",
@@ -234,7 +234,7 @@ class NetworkLoginFactor(ContextFactor):
             score_adjustment=15,
             applies_to_events=[4625],
         )
-    
+
     def matches(self, event: dict, context: dict) -> bool:
         logon_type = event.get("fields", {}).get("LogonType", "")
         return str(logon_type) == "3"
@@ -242,7 +242,7 @@ class NetworkLoginFactor(ContextFactor):
 
 class AdminAccountFactor(ContextFactor):
     """Activities involving admin accounts are more significant."""
-    
+
     def __init__(self):
         super().__init__(
             name="Admin Account",
@@ -250,7 +250,7 @@ class AdminAccountFactor(ContextFactor):
             score_adjustment=10,
             applies_to_events=[],  # All events
         )
-    
+
     def matches(self, event: dict, context: dict) -> bool:
         username = (
             event.get("fields", {}).get("TargetUserName", "") or
@@ -261,7 +261,7 @@ class AdminAccountFactor(ContextFactor):
 
 class AfterHoursFactor(ContextFactor):
     """Activity outside business hours is more suspicious."""
-    
+
     def __init__(self):
         super().__init__(
             name="After Hours",
@@ -269,7 +269,7 @@ class AfterHoursFactor(ContextFactor):
             score_adjustment=10,
             applies_to_events=[4624, 4625, 4648, 7045],
         )
-    
+
     def matches(self, event: dict, context: dict) -> bool:
         # This would check the event timestamp
         # Simplified: assume context provides this
@@ -278,7 +278,7 @@ class AfterHoursFactor(ContextFactor):
 
 class ExternalIPFactor(ContextFactor):
     """Logins from external IPs are more suspicious."""
-    
+
     def __init__(self):
         super().__init__(
             name="External IP",
@@ -286,7 +286,7 @@ class ExternalIPFactor(ContextFactor):
             score_adjustment=20,
             applies_to_events=[4624, 4625],
         )
-    
+
     def matches(self, event: dict, context: dict) -> bool:
         ip = event.get("fields", {}).get("IpAddress", "")
         if not ip or ip == "-" or ip == "127.0.0.1":
@@ -324,17 +324,17 @@ class EventScoringEngine:
     
     Used to prioritize events and determine threat level.
     """
-    
+
     def __init__(self):
         self._correlation_rules = CORRELATION_RULES
         self._base_scores = EVENT_BASE_SCORES
         self._context_factors = CONTEXT_FACTORS
-    
+
     def score_event(
         self,
         event: dict[str, Any],
-        related_events: Optional[list[dict]] = None,
-        context: Optional[dict] = None,
+        related_events: list[dict] | None = None,
+        context: dict | None = None,
     ) -> EventScore:
         """
         Score a single event.
@@ -349,30 +349,30 @@ class EventScoringEngine:
         """
         event_id = event.get("event_id", event.get("eventId", 0))
         context = context or {}
-        
+
         # Base score from event type
         base_score = self._base_scores.get(event_id, 15)
-        
+
         # Context adjustments
         context_score = 0
         for factor in self._context_factors:
             if not factor.applies_to_events or event_id in factor.applies_to_events:
                 if factor.matches(event, context):
                     context_score += factor.score_adjustment
-        
+
         # Pattern detection
         pattern_score = 0
         if related_events and event_id in self._correlation_rules:
             rule = self._correlation_rules[event_id]
             pattern_score = self._check_pattern(event, related_events, rule)
-        
+
         return EventScore(
             event_id=event_id,
             base_score=base_score,
             context_score=context_score,
             pattern_score=pattern_score,
         )
-    
+
     def _check_pattern(
         self,
         event: dict,
@@ -386,16 +386,16 @@ class EventScoringEngine:
             1 for e in related_events
             if e.get("event_id", e.get("eventId")) in rule.related_event_ids
         )
-        
+
         if related_count >= rule.count_threshold:
             return rule.threat_score_bonus
-        
+
         return 0
-    
-    def get_correlation_info(self, event_id: int) -> Optional[CorrelationRule]:
+
+    def get_correlation_info(self, event_id: int) -> CorrelationRule | None:
         """Get correlation rule for an event."""
         return self._correlation_rules.get(event_id)
-    
+
     def get_related_events_to_check(self, event_id: int) -> list[int]:
         """Get list of related event IDs to check for correlation."""
         rule = self._correlation_rules.get(event_id)
@@ -432,7 +432,7 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             4776: "NTLM authentication - check for pass-the-hash",
         },
     },
-    
+
     7045: {
         "normal_explanation": "Service installation during software updates is expected.",
         "suspicious_explanation": "Unexpected service installation may indicate malware persistence.",
@@ -456,7 +456,7 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             7036: "Service start after installation",
         },
     },
-    
+
     4672: {
         "normal_explanation": "Admin logging in gets special privileges - this is expected.",
         "suspicious_explanation": "Unexpected privilege assignments may indicate escalation attack.",
@@ -479,7 +479,7 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             4688: "Processes started with elevated privileges",
         },
     },
-    
+
     1116: {
         "normal_explanation": "Defender detected and blocked a threat. The action taken shows if remediation worked.",
         "suspicious_explanation": "Detection indicates malware was present. Verify it was fully removed.",
@@ -507,7 +507,7 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
 
 
 # Singleton
-_scoring_engine: Optional[EventScoringEngine] = None
+_scoring_engine: EventScoringEngine | None = None
 
 def get_scoring_engine() -> EventScoringEngine:
     """Get the singleton scoring engine."""

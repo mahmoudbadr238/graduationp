@@ -11,9 +11,9 @@ import logging
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class CacheEntry:
     score: int  # 0-100
     timestamp: float
     ttl_hours: int = 24
-    
+
     @property
     def is_expired(self) -> bool:
         age_hours = (time.time() - self.timestamp) / 3600
@@ -43,13 +43,13 @@ class IntelCache:
     Uses SQLite for durability and fast lookups.
     Default TTL: 24 hours for most results, 1 hour for "unknown".
     """
-    
+
     _instance: Optional["IntelCache"] = None
     _lock = threading.Lock()
-    
+
     DEFAULT_TTL_HOURS = 24
     UNKNOWN_TTL_HOURS = 1  # Re-check unknowns more frequently
-    
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -57,16 +57,16 @@ class IntelCache:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
-            
+
         self._db_path = self._get_db_path()
         self._init_db()
         self._initialized = True
         logger.info(f"IntelCache initialized: {self._db_path}")
-    
+
     def _get_db_path(self) -> Path:
         """Get the database path in user's app data."""
         import sys
@@ -76,7 +76,7 @@ class IntelCache:
             base = Path.home() / ".sentinel"
         base.mkdir(parents=True, exist_ok=True)
         return base / "intel_cache.db"
-    
+
     def _init_db(self) -> None:
         """Initialize the database schema."""
         with sqlite3.connect(self._db_path) as conn:
@@ -97,19 +97,19 @@ class IntelCache:
                 ON intel_cache(timestamp)
             """)
             conn.commit()
-    
+
     def _make_key(self, provider: str, lookup_type: str, value: str) -> str:
         """Create a unique cache key."""
         normalized = value.lower().strip()
         data = f"{provider}:{lookup_type}:{normalized}"
         return hashlib.sha256(data.encode()).hexdigest()
-    
+
     def get(
-        self, 
-        provider: str, 
-        lookup_type: str, 
+        self,
+        provider: str,
+        lookup_type: str,
         value: str
-    ) -> Optional[CacheEntry]:
+    ) -> CacheEntry | None:
         """
         Get a cached result if available and not expired.
         
@@ -122,7 +122,7 @@ class IntelCache:
             CacheEntry if found and valid, None otherwise
         """
         key = self._make_key(provider, lookup_type, value)
-        
+
         try:
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -131,10 +131,10 @@ class IntelCache:
                     (key,)
                 )
                 row = cursor.fetchone()
-                
+
                 if row is None:
                     return None
-                
+
                 entry = CacheEntry(
                     key=row["key"],
                     provider=row["provider"],
@@ -145,19 +145,19 @@ class IntelCache:
                     timestamp=row["timestamp"],
                     ttl_hours=row["ttl_hours"],
                 )
-                
+
                 if entry.is_expired:
                     # Delete expired entry
                     conn.execute("DELETE FROM intel_cache WHERE key = ?", (key,))
                     conn.commit()
                     return None
-                
+
                 return entry
-                
+
         except Exception as e:
             logger.error(f"Cache get error: {e}")
             return None
-    
+
     def set(
         self,
         provider: str,
@@ -166,7 +166,7 @@ class IntelCache:
         result: dict,
         verdict: str,
         score: int,
-        ttl_hours: Optional[int] = None,
+        ttl_hours: int | None = None,
     ) -> None:
         """
         Cache an intelligence result.
@@ -181,15 +181,15 @@ class IntelCache:
             ttl_hours: Override default TTL
         """
         key = self._make_key(provider, lookup_type, value)
-        
+
         # Use shorter TTL for unknown results
         if ttl_hours is None:
             ttl_hours = (
-                self.UNKNOWN_TTL_HOURS 
-                if verdict == "unknown" 
+                self.UNKNOWN_TTL_HOURS
+                if verdict == "unknown"
                 else self.DEFAULT_TTL_HOURS
             )
-        
+
         try:
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute("""
@@ -209,7 +209,7 @@ class IntelCache:
                 conn.commit()
         except Exception as e:
             logger.error(f"Cache set error: {e}")
-    
+
     def cleanup_expired(self) -> int:
         """Remove all expired entries. Returns count of deleted."""
         try:
@@ -224,7 +224,7 @@ class IntelCache:
         except Exception as e:
             logger.error(f"Cache cleanup error: {e}")
             return 0
-    
+
     def clear(self) -> None:
         """Clear all cached entries."""
         try:
@@ -236,7 +236,7 @@ class IntelCache:
 
 
 # Singleton getter
-_cache: Optional[IntelCache] = None
+_cache: IntelCache | None = None
 
 def get_intel_cache() -> IntelCache:
     """Get the singleton intel cache instance."""

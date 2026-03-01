@@ -3,16 +3,15 @@
 import platform
 import socket
 import subprocess
-import sys
 import threading
 import time
 from typing import Dict, List, Optional
 
 import psutil
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
-from app.utils.security_info import SecurityInfo
 from app.utils.admin import check_admin
+from app.utils.security_info import SecurityInfo
 
 # Subprocess flags - CREATE_NO_WINDOW only works on Windows
 _IS_WINDOWS = platform.system() == "Windows"
@@ -52,13 +51,13 @@ class SystemSnapshotService(QObject):
     cpuFrequencyChanged = Signal()
     systemUptimeChanged = Signal()
     cpuPerCoreChanged = Signal()
-    
+
     # Internal signal for thread-safe security info updates
     _securityInfoReadyInternal = Signal(dict)
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
-        
+
         # Connect internal signal for thread-safe security info updates
         self._securityInfoReadyInternal.connect(self._onSecurityInfoReady)
 
@@ -75,12 +74,12 @@ class SystemSnapshotService(QObject):
         self._memory_total = 0
         self._memory_available = 0
         self._disk_usage = 0.0
-        self._disk_partitions: List[Dict] = []
+        self._disk_partitions: list[dict] = []
         self._net_up_bps = 0.0  # Primary: bits per second
         self._net_down_bps = 0.0
-        self._top_processes: List[Dict] = []
-        self._network_interfaces: List[Dict] = []
-        self._security_info: Dict = {}
+        self._top_processes: list[dict] = []
+        self._network_interfaces: list[dict] = []
+        self._security_info: dict = {}
 
         # CPU details
         self._cpu_name = self._get_cpu_name()
@@ -88,13 +87,13 @@ class SystemSnapshotService(QObject):
         self._cpu_count_logical = psutil.cpu_count(logical=True) or 1  # Logical cores
         self._cpu_frequency = psutil.cpu_freq()
         self._system_uptime = 0.0
-        self._cpu_per_core: List[float] = []  # Per-core CPU usage
+        self._cpu_per_core: list[float] = []  # Per-core CPU usage
 
         # Chart data (historical)
-        self._cpu_chart_data: List[float] = []
-        self._memory_chart_data: List[float] = []
-        self._network_history_up: List[float] = []
-        self._network_history_down: List[float] = []
+        self._cpu_chart_data: list[float] = []
+        self._memory_chart_data: list[float] = []
+        self._network_history_up: list[float] = []
+        self._network_history_down: list[float] = []
         self._max_history_points = 60  # Keep last 60 data points
 
         # Network tracking
@@ -155,7 +154,7 @@ class SystemSnapshotService(QObject):
                     return "Intel/AMD Processor"
             elif self._is_linux:
                 try:
-                    with open("/proc/cpuinfo", "r") as f:
+                    with open("/proc/cpuinfo") as f:
                         for line in f:
                             if "model name" in line:
                                 return line.split(":", 1)[1].strip()
@@ -472,7 +471,7 @@ class SystemSnapshotService(QObject):
         return self._disk_usage
 
     @Property("QVariantList", notify=diskPartitionsChanged)
-    def diskPartitions(self) -> List[Dict]:
+    def diskPartitions(self) -> list[dict]:
         """List of disk partitions with usage information."""
         return self._disk_partitions
 
@@ -509,7 +508,7 @@ class SystemSnapshotService(QObject):
                 self._timer.start(value)
 
     @Property("QVariantList", notify=topProcessesChanged)
-    def topProcesses(self) -> List[Dict]:
+    def topProcesses(self) -> list[dict]:
         return self._top_processes
 
     @Property(str, constant=True)
@@ -535,7 +534,7 @@ class SystemSnapshotService(QObject):
         return check_admin()
 
     @Property("QVariantList", notify=networkInterfacesChanged)
-    def networkInterfaces(self) -> List[Dict]:
+    def networkInterfaces(self) -> list[dict]:
         """List of network interfaces with their addresses and stats."""
         return self._network_interfaces
 
@@ -550,27 +549,27 @@ class SystemSnapshotService(QObject):
         return self._active_interface_ipv4
 
     @Property("QVariantList", notify=cpuChartDataChanged)
-    def cpuChartData(self) -> List[float]:
+    def cpuChartData(self) -> list[float]:
         """Historical CPU usage data for charting."""
         return self._cpu_chart_data
 
     @Property("QVariantList", notify=memoryChartDataChanged)
-    def memoryChartData(self) -> List[float]:
+    def memoryChartData(self) -> list[float]:
         """Historical memory usage data for charting."""
         return self._memory_chart_data
 
     @Property("QVariantList", notify=networkHistoryUpChanged)
-    def networkHistoryUp(self) -> List[float]:
+    def networkHistoryUp(self) -> list[float]:
         """Historical upload speed data (bps) for charting."""
         return self._network_history_up
 
     @Property("QVariantList", notify=networkHistoryDownChanged)
-    def networkHistoryDown(self) -> List[float]:
+    def networkHistoryDown(self) -> list[float]:
         """Historical download speed data (bps) for charting."""
         return self._network_history_down
 
     @Property("QVariantMap", notify=securityInfoChanged)
-    def securityInfo(self) -> Dict:
+    def securityInfo(self) -> dict:
         """Security status information (firewall, AV, etc.)."""
         return self._security_info
 
@@ -607,11 +606,11 @@ class SystemSnapshotService(QObject):
         return float(self._memory_available)
 
     @Property("QVariantList", notify=cpuPerCoreChanged)
-    def cpuPerCore(self) -> List[float]:
+    def cpuPerCore(self) -> list[float]:
         """Per-core CPU usage percentages."""
         return self._cpu_per_core
 
-    def _onSecurityInfoReady(self, info: Dict):
+    def _onSecurityInfoReady(self, info: dict):
         """Handle security info ready from background thread (runs on main thread)."""
         self._security_info = info
         self.securityInfoChanged.emit()
@@ -622,7 +621,7 @@ class SystemSnapshotService(QObject):
         # Run in background thread to never block the UI
         def gather_security_info():
             self._do_update_security_info()
-        
+
         thread = threading.Thread(target=gather_security_info, daemon=True)
         thread.start()
 
@@ -846,10 +845,9 @@ class SystemSnapshotService(QObject):
 
             if days > 0:
                 return f"{days}d {hours}h {minutes}m"
-            elif hours > 0:
+            if hours > 0:
                 return f"{hours}h {minutes}m"
-            else:
-                return f"{minutes}m"
+            return f"{minutes}m"
         except Exception:
             return "Unknown"
 
@@ -869,7 +867,7 @@ class SystemSnapshotService(QObject):
                 output = result.stdout.lower()
                 if "state" in output and "on" in output:
                     return "Enabled"
-                elif "state" in output and "off" in output:
+                if "state" in output and "off" in output:
                     return "Disabled"
             return "Unknown"
         except Exception:
@@ -918,7 +916,7 @@ class SystemSnapshotService(QObject):
                 output = result.stdout.strip().lower()
                 if "true" in output:
                     return "Enabled"
-                elif "false" in output:
+                if "false" in output:
                     return "Disabled"
             return "N/A"
         except Exception:
@@ -943,7 +941,7 @@ class SystemSnapshotService(QObject):
                 output = result.stdout.strip().lower()
                 if "true" in output:
                     return "Present"
-                elif "false" in output:
+                if "false" in output:
                     return "Not Present"
             return "Unknown"
         except Exception:
@@ -961,7 +959,7 @@ class SystemSnapshotService(QObject):
                 output = result.stdout.lower()
                 if "status: active" in output:
                     return "Enabled (ufw)"
-                elif "status: inactive" in output:
+                if "status: inactive" in output:
                     return "Disabled (ufw)"
         except Exception:
             pass
@@ -1005,7 +1003,7 @@ class SystemSnapshotService(QObject):
         except Exception:
             # Check via /sys
             try:
-                with open("/sys/module/apparmor/parameters/enabled", "r") as f:
+                with open("/sys/module/apparmor/parameters/enabled") as f:
                     if f.read().strip() == "Y":
                         return "Enabled"
             except Exception:

@@ -25,7 +25,7 @@ def test_theme_persistence():
 
     # Check what's on disk
     if settings._settings_path.exists():
-        with open(settings._settings_path, "r") as f:
+        with open(settings._settings_path) as f:
             disk_data = json.load(f)
             print(f"On disk (themeMode): {disk_data.get('themeMode', 'NOT FOUND')}")
 
@@ -38,7 +38,7 @@ def test_theme_persistence():
 
     # Check what's on disk
     if settings._settings_path.exists():
-        with open(settings._settings_path, "r") as f:
+        with open(settings._settings_path) as f:
             disk_data = json.load(f)
             print(f"On disk (themeMode): {disk_data.get('themeMode', 'NOT FOUND')}")
 
@@ -53,9 +53,8 @@ def test_theme_persistence():
     if settings2.themeMode == "dark":
         print("✅ SUCCESS: Theme persisted correctly!")
         return True
-    else:
-        print(f"❌ FAILURE: Expected 'dark', got '{settings2.themeMode}'")
-        return False
+    print(f"❌ FAILURE: Expected 'dark', got '{settings2.themeMode}'")
+    return False
 
 
 if __name__ == "__main__":

@@ -26,6 +26,10 @@ Item {
     property var aiData: null
     property string aiError: ""
     
+    // Explanation mode: "none" | "brief" | "detailed"
+    property string explanationMode: "none"
+    property var briefData: null
+    
     // ===========================================
     // HELPER FUNCTIONS
     // ===========================================
@@ -103,6 +107,7 @@ Item {
         aiData = null
         aiError = ""
         aiBusy = true
+        explanationMode = "detailed"
         
         // Use the stored original index
         if (typeof Backend !== "undefined" && Backend.requestEventExplanation) {
@@ -110,6 +115,27 @@ Item {
         } else {
             aiBusy = false
             aiError = "Backend not available"
+        }
+    }
+    
+    function requestSimplifiedExplanation() {
+        if (!selectedEvent || selectedEventIndex < 0) {
+            if (typeof Backend !== "undefined" && Backend.toast) {
+                Backend.toast("warning", "Please select an event first.")
+            }
+            return
+        }
+        
+        // Request simplified explanation
+        aiData = null
+        aiError = ""
+        aiBusy = true
+        
+        if (typeof Backend !== "undefined" && Backend.requestSimplifiedExplanation) {
+            Backend.requestSimplifiedExplanation(selectedEventIndex)
+        } else {
+            aiBusy = false
+            aiError = "Simplified explanation not available"
         }
     }
     
@@ -156,6 +182,19 @@ Item {
             aiBusy = false
             aiData = null
             aiError = errorMsg || "Analysis failed"
+        }
+        
+        function onEventPreviewReady(eventId, previewJson) {
+            console.log("[EventViewer] Preview received for event", eventId)
+            try {
+                briefData = JSON.parse(previewJson)
+            } catch (e) {
+                briefData = { meaning: "Event recorded", risk: "Low", actions: ["No action needed"] }
+            }
+        }
+        
+        function onAgentStepsCleared() {
+            // no-op: agent steps feature removed
         }
     }
     
@@ -532,9 +571,15 @@ Item {
                                         break
                                     }
                                 }
-                                // Clear previous AI data when selecting new event
+                                // Reset to brief mode and request preview
+                                explanationMode = "brief"
                                 aiData = null
                                 aiError = ""
+                                aiBusy = false
+                                briefData = null
+                                if (typeof Backend !== "undefined" && Backend.previewEvent) {
+                                    Backend.previewEvent(selectedEventIndex)
+                                }
                             }
                         }
                         
@@ -648,7 +693,7 @@ Item {
             Layout.fillHeight: true
             color: ThemeManager.panel()
             radius: Theme.radii_sm
-            visible: selectedEvent !== null || aiBusy || aiData !== null || aiError !== ""
+            visible: selectedEvent !== null
             
             ColumnLayout {
                 anchors.fill: parent
@@ -657,7 +702,7 @@ Item {
                 
                 // Panel Header
                 Text {
-                    text: "Event Explanation"
+                    text: explanationMode === "detailed" ? "Detailed Analysis" : "Quick Summary"
                     font.pixelSize: Theme.typography.h3.size
                     font.weight: Font.Bold
                     color: ThemeManager.foreground()
@@ -740,12 +785,198 @@ Item {
                     }
                 }
                 
+                // =============================================
+                // BRIEF SUMMARY (shown when explanationMode === "brief")
+                // =============================================
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: explanationMode === "brief" && !aiBusy
+                    clip: true
+                    contentWidth: width
+                    contentHeight: briefContent.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    
+                    ColumnLayout {
+                        id: briefContent
+                        width: parent.width - 12
+                        spacing: Theme.spacing_md
+                        
+                        // Meaning
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: meaningCol.implicitHeight + Theme.spacing_md * 2
+                            color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.1)
+                            radius: Theme.radii_sm
+                            
+                            ColumnLayout {
+                                id: meaningCol
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_md
+                                spacing: Theme.spacing_xs
+                                
+                                Text {
+                                    text: "💡 What this means"
+                                    font.pixelSize: Theme.typography.body.size
+                                    font.weight: Font.Bold
+                                    color: ThemeManager.accent
+                                }
+                                
+                                Text {
+                                    text: briefData ? (briefData.meaning || "") : "Loading..."
+                                    font.pixelSize: Theme.typography.body.size + 1
+                                    color: ThemeManager.foreground()
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                    lineHeight: 1.5
+                                }
+                            }
+                        }
+                        
+                        // Risk Badge
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: riskRow.implicitHeight + Theme.spacing_sm * 2
+                            radius: Theme.radii_sm
+                            color: {
+                                if (!briefData) return ThemeManager.elevated()
+                                if (briefData.risk === "High") return "#7F1D1D"
+                                if (briefData.risk === "Medium") return "#78350F"
+                                return Qt.rgba(ThemeManager.success.r, ThemeManager.success.g, ThemeManager.success.b, 0.15)
+                            }
+                            
+                            RowLayout {
+                                id: riskRow
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_sm
+                                spacing: Theme.spacing_sm
+                                
+                                Text {
+                                    text: {
+                                        if (!briefData) return "⏳"
+                                        if (briefData.risk === "High") return "🔴"
+                                        if (briefData.risk === "Medium") return "🟡"
+                                        return "🟢"
+                                    }
+                                    font.pixelSize: 18
+                                }
+                                
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    
+                                    Text {
+                                        text: "Risk: " + (briefData ? briefData.risk : "...")
+                                        font.pixelSize: Theme.typography.body.size
+                                        font.weight: Font.Bold
+                                        color: {
+                                            if (!briefData) return ThemeManager.muted()
+                                            if (briefData.risk === "High") return "#FCA5A5"
+                                            if (briefData.risk === "Medium") return "#FDE68A"
+                                            return ThemeManager.success
+                                        }
+                                    }
+                                    
+                                    Text {
+                                        text: briefData ? (briefData.risk_reason || "") : ""
+                                        font.pixelSize: Theme.typography.caption.size
+                                        color: ThemeManager.foreground()
+                                        wrapMode: Text.Wrap
+                                        Layout.fillWidth: true
+                                        opacity: 0.8
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Actions
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spacing_xs
+                            visible: briefData !== null && briefData.actions && briefData.actions.length > 0
+                            
+                            Text {
+                                text: "✅ What to do now"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Bold
+                                color: ThemeManager.success
+                            }
+                            
+                            Repeater {
+                                model: briefData ? briefData.actions : []
+                                delegate: Text {
+                                    text: "• " + modelData
+                                    font.pixelSize: Theme.typography.body.size
+                                    color: ThemeManager.foreground()
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                    lineHeight: 1.4
+                                }
+                            }
+                        }
+                        
+                        // Explain Event Button (prominent)
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Theme.spacing_sm
+                            implicitHeight: 40
+                            
+                            text: "🔍 Explain Event in Detail"
+                            
+                            background: Rectangle {
+                                color: parent.hovered ? Qt.lighter(ThemeManager.accent, 1.2) : ThemeManager.accent
+                                radius: Theme.radii_xs
+                            }
+                            
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Bold
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            
+                            onClicked: requestExplanation()
+                        }
+
+                        
+                        // Event info footer
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: briefInfoCol.implicitHeight + Theme.spacing_sm * 2
+                            color: ThemeManager.elevated()
+                            radius: Theme.radii_xs
+                            
+                            ColumnLayout {
+                                id: briefInfoCol
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_sm
+                                spacing: 2
+                                
+                                Text {
+                                    text: selectedEvent ? (selectedEvent.source || selectedEvent.provider || "Unknown") + " · ID: " + (selectedEvent.event_id || "N/A") : ""
+                                    font.pixelSize: Theme.typography.caption.size
+                                    color: ThemeManager.muted()
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // =============================================
+                // DETAILED EXPLANATION (shown when explanationMode === "detailed")
+                // =============================================
+                
                 // AI Result display - wrapped in Flickable for scrolling
                 Flickable {
                     id: aiResultFlickable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    visible: aiData !== null && !aiBusy && aiError === ""
+                    visible: explanationMode === "detailed" && aiData !== null && !aiBusy && aiError === ""
                     clip: true
                     
                     contentWidth: width
@@ -762,13 +993,196 @@ Item {
                         width: aiResultFlickable.width - 12
                         spacing: Theme.spacing_md
                     
+                        // ===========================================
+                        // QUICK BRIEF SECTION (NEW - At top for easy scanning)
+                        // ===========================================
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: quickBriefContent.implicitHeight + Theme.spacing_md * 2
+                            color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.15)
+                            radius: Theme.radii_sm
+                            border.color: ThemeManager.accent
+                            border.width: 1
+                            visible: false  // Brief summary is for "brief" mode only
+                            
+                            ColumnLayout {
+                                id: quickBriefContent
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacing_md
+                                spacing: Theme.spacing_sm
+                                
+                                // User-friendly brief (always visible when available)
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacing_xs
+                                    visible: aiData && aiData.brief_user
+                                    
+                                    Text {
+                                        text: "💡 Quick Summary"
+                                        font.pixelSize: Theme.typography.body.size
+                                        font.weight: Font.Bold
+                                        color: ThemeManager.accent
+                                    }
+                                    
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: aiData ? (aiData.brief_user || "") : ""
+                                        font.pixelSize: Theme.typography.body.size + 1
+                                        color: ThemeManager.foreground()
+                                        wrapMode: Text.Wrap
+                                        lineHeight: 1.5
+                                    }
+                                }
+                                
+                                // Technical brief (collapsible)
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacing_xs
+                                    visible: aiData && aiData.brief_technical
+                                    
+                                    Rectangle {
+                                        id: techBriefHeader
+                                        Layout.fillWidth: true
+                                        implicitHeight: techBriefHeaderRow.implicitHeight + Theme.spacing_xs * 2
+                                        color: techBriefMouseArea.containsMouse ? Qt.rgba(ThemeManager.foreground().r, ThemeManager.foreground().g, ThemeManager.foreground().b, 0.05) : "transparent"
+                                        radius: Theme.radii_xs
+                                        
+                                        property bool expanded: false
+                                        
+                                        RowLayout {
+                                            id: techBriefHeaderRow
+                                            anchors.fill: parent
+                                            anchors.margins: Theme.spacing_xs
+                                            spacing: Theme.spacing_xs
+                                            
+                                            Text {
+                                                text: techBriefHeader.expanded ? "▼" : "▶"
+                                                font.pixelSize: Theme.typography.caption.size
+                                                color: ThemeManager.muted()
+                                            }
+                                            
+                                            Text {
+                                                text: "🔧 Technical Brief"
+                                                font.pixelSize: Theme.typography.caption.size
+                                                font.weight: Font.Medium
+                                                color: ThemeManager.muted()
+                                            }
+                                            
+                                            Item { Layout.fillWidth: true }
+                                        }
+                                        
+                                        MouseArea {
+                                            id: techBriefMouseArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: techBriefHeader.expanded = !techBriefHeader.expanded
+                                        }
+                                    }
+                                    
+                                    // Technical content (shown when expanded)
+                                    Text {
+                                        visible: techBriefHeader.expanded
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: Theme.spacing_md
+                                        text: aiData ? (aiData.brief_technical || "") : ""
+                                        font.pixelSize: Theme.typography.caption.size
+                                        font.family: "Consolas, Monaco, monospace"
+                                        color: ThemeManager.muted()
+                                        wrapMode: Text.Wrap
+                                        lineHeight: 1.4
+                                    }
+                                }
+                                
+                                // Confidence and Evidence
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacing_xs
+                                    visible: aiData !== null && (aiData.confidence !== undefined || (aiData.evidence && aiData.evidence.length > 0))
+                                    
+                                    // Confidence indicator
+                                    Text {
+                                        visible: aiData !== null && aiData.confidence !== undefined
+                                        text: "📊 Confidence: " + (aiData ? String(aiData.confidence || "N/A") : "N/A")
+                                        font.pixelSize: Theme.typography.caption.size
+                                        font.weight: Font.Medium
+                                        color: {
+                                            if (!aiData || aiData.confidence === undefined) return ThemeManager.muted()
+                                            var conf = Number(aiData.confidence)
+                                            if (conf >= 0.8) return ThemeManager.success
+                                            if (conf >= 0.5) return ThemeManager.warning
+                                            return ThemeManager.muted()
+                                        }
+                                    }
+                                    
+                                    // Evidence
+                                    Text {
+                                        visible: aiData !== null && aiData.evidence && aiData.evidence.length > 0
+                                        Layout.fillWidth: true
+                                        text: {
+                                            if (!aiData || !aiData.evidence) return ""
+                                            var items = Array.isArray(aiData.evidence) ? aiData.evidence : [String(aiData.evidence)]
+                                            return "📋 " + items.join(", ")
+                                        }
+                                        font.pixelSize: Theme.typography.caption.size
+                                        color: ThemeManager.muted()
+                                        elide: Text.ElideRight
+                                        wrapMode: Text.NoWrap
+                                    }
+                                }
+                                
+                                // "Explain simpler" button
+                                Button {
+                                    Layout.alignment: Qt.AlignLeft
+                                    visible: aiData && aiData.detail_level !== "simplified"
+                                    
+                                    text: "🔄 Explain simpler"
+                                    implicitHeight: 28
+                                    
+                                    background: Rectangle {
+                                        color: parent.hovered ? ThemeManager.info : Qt.rgba(ThemeManager.info.r, ThemeManager.info.g, ThemeManager.info.b, 0.7)
+                                        radius: Theme.radii_xs
+                                    }
+                                    
+                                    contentItem: Text {
+                                        text: parent.text
+                                        color: "#FFFFFF"
+                                        font.pixelSize: Theme.typography.caption.size
+                                        font.weight: Font.Medium
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    
+                                    onClicked: requestSimplifiedExplanation()
+                                }
+                                
+                                // Indicator when simplified
+                                Row {
+                                    spacing: Theme.spacing_xs
+                                    visible: aiData && aiData.detail_level === "simplified"
+                                    
+                                    Text {
+                                        text: "✨"
+                                        font.pixelSize: Theme.typography.caption.size
+                                    }
+                                    
+                                    Text {
+                                        text: "Simplified explanation"
+                                        font.pixelSize: Theme.typography.caption.size
+                                        color: ThemeManager.info
+                                        font.italic: true
+                                    }
+                                }
+                            }
+                        }
+                    
                         // Plain Summary (highlighted, prominent)
                         Rectangle {
                             Layout.fillWidth: true
                             implicitHeight: plainSummaryText.implicitHeight + Theme.spacing_md * 2
                             color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.1)
                             radius: Theme.radii_xs
-                            visible: aiData && aiData.plain_summary && aiData.plain_summary.length > 0
+                            visible: false  // Summary belongs to brief mode only; hide in detailed view
                             
                             Text {
                                 id: plainSummaryText
@@ -960,7 +1374,7 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.spacing_xs
-                            visible: aiData && (aiData.technical_details || aiData.tech_notes)
+                            visible: Boolean(aiData && (aiData.technical_details || aiData.tech_notes))
                             
                             // Collapsible header
                             Rectangle {
@@ -1067,6 +1481,48 @@ Item {
                             }
                         }
                         
+                        // Ask Chatbot to Help button
+                        Button {
+                            visible: aiData !== null && selectedEvent !== null
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: Theme.spacing_sm
+                            
+                            text: "💬 Ask Chatbot to Help Resolve"
+                            implicitHeight: 36
+                            implicitWidth: implicitContentWidth + Theme.spacing_lg * 2
+                            
+                            background: Rectangle {
+                                color: parent.hovered ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.8)
+                                radius: Theme.radii_xs
+                            }
+                            
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: Theme.typography.body.size
+                                font.weight: Font.Medium
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            
+                            onClicked: {
+                                // Set the selected event context for chatbot
+                                // This will also navigate to AI Assistant page
+                                if (typeof Backend !== "undefined" && Backend.setEventContextForChat) {
+                                    var eventContext = {
+                                        event_id: selectedEvent.event_id,
+                                        provider: selectedEvent.source || selectedEvent.provider,
+                                        level: selectedEvent.level,
+                                        message: selectedEvent.message || "",
+                                        time_created: selectedEvent.time_created || selectedEvent.timestamp,
+                                        explanation: aiData
+                                    }
+                                    Backend.setEventContextForChat(JSON.stringify(eventContext))
+                                    console.log("[EventViewer] Sent event context to chatbot, navigation will follow")
+                                }
+                            }
+                        }
+                        
                         // Knowledge base indicator
                         Text {
                             visible: aiData && (aiData.used_knowledge_base || false) === true
@@ -1085,61 +1541,26 @@ Item {
                     }
                 }
                 
-                // No event selected prompt
-                ColumnLayout {
+                // No event selected prompt — replaced by Brief Summary above
+                // (kept as invisible placeholder for compatibility)
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: Theme.spacing_sm
-                    visible: selectedEvent !== null && aiData === null && !aiBusy && aiError === ""
-                    
-                    Item { Layout.fillHeight: true }
-                    
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "Click 'Explain Event' to analyze"
-                        font.pixelSize: Theme.typography.body.size
-                        color: ThemeManager.muted()
-                    }
-                    
-                    Item { Layout.fillHeight: true }
-                }
-                
-                // Selected event info
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: selectedInfoCol.implicitHeight + Theme.spacing_sm * 2
-                    color: ThemeManager.elevated()
-                    radius: Theme.radii_xs
-                    visible: selectedEvent !== null
+                    visible: explanationMode === "none" && !aiBusy && aiError === ""
                     
                     ColumnLayout {
-                        id: selectedInfoCol
-                        anchors.fill: parent
-                        anchors.margins: Theme.spacing_sm
-                        spacing: 2
+                        anchors.centerIn: parent
+                        spacing: Theme.spacing_sm
                         
                         Text {
-                            text: "Selected Event"
-                            font.pixelSize: Theme.typography.caption.size
-                            font.weight: Font.Medium
-                            color: ThemeManager.muted()
-                        }
-                        
-                        Text {
-                            text: selectedEvent ? (selectedEvent.source || selectedEvent.provider || "Unknown") : ""
-                            font.pixelSize: Theme.typography.caption.size
-                            color: ThemeManager.foreground()
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
-                        
-                        Text {
-                            text: selectedEvent ? ("ID: " + (selectedEvent.event_id || "N/A")) : ""
-                            font.pixelSize: Theme.typography.caption.size
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "👈 Select an event to see a summary"
+                            font.pixelSize: Theme.typography.body.size
                             color: ThemeManager.muted()
                         }
                     }
                 }
+
             }
         }
     }

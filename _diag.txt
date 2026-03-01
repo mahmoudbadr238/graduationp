@@ -1,0 +1,31 @@
+=== YARA TEST ===
+[YARA] OSError (DLL missing): Could not find module 'D:\graduationp\.venv\DLLs\libyara.dll' (or one of its dependencies). Try using the full path with constructor syntax.
+[YARA] Rules directory exists: 1 rule files
+  - malware_detection.yar (11022 bytes)
+[YARA] Engine available: False
+[YARA] FallbackPatternScanner works: 1 findings
+
+=== FILE SANDBOX TEST ===
+[SANDBOX] Available: {'available': True, 'reason': 'Windows sandbox available (Job Object + Restricted Token)', 'method': 'Windows Job Object', 'platform': 'windows'}
+[SANDBOX] Test file: C:\WINDOWS\system32\notepad.exe
+[SANDBOX] Success: True
+[SANDBOX] Error: None
+[SANDBOX] Duration: 5.304550409317017s
+[SANDBOX] Findings: 1
+[SANDBOX] Processes: [{'pid': 7152, 'name': 'notepad.exe', 'start_time': '2026-02-25T16:35:04.932512'}]
+[SANDBOX] ERROR: 'SandboxResult' object has no attribute 'network_connections'
+Traceback (most recent call last):
+  File "d:\graduationp\_diag.py", line 73, in <module>
+    log(f"[SANDBOX] Network: {result.network_connections}")
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'SandboxResult' object has no attribute 'network_connections'
+
+
+=== URL SANDBOX TEST ===
+[URL] Scanner created
+[URL] Has scan_sandbox: True
+[URL] scan_sandbox signature: (url: str, block_private_ips: bool = True, block_downloads: bool = True, timeout_seconds: int = 30) -> app.scanning.url_scanner.UrlScanResult
+[URL] Testing static scan...
+[URL] Static result: verdict=Unknown, score=0
+
+=== ALL TESTS COMPLETE ===

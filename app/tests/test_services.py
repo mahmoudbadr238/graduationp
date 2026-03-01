@@ -29,7 +29,7 @@ class TestLocalFileScanner:
 
     def test_scan_file_calculates_hash(self, temp_file):
         """Test that file scanner calculates SHA256 hash."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         result = scanner.scan_file(temp_file)
 
@@ -41,7 +41,7 @@ class TestLocalFileScanner:
 
     def test_scan_nonexistent_file(self):
         """Test scanning a file that doesn't exist."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         result = scanner.scan_file(str(Path("nonexistent") / "file.txt"))
 
@@ -50,7 +50,7 @@ class TestLocalFileScanner:
 
     def test_scan_directory_fails(self, tmp_path):
         """Test that scanning a directory fails."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         # tmp_path is a directory
         result = scanner.scan_file(str(tmp_path))
@@ -60,25 +60,25 @@ class TestLocalFileScanner:
 
     def test_hash_consistency(self, temp_file):
         """Test that same file produces same hash."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         result1 = scanner.scan_file(temp_file)
         result2 = scanner.scan_file(temp_file)
 
         assert result1["sha256"] == result2["sha256"]
 
-    def test_scan_without_vt_client(self, temp_file):
-        """Test scanning without VirusTotal client."""
-        scanner = LocalFileScanner(vt_client=None)
+    def test_scan_local_only(self, temp_file):
+        """Test local-only scanning."""
+        scanner = LocalFileScanner()
 
         result = scanner.scan_file(temp_file)
 
         assert "error" not in result
-        assert result["vt_check"] is False
+        assert "sha256" in result
 
     def test_file_metadata_extraction(self, temp_file):
         """Test that file metadata is extracted correctly."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         result = scanner.scan_file(temp_file)
 
@@ -94,7 +94,7 @@ class TestFileHashCalculation:
 
     def test_known_hash(self):
         """Test hash calculation against known value."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         # Create file with known content
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
@@ -114,7 +114,7 @@ class TestFileHashCalculation:
 
     def test_empty_file_hash(self):
         """Test hashing an empty file."""
-        scanner = LocalFileScanner(vt_client=None)
+        scanner = LocalFileScanner()
 
         with tempfile.NamedTemporaryFile(delete=False) as f:
             temp_path = f.name

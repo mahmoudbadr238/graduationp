@@ -1,14 +1,12 @@
 """Windows Security Status Information."""
 
+import json
+import logging
 import platform
 import subprocess
-import sys
-import logging
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +19,15 @@ _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 class SecurityInfo:
     """Retrieve Windows security status (Firewall, Antivirus, etc.)"""
-    
+
     # Flag to track if we're running as admin
-    _is_admin: Optional[bool] = None
-    
+    _is_admin: bool | None = None
+
     # Cache for security status (to avoid repeated slow queries)
-    _cache: Dict[str, Any] = {}
+    _cache: dict[str, Any] = {}
     _cache_time: float = 0
     _cache_ttl: float = 60.0  # Cache for 60 seconds
-    
+
     @staticmethod
     def _check_admin() -> bool:
         """Check if running with admin privileges."""
@@ -43,7 +41,7 @@ class SecurityInfo:
         return SecurityInfo._is_admin
 
     @staticmethod
-    def get_windows_defender_status() -> Dict[str, Any]:
+    def get_windows_defender_status() -> dict[str, Any]:
         """Get Windows Defender/Microsoft Defender status."""
         try:
             # Use PowerShell to query Windows Defender status
@@ -99,7 +97,7 @@ class SecurityInfo:
                 "definition_status": "Requires Admin",
                 "status": "requires_admin",
             }
-        
+
         return {
             "enabled": False,
             "realtime_protection": False,
@@ -108,7 +106,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def get_firewall_status() -> Dict[str, Any]:
+    def get_firewall_status() -> dict[str, Any]:
         """Get Windows Firewall status."""
         try:
             # Use PowerShell to query Windows Firewall profiles
@@ -157,7 +155,7 @@ class SecurityInfo:
                 "enabled_profiles": [],
                 "status": "Requires Admin",
             }
-        
+
         return {
             "enabled": False,
             "enabled_profiles": [],
@@ -165,7 +163,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def get_uac_status() -> Dict[str, Any]:
+    def get_uac_status() -> dict[str, Any]:
         """Get User Access Control (UAC) status."""
         try:
             # Check UAC registry value
@@ -204,7 +202,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def get_all_security_status() -> Dict[str, Any]:
+    def get_all_security_status() -> dict[str, Any]:
         """Get comprehensive security status."""
         return {
             "defender": SecurityInfo.get_windows_defender_status(),
@@ -213,7 +211,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def _run_powershell(cmd: str, timeout: int = 10) -> Optional[str]:
+    def _run_powershell(cmd: str, timeout: int = 10) -> str | None:
         """Helper to run PowerShell commands safely."""
         if not _IS_WINDOWS:
             return None
@@ -236,7 +234,7 @@ class SecurityInfo:
         return None
 
     @staticmethod
-    def get_disk_encryption_status() -> Dict[str, Any]:
+    def get_disk_encryption_status() -> dict[str, Any]:
         """Get BitLocker/Device Encryption status for C: drive."""
         # First check registry for Device Encryption (fast, works without admin)
         try:
@@ -283,14 +281,14 @@ class SecurityInfo:
                             "method": method,
                             "detail": f"BitLocker ({method})",
                         }
-                    elif status == "Off":
+                    if status == "Off":
                         return {
                             "enabled": False,
                             "status": "Not Encrypted",
                             "method": "None",
                             "detail": "BitLocker available but not enabled",
                         }
-                    elif status == "NoVolume" or "does not have" in data.get("Error", ""):
+                    if status == "NoVolume" or "does not have" in data.get("Error", ""):
                         return {
                             "enabled": False,
                             "status": "Not Encrypted",
@@ -309,7 +307,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def get_windows_update_status() -> Dict[str, Any]:
+    def get_windows_update_status() -> dict[str, Any]:
         """Get Windows Update status: last install date and pending updates."""
         result = {
             "status": "Unknown",
@@ -364,7 +362,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_rdp_status() -> Dict[str, Any]:
+    def get_rdp_status() -> dict[str, Any]:
         """Get Remote Desktop status and NLA setting."""
         result = {
             "enabled": False,
@@ -411,7 +409,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_admin_account_count() -> Dict[str, Any]:
+    def get_admin_account_count() -> dict[str, Any]:
         """Get count of members in the local Administrators group."""
         result = {"count": 0, "status": "Unknown", "detail": "Unable to determine"}
 
@@ -444,7 +442,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_uac_level() -> Dict[str, Any]:
+    def get_uac_level() -> dict[str, Any]:
         """Get detailed UAC level (High/Medium/Low/Disabled)."""
         result = {
             "level": "Unknown",
@@ -498,7 +496,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_smartscreen_status() -> Dict[str, Any]:
+    def get_smartscreen_status() -> dict[str, Any]:
         """Get Windows SmartScreen status."""
         result = {
             "enabled": False,
@@ -546,7 +544,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_memory_integrity_status() -> Dict[str, Any]:
+    def get_memory_integrity_status() -> dict[str, Any]:
         """Get Memory Integrity (HVCI) / VBS status."""
         result = {
             "enabled": False,
@@ -595,7 +593,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_extended_security_status() -> Dict[str, Any]:
+    def get_extended_security_status() -> dict[str, Any]:
         """Get all extended security metrics."""
         return {
             "diskEncryption": SecurityInfo.get_disk_encryption_status(),
@@ -608,7 +606,7 @@ class SecurityInfo:
         }
 
     @staticmethod
-    def get_tpm_status() -> Dict[str, Any]:
+    def get_tpm_status() -> dict[str, Any]:
         """Get TPM status using tpmtool (works without admin)."""
         result = {
             "present": False,
@@ -632,14 +630,14 @@ class SecurityInfo:
                 if "-TPM Present: True" in output:
                     result["present"] = True
                     result["enabled"] = True
-                    
+
                     # Extract version
                     for line in output.splitlines():
                         if "-TPM Version:" in line:
                             version = line.split(":")[-1].strip()
                             result["version"] = version
                             break
-                    
+
                     result["detail"] = f"TPM {result['version']} active"
                 elif "-TPM Present: False" in output:
                     result["present"] = False
@@ -676,7 +674,7 @@ class SecurityInfo:
         return result
 
     @staticmethod
-    def get_simplified_security_status() -> Dict[str, Any]:
+    def get_simplified_security_status() -> dict[str, Any]:
         """
         Get simplified, user-friendly security status for the UI.
         Returns aggregated status for main categories plus overall health.
@@ -686,25 +684,25 @@ class SecurityInfo:
         now = time.time()
         if SecurityInfo._cache and (now - SecurityInfo._cache_time) < SecurityInfo._cache_ttl:
             return SecurityInfo._cache
-        
+
         # Check if running as admin
         is_admin = SecurityInfo._check_admin()
-        
+
         # Run all queries in parallel for speed
         results = {}
         queries = {
-            'defender': SecurityInfo.get_windows_defender_status,
-            'firewall': SecurityInfo.get_firewall_status,
-            'tpm': SecurityInfo.get_tpm_status,
-            'disk_enc': SecurityInfo.get_disk_encryption_status,
-            'win_update': SecurityInfo.get_windows_update_status,
-            'rdp': SecurityInfo.get_rdp_status,
-            'admins': SecurityInfo.get_admin_account_count,
-            'uac': SecurityInfo.get_uac_level,
-            'smartscreen': SecurityInfo.get_smartscreen_status,
-            'memory_int': SecurityInfo.get_memory_integrity_status,
+            "defender": SecurityInfo.get_windows_defender_status,
+            "firewall": SecurityInfo.get_firewall_status,
+            "tpm": SecurityInfo.get_tpm_status,
+            "disk_enc": SecurityInfo.get_disk_encryption_status,
+            "win_update": SecurityInfo.get_windows_update_status,
+            "rdp": SecurityInfo.get_rdp_status,
+            "admins": SecurityInfo.get_admin_account_count,
+            "uac": SecurityInfo.get_uac_level,
+            "smartscreen": SecurityInfo.get_smartscreen_status,
+            "memory_int": SecurityInfo.get_memory_integrity_status,
         }
-        
+
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(func): name for name, func in queries.items()}
             for future in as_completed(futures):
@@ -714,17 +712,17 @@ class SecurityInfo:
                 except Exception as e:
                     logger.debug(f"Query {name} failed: {e}")
                     results[name] = {}
-        
-        defender = results.get('defender', {})
-        firewall = results.get('firewall', {})
-        tpm = results.get('tpm', {})
-        disk_enc = results.get('disk_enc', {})
-        win_update = results.get('win_update', {})
-        rdp = results.get('rdp', {})
-        admins = results.get('admins', {})
-        uac = results.get('uac', {})
-        smartscreen = results.get('smartscreen', {})
-        memory_int = results.get('memory_int', {})
+
+        defender = results.get("defender", {})
+        firewall = results.get("firewall", {})
+        tpm = results.get("tpm", {})
+        disk_enc = results.get("disk_enc", {})
+        win_update = results.get("win_update", {})
+        rdp = results.get("rdp", {})
+        admins = results.get("admins", {})
+        uac = results.get("uac", {})
+        smartscreen = results.get("smartscreen", {})
+        memory_int = results.get("memory_int", {})
 
         # Try to get Secure Boot status
         secure_boot_enabled = False
@@ -746,7 +744,7 @@ class SecurityInfo:
         # Check if data requires admin
         fw_requires_admin = firewall.get("status") == "Requires Admin"
         av_requires_admin = defender.get("status") == "requires_admin"
-        
+
         fw_on = firewall.get("enabled", False) if not fw_requires_admin else None
         av_on = defender.get("enabled", False) if not av_requires_admin else None
 
@@ -809,16 +807,15 @@ class SecurityInfo:
             updates_status = "Updates available"
             updates_good = False
             updates_warning = True
+        # Check if out of date (>30 days)
+        elif update_days_ago is not None and update_days_ago > 30:
+            updates_status = "Out of date"
+            updates_good = False
+            updates_warning = False  # Red
         else:
-            # Check if out of date (>30 days)
-            if update_days_ago is not None and update_days_ago > 30:
-                updates_status = "Out of date"
-                updates_good = False
-                updates_warning = False  # Red
-            else:
-                updates_status = "Unknown"
-                updates_good = False
-                updates_warning = True
+            updates_status = "Unknown"
+            updates_good = False
+            updates_warning = True
 
         updates_detail = (
             f"Last updated: {update_last_str}"
@@ -1020,11 +1017,11 @@ class SecurityInfo:
                 "memoryIntegrityEnabled": memory_int.get("enabled", False),
             },
         }
-        
+
         # Cache the result
         SecurityInfo._cache = result
         SecurityInfo._cache_time = time.time()
-        
+
         return result
 
 

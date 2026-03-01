@@ -44,7 +44,7 @@ class StartupTask(QRunnable):
         self.kwargs = kwargs
         self.signals = StartupTask.Signals()
         self.setAutoDelete(True)
-        self._timeout_timer: Optional[QTimer] = None
+        self._timeout_timer: QTimer | None = None
 
     def run(self):
         start_time = time.time()
@@ -101,7 +101,7 @@ class StartupOrchestrator(QObject):
         self._tasks_timeout = 0
         self._total_tasks = 0
         self._task_names: list[str] = []
-        self._current_phase: Optional[str] = None
+        self._current_phase: str | None = None
         self._phase_timers: dict[str, QTimer] = {}
         self._phase_success: dict[str, bool] = {}
 

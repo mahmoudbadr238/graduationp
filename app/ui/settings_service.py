@@ -6,7 +6,7 @@ import platform
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 
 class SettingsService(QObject):
@@ -29,7 +29,7 @@ class SettingsService(QObject):
     networkUnitChanged = Signal()
     saveError = Signal(str)  # Emitted when settings cannot be saved
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
 
         # Detect platform
@@ -74,7 +74,7 @@ class SettingsService(QObject):
         """Load settings from JSON file."""
         try:
             if self._settings_path.exists():
-                with open(self._settings_path, "r", encoding="utf-8") as f:
+                with open(self._settings_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                 self._theme_mode = data.get("themeMode", self._theme_mode)
@@ -97,7 +97,7 @@ class SettingsService(QObject):
                 self._network_unit = data.get("networkUnit", self._network_unit)
 
                 print(f"[Settings] Loaded from {self._settings_path}")
-        except (IOError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"[Settings] Could not load settings: {e}")
 
     def _save_settings(self):
@@ -118,7 +118,7 @@ class SettingsService(QObject):
                 json.dump(data, f, indent=2)
 
             print(f"[Settings] Saved to {self._settings_path}")
-        except IOError as e:
+        except OSError as e:
             error_msg = f"Could not save settings: {e}"
             print(f"[Settings] {error_msg}")
             self.saveError.emit(error_msg)
@@ -253,8 +253,8 @@ class SettingsService(QObject):
             return
 
         try:
-            import winreg
             import sys
+            import winreg
 
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             app_name = "Sentinel"
