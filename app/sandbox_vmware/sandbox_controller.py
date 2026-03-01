@@ -950,4 +950,4 @@ class SandboxLabController(QObject):
 
     @staticmethod
     def _guest_path(base_path: str, name: str) -> str:
-        return f"{base_path.rstrip('\\/')}\\{name}"
+        return base_path.rstrip("\\/") + "\\" + name

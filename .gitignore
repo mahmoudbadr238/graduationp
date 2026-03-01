@@ -229,3 +229,8 @@ build/
 dist/
 *.egg
 *.whl
+# Diagnostic artifacts
+_diag.py
+_diag.txt
+_diag*.py
+_diag*.txt
