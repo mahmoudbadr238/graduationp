@@ -3,7 +3,6 @@
 import builtins
 import contextlib
 import logging
-import platform
 import subprocess  # nosec B404 - subprocess required for Windows security checks (PowerShell, netsh, manage-bde)
 from typing import Any
 
@@ -58,8 +57,8 @@ class PsutilSystemMonitor(ISystemMonitor):
             except (ImportError, RuntimeError, OSError):
                 self._nvml_initialized = False
 
-        # Pre-initialize WMI connection and PNP mapping on Windows (major performance boost)
-        if platform.system() == "Windows" and HAS_WMI:
+        # Pre-initialize WMI connection and PNP mapping (Windows-only)
+        if HAS_WMI:
             try:
                 import wmi
 
@@ -240,7 +239,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                 logger.debug(
                     "NVML device enumeration failed: %s", e
                 )  # Method 2: WMI for AMD/Intel/Other GPUs + Performance Counters for AMD usage
-        if platform.system() == "Windows":
+        if True:  # Windows-only
             try:
                 # Use cached WMI connection for performance
                 if self._wmi_cache:

@@ -55,17 +55,8 @@ class SettingsService(QObject):
         self._load_settings()
 
     def _get_settings_path(self) -> Path:
-        """Get platform-specific settings file path."""
-        if self._is_windows:
-            # Windows: %APPDATA%/Sentinel
-            base = Path(os.getenv("APPDATA", ""))
-        elif self._is_macos:
-            # macOS: ~/Library/Application Support/Sentinel
-            base = Path.home() / "Library" / "Application Support"
-        else:
-            # Linux: ~/.config/sentinel
-            base = Path.home() / ".config"
-
+        """Get settings file path (Windows: %APPDATA%/Sentinel)."""
+        base = Path(os.getenv("APPDATA", Path.home()))
         settings_dir = base / "Sentinel"
         settings_dir.mkdir(parents=True, exist_ok=True)
         return settings_dir / "settings.json"

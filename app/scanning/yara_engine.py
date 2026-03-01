@@ -23,10 +23,8 @@ _YARA_MODE_LOGGED = False
 
 
 def _load_native_yara_extension():
-    """Load yara native extension module directly on Windows if available."""
-    if sys.platform != "win32":
-        return None
-
+    """Load yara native extension module directly on Windows."""
+    # Windows-only: always attempt native .pyd extension load
     spec = importlib.util.find_spec("yara")
     site_packages = None
     if spec and spec.origin:
@@ -59,16 +57,16 @@ def _load_native_yara_extension():
 
 
 def _bootstrap_yara():
-    """Bootstrap yara import with native extension preference on Windows."""
+    """Bootstrap yara import with native extension preference (Windows)."""
     global yara, YARA_AVAILABLE, YARA_IMPORT_MODE, _YARA_BOOTSTRAP_ERROR
 
-    if sys.platform == "win32":
-        native_module = _load_native_yara_extension()
-        if native_module is not None:
-            yara = native_module
-            YARA_AVAILABLE = True
-            YARA_IMPORT_MODE = "native_extension"
-            return
+    # Always try native .pyd extension first on Windows
+    native_module = _load_native_yara_extension()
+    if native_module is not None:
+        yara = native_module
+        YARA_AVAILABLE = True
+        YARA_IMPORT_MODE = "native_extension"
+        return
 
     try:
         yara = importlib.import_module("yara")

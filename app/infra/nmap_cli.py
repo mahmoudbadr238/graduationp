@@ -99,24 +99,13 @@ def check_nmap_installed() -> tuple[bool, str]:
     if nmap_path:
         return True, nmap_path
 
-    # On Windows, check common install paths
+    # Check Windows install paths
     if _IS_WINDOWS:
         common_paths = [
             r"C:\Program Files (x86)\Nmap\nmap.exe",
             r"C:\Program Files\Nmap\nmap.exe",
             os.path.expandvars(r"%PROGRAMFILES%\Nmap\nmap.exe"),
             os.path.expandvars(r"%PROGRAMFILES(X86)%\Nmap\nmap.exe"),
-        ]
-        for path in common_paths:
-            if os.path.isfile(path):
-                return True, path
-
-    # On Linux/macOS check common paths
-    else:
-        common_paths = [
-            "/usr/bin/nmap",
-            "/usr/local/bin/nmap",
-            "/opt/homebrew/bin/nmap",  # macOS Homebrew
         ]
         for path in common_paths:
             if os.path.isfile(path):

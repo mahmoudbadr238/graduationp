@@ -58,7 +58,7 @@ Item {
     property bool integratedSandboxAvailable: false
     property string integratedSandboxStatus: ""
     
-    // Legacy sandbox (VirtualBox - deprecated)
+    // VMware sandbox availability
     property bool sandboxAvailable: false
     property var sandboxMethods: []
     
@@ -79,7 +79,7 @@ Item {
             urlSandboxAvailable = Backend.urlSandboxAvailable()
             urlSandboxStatus = Backend.urlSandboxStatus()
             
-            // Legacy sandbox check (VirtualBox)
+            // VMware sandbox check
             sandboxAvailable = Backend.sandboxAvailable()
             sandboxMethods = Backend.sandboxMethods()
         }
@@ -330,7 +330,7 @@ Item {
         
         fileScanResult = null
         if (Backend) {
-            // Use integrated sandbox (bundled, no VirtualBox needed)
+            // Run integrated or VMware sandbox scan
             Backend.runIntegratedScan(selectedFilePath, useSandbox, blockNetwork, sandboxTimeout)
         }
     }

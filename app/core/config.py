@@ -1,7 +1,7 @@
 """Configuration management for Sentinel.
 
 Handles app data storage, settings persistence, and safe load/save with backups.
-Platform-aware paths: %APPDATA%/Sentinel (Windows) or ~/.local/share/sentinel (Linux).
+Windows-only: data stored in %APPDATA%\\Sentinel\\.
 """
 
 import copy
@@ -55,18 +55,12 @@ class Config:
 
     @staticmethod
     def _get_app_data_dir() -> Path:
-        """Get platform-specific app data directory."""
-        if sys.platform == "win32":
-            appdata = os.getenv("APPDATA")
-            if appdata:
-                return Path(appdata) / "Sentinel"
-            # Fallback to local
-            return Path.home() / "AppData" / "Roaming" / "Sentinel"
-        # Linux, macOS
-        data_home = os.getenv("XDG_DATA_HOME")
-        if data_home:
-            return Path(data_home) / "sentinel"
-        return Path.home() / ".local" / "share" / "sentinel"
+        """Get Windows app data directory (%APPDATA%\\Sentinel)."""
+        appdata = os.getenv("APPDATA")
+        if appdata:
+            return Path(appdata) / "Sentinel"
+        # Fallback if APPDATA is not set
+        return Path.home() / "AppData" / "Roaming" / "Sentinel"
 
     def _load_or_initialize(self) -> dict[str, Any]:
         """Load config from file or create with defaults."""

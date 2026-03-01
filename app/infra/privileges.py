@@ -1,21 +1,16 @@
-"""Administrative privileges detection - Windows cross-platform"""
+"""Administrative privileges detection - Windows only"""
 
 import ctypes
 import os
 
 
 def is_admin() -> bool:
-    """Check if the current process has administrator privileges.
+    """Check if the current process has Windows administrator privileges.
 
     Returns:
-        True if running as admin on Windows, True on non-Windows platforms
+        True if running as Administrator on Windows.
     """
     try:
-        # Windows-specific check
-        if os.name == "nt":
-            return bool(ctypes.windll.shell32.IsUserAnAdmin())
-        # On Unix-like systems, treat as non-blocking (assume sufficient privileges)
-        return True
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except (AttributeError, OSError):
-        # If we can't determine, assume no admin privileges
-        return os.name != "nt"
+        return False

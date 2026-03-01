@@ -1600,24 +1600,64 @@ class BackendBridge(QObject):
                     "errors": [str(e)],
                 }
 
-            # Run sandbox if requested and available
+            # Run VMware sandbox if requested
             if run_sandbox and not result.sandbox:
                 try:
                     sandbox = SandboxController()
-                    if sandbox.is_available:
-                        sandbox_result = sandbox.run_sample(path, timeout=60)
-                        if sandbox_result.success:
-                            result.sandbox = {
-                                "status": sandbox_result.status,
-                                "duration": sandbox_result.duration,
-                                "processes": [p.get("name", str(p)) for p in sandbox_result.processes],
-                                "files_created": sandbox_result.files_created[:20],
-                                "files_modified": sandbox_result.files_modified[:20],
-                                "registry_modified": sandbox_result.registry_modified[:20],
-                                "network_connections": [c.get("remote_addr", str(c)) for c in sandbox_result.network_connections],
-                            }
+
+                    # Emit 7-step progress to QML via localScanProgress
+                    _step_messages: list[str] = []
+                    def _sandbox_progress(step: int, msg: str) -> None:
+                        stage = f"Sandbox [{step}/7]: {msg}"
+                        _step_messages.append(stage)
+                        try:
+                            self.localScanProgress.emit(stage)
+                        except Exception:
+                            pass
+
+                    if not sandbox.is_available:
+                        # Always emit step 2 so UI knows sandbox is not configured
+                        _sandbox_progress(2, "VMware not configured — see Settings for setup instructions")
+                        result.sandbox = {
+                            "status": sandbox.run_sample(path, timeout=5).status,
+                            "duration": 0,
+                            "processes": [],
+                            "files_created": [],
+                            "files_modified": [],
+                            "registry_modified": [],
+                            "network_connections": [],
+                            "not_configured": True,
+                            "steps": _step_messages,
+                        }
+                    else:
+                        sandbox_result = sandbox.run_sample(
+                            path,
+                            timeout=120,
+                            progress_cb=_sandbox_progress,
+                        )
+                        result.sandbox = {
+                            "status": sandbox_result.status,
+                            "duration": sandbox_result.duration,
+                            "processes": [
+                                (p.get("name", str(p)) if isinstance(p, dict) else str(p))
+                                for p in sandbox_result.processes
+                            ],
+                            "files_created": sandbox_result.files_created[:20],
+                            "files_modified": sandbox_result.files_modified[:20],
+                            "files_deleted": sandbox_result.files_deleted[:20],
+                            "registry_modified": sandbox_result.registry_modified[:20],
+                            "network_connections": sandbox_result.network_connections[:20],
+                            "success": sandbox_result.success,
+                            "error": sandbox_result.error or "",
+                            "steps": _step_messages,
+                        }
                 except Exception as e:
-                    logger.warning(f"Sandbox error: {e}")
+                    logger.warning(f"VMware sandbox error: {e}")
+                    result.sandbox = {
+                        "status": "error",
+                        "error": str(e),
+                        "steps": [],
+                    }
 
             # Generate report
             try:
@@ -1628,6 +1668,7 @@ class BackendBridge(QObject):
                 report_path_str = ""
 
             # Convert to dict for QML
+            sandbox_data = result.sandbox or {}
             return {
                 "file_name": result.file_name or Path(path).name,
                 "file_path": result.file_path or path,
@@ -1641,6 +1682,11 @@ class BackendBridge(QObject):
                 "yara_matches_count": len(result.yara_matches) if result.yara_matches else 0,
                 "clamav_infected": result.clamav.get("infected", False) if result.clamav else False,
                 "has_sandbox": result.sandbox is not None,
+                "sandbox_status": sandbox_data.get("status", ""),
+                "sandbox_steps": sandbox_data.get("steps", []),
+                "sandbox_success": bool(sandbox_data.get("success", False)),
+                "sandbox_duration": sandbox_data.get("duration", 0),
+                "sandbox_error": sandbox_data.get("error", ""),
                 "report_path": report_path_str,
                 "errors": result.errors if result.errors else [],
             }
@@ -1846,7 +1892,7 @@ class BackendBridge(QObject):
 
     @Slot(str)
     def openReportFolder(self, path: str = ""):
-        """Open the reports folder in file explorer."""
+        """Open the reports folder in Windows Explorer."""
         import subprocess
 
         from ..scanning import ReportWriter
@@ -1857,16 +1903,11 @@ class BackendBridge(QObject):
             folder = ReportWriter().reports_dir
 
         if folder.exists():
-            if sys.platform == "win32":
-                subprocess.run(["explorer", str(folder)], check=False)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(folder)], check=False)
-            else:
-                subprocess.run(["xdg-open", str(folder)], check=False)
+            subprocess.run(["explorer", str(folder)], check=False)
 
     @Slot(result=bool)
     def sandboxAvailable(self) -> bool:
-        """Check if sandbox (VirtualBox/Windows Sandbox) is available."""
+        """Check if VMware sandbox is available and configured."""
         try:
             from ..scanning import SandboxController
             controller = SandboxController()
@@ -1876,7 +1917,7 @@ class BackendBridge(QObject):
 
     @Slot(result=list)
     def sandboxMethods(self) -> list:
-        """Get available sandbox methods."""
+        """Get available sandbox methods (e.g. [\"VMware Workstation\"])."""
         try:
             from ..scanning import SandboxController
             controller = SandboxController()
@@ -1889,12 +1930,7 @@ class BackendBridge(QObject):
     @Slot(result=bool)
     def integratedSandboxAvailable(self) -> bool:
         """
-        Check if integrated sandbox is available.
-        
-        This sandbox is bundled with the app and requires:
-        - Windows: Windows Sandbox VM (preferred) or Job Object fallback
-        - Linux: User namespace support (most modern kernels)
-        - macOS: Static analysis only
+        Check if integrated sandbox (Job Object) is available on this Windows system.
         """
         if self._integrated_sandbox_available is not None:
             return self._integrated_sandbox_available

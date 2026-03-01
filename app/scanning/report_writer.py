@@ -390,16 +390,10 @@ def get_report_writer() -> ReportWriter:
 
 def get_platform_reports_dir() -> Path:
     """
-    Get the platform-specific reports directory.
-    
-    Windows: %APPDATA%/Sentinel/scan_reports/
-    Linux/macOS: ~/.config/sentinel/scan_reports/
+    Get the Windows reports directory: %APPDATA%/Sentinel/scan_reports/
     """
-    import sys
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "Sentinel" / "scan_reports"
-    return Path.home() / ".config" / "sentinel" / "scan_reports"
+    base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    return base / "Sentinel" / "scan_reports"
 
 
 def write_combined_scan_report(

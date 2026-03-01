@@ -1,17 +1,17 @@
 """
-Integrated Local Sandbox - Bundled sandbox execution environment.
+Integrated Local Sandbox - Windows-only, Job Object restricted execution.
 
-Runs samples in a restricted environment WITHOUT requiring external tools:
-- Windows: Windows Sandbox VM (preferred) with Job Object fallback
-- Linux: User namespaces via unshare (if available)
-- macOS: Static-only (sandbox not available)
+Runs samples in a restricted Windows environment using:
+- Windows Job Object (memory + CPU limits, kill-on-close)
+- Optional network blocking via Windows Firewall rule
+- File activity monitoring
 
+For full VMware behavioral analysis see app/sandbox_vmware/.
 100% Offline - No cloud APIs or external services.
 """
 
 import logging
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -30,34 +30,22 @@ INTERNAL_SANDBOX_ARTIFACTS = {
     "session.json",
 }
 
-# Platform detection
-IS_WINDOWS = sys.platform == "win32"
-IS_LINUX = sys.platform.startswith("linux")
-IS_MACOS = sys.platform == "darwin"
+# Windows-only — this module does not support Linux or macOS
+IS_WINDOWS = True
 
 
 def get_sandbox_workspace() -> Path:
-    """Get the sandbox workspace directory."""
-    if IS_WINDOWS:
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        workspace = base / "Sentinel" / "sandbox_runs"
-    else:
-        base = Path.home() / ".config" / "sentinel"
-        workspace = base / "sandbox_runs"
-
+    """Get the sandbox workspace directory (Windows: %APPDATA%/Sentinel/sandbox_runs)."""
+    base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    workspace = base / "Sentinel" / "sandbox_runs"
     workspace.mkdir(parents=True, exist_ok=True)
     return workspace
 
 
 def get_reports_directory() -> Path:
-    """Get the scan reports directory."""
-    if IS_WINDOWS:
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        reports = base / "Sentinel" / "scan_reports"
-    else:
-        base = Path.home() / ".config" / "sentinel"
-        reports = base / "scan_reports"
-
+    """Get the scan reports directory (Windows: %APPDATA%/Sentinel/scan_reports)."""
+    base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    reports = base / "Sentinel" / "scan_reports"
     reports.mkdir(parents=True, exist_ok=True)
     return reports
 
@@ -98,7 +86,7 @@ class SandboxResult:
             "sandbox_method": self.sandbox_method,
             "network_blocked": self.network_blocked,
             "workspace_path": self.workspace_path,
-            "platform": "windows" if IS_WINDOWS else ("linux" if IS_LINUX else "other"),
+            "platform": "windows",
             # Scoring module expects these field names
             "files_created": self.created_files[:50],
             "files_modified": self.modified_files[:50],
@@ -125,190 +113,49 @@ class IntegratedSandbox:
         self._available: bool | None = None
         self._availability_reason: str = ""
         self._windows_job_available: bool = False
-        self._windows_wsb_available: bool = False
-        self._windows_engine: str = "job_object"
-        self._platform = platform.system().lower()
         self._check_availability()
 
-    @staticmethod
-    def _windows_engine_preference() -> str:
-        """
-        Select Windows sandbox backend.
-
-        Env: SENTINEL_SANDBOX_ENGINE in {windows_sandbox, job_object, auto}
-        Defaults to windows_sandbox.
-        """
-        raw = os.environ.get("SENTINEL_SANDBOX_ENGINE", "windows_sandbox").strip().lower()
-        aliases = {
-            "wsb": "windows_sandbox",
-            "windows-sandbox": "windows_sandbox",
-            "job": "job_object",
-            "jobobject": "job_object",
-        }
-        normalized = aliases.get(raw, raw)
-        if normalized in {"windows_sandbox", "job_object", "auto"}:
-            return normalized
-        return "windows_sandbox"
-
-    @staticmethod
-    def _resolve_windows_engine(
-        preference: str,
-        wsb_available: bool,
-        job_available: bool,
-    ) -> tuple[str, bool, str]:
-        """Resolve active Windows sandbox backend and availability."""
-        if preference == "job_object":
-            if job_available:
-                return "job_object", True, "Windows sandbox available (Job Object + Restricted Token)"
-            if wsb_available:
-                return "windows_sandbox", True, "Job Object unavailable; using Windows Sandbox VM"
-            return "job_object", False, "Neither Job Object nor Windows Sandbox is available"
-
-        if preference == "auto":
-            if wsb_available:
-                return "windows_sandbox", True, "Windows sandbox available (Windows Sandbox VM)"
-            if job_available:
-                return "job_object", True, "Windows Sandbox VM unavailable; using Job Object fallback"
-            return "job_object", False, "Neither Windows Sandbox VM nor Job Object backend is available"
-
-        # Explicit/default preference: windows_sandbox
-        if wsb_available:
-            return "windows_sandbox", True, "Windows sandbox available (Windows Sandbox VM)"
-        if job_available:
-            return (
-                "windows_sandbox",
-                True,
-                "Windows Sandbox VM was not detected; will try it first, then fallback to Job Object",
-            )
-        return "windows_sandbox", False, "Neither Windows Sandbox VM nor Job Object backend is available"
-
     def _check_availability(self) -> None:
-        """Check if sandbox is available on this platform."""
-        if IS_WINDOWS:
-            self._check_windows_availability()
-        elif IS_LINUX:
-            self._check_linux_availability()
-        elif IS_MACOS:
-            self._available = False
-            self._availability_reason = "macOS sandbox not yet implemented. Static analysis is available."
-        else:
-            self._available = False
-            self._availability_reason = f"Unsupported platform: {self._platform}"
+        """Check if Job Object sandbox is available (Windows-only)."""
+        self._check_windows_availability()
 
     def _check_windows_availability(self) -> None:
-        """Check Windows sandbox capabilities."""
+        """Check Windows Job Object sandbox availability."""
         try:
-            # Check Job Object support.
             import ctypes
             kernel32 = ctypes.windll.kernel32
-
             job = kernel32.CreateJobObjectW(None, None)
             if job:
                 kernel32.CloseHandle(job)
                 self._windows_job_available = True
+                self._available = True
+                self._availability_reason = "Windows sandbox available (Job Object + restricted execution)"
             else:
                 self._windows_job_available = False
-
-            # Check Windows Sandbox VM support (feature/runtime).
-            try:
-                from .sandbox_controller import SandboxController
-
-                controller = SandboxController()
-                methods = {m.lower() for m in controller.available_methods}
-                self._windows_wsb_available = "windows sandbox" in methods
-            except Exception as e:
-                logger.debug(f"Windows Sandbox capability probe failed: {e}")
-                self._windows_wsb_available = False
-
-            preference = self._windows_engine_preference()
-            engine, available, reason = self._resolve_windows_engine(
-                preference=preference,
-                wsb_available=self._windows_wsb_available,
-                job_available=self._windows_job_available,
-            )
-            self._windows_engine = engine
-            self._available = available
-            self._availability_reason = reason
-            logger.info(
-                "Integrated sandbox backend selected: %s (WSB=%s, JobObject=%s)",
-                self._windows_engine,
-                self._windows_wsb_available,
-                self._windows_job_available,
-            )
-        except Exception as e:
-            self._available = False
-            self._availability_reason = f"Windows sandbox check failed: {e}"
-
-    def _check_linux_availability(self) -> None:
-        """Check Linux sandbox capabilities (user namespaces)."""
-        try:
-            # Check if unshare is available
-            result = subprocess.run(
-                ["which", "unshare"],
-                capture_output=True,
-                timeout=5
-            )
-            if result.returncode != 0:
                 self._available = False
-                self._availability_reason = "unshare command not found"
-                return
-
-            # Check if user namespaces are enabled
-            try:
-                with open("/proc/sys/kernel/unprivileged_userns_clone") as f:
-                    if f.read().strip() == "0":
-                        self._available = False
-                        self._availability_reason = "User namespaces disabled (unprivileged_userns_clone=0)"
-                        return
-            except FileNotFoundError:
-                # File doesn't exist on some distros, try to test directly
-                pass
-
-            # Test if we can actually create a user namespace
-            result = subprocess.run(
-                ["unshare", "--user", "--map-root-user", "echo", "test"],
-                capture_output=True,
-                timeout=10
-            )
-            if result.returncode == 0:
-                self._available = True
-                self._availability_reason = "Linux sandbox available (user namespaces via unshare)"
-            else:
-                self._available = False
-                self._availability_reason = f"User namespace test failed: {result.stderr.decode()[:100]}"
-
-        except subprocess.TimeoutExpired:
+                self._availability_reason = "Job Object creation failed — sandbox unavailable"
+            logger.info("Integrated sandbox: JobObject=%s", self._windows_job_available)
+        except Exception as exc:
             self._available = False
-            self._availability_reason = "Sandbox capability check timed out"
-        except Exception as e:
-            self._available = False
-            self._availability_reason = f"Linux sandbox check failed: {e}"
+            self._availability_reason = f"Windows sandbox check failed: {exc}"
+
+
 
     def availability(self) -> dict[str, Any]:
         """
-        Check if sandbox execution is available.
-        
+        Check if the Job Object sandbox is available.
+
         Returns:
             Dict with keys: available (bool), reason (str), method (str), platform (str)
         """
-        method = "unknown"
-        if self._available:
-            if IS_WINDOWS:
-                if self._windows_engine == "windows_sandbox":
-                    method = "Windows Sandbox VM"
-                else:
-                    method = "Windows Job Object"
-            elif IS_LINUX:
-                method = "Linux User Namespace"
-
+        method = "Windows Job Object" if self._available else "unavailable"
         return {
             "available": self._available or False,
             "reason": self._availability_reason,
             "method": method,
-            "platform": self._platform,
-            "selected_engine": self._windows_engine if IS_WINDOWS else "",
-            "windows_sandbox_available": self._windows_wsb_available if IS_WINDOWS else False,
-            "job_object_available": self._windows_job_available if IS_WINDOWS else False,
+            "platform": "windows",
+            "selected_engine": "job_object",
+            "job_object_available": self._windows_job_available,
         }
 
     @staticmethod
@@ -443,7 +290,7 @@ class IntegratedSandbox:
             # Compatibility mode: dependency-heavy desktop apps may not run from exe-only copy.
             execution_sample = sandbox_sample
             execution_cwd = workspace
-            if IS_WINDOWS and self._should_use_inplace_execution(original_sample):
+            if self._should_use_inplace_execution(original_sample):
                 execution_sample = original_sample
                 execution_cwd = original_sample.parent
                 logger.info(
@@ -454,67 +301,18 @@ class IntegratedSandbox:
             # Get initial file list for comparison
             initial_files = self._list_files(workspace)
 
-            # Execute based on platform
+            # Execute with Job Object containment
             start = time.time()
 
-            if IS_WINDOWS:
-                if self._windows_engine == "windows_sandbox":
-                    self._run_windows_sandbox_vm(
-                        result,
-                        original_sample,
-                        timeout,
-                        block_network,
-                    )
-
-                    # If VM backend fails, keep scan functional via Job Object fallback.
-                    if not (result.success or result.timed_out) and self._windows_job_available:
-                        vm_error = result.error
-                        logger.warning(
-                            "Windows Sandbox VM failed (%s); falling back to Job Object backend",
-                            vm_error or "unknown error",
-                        )
-                        self._emit_event(
-                            "sandbox_backend_fallback",
-                            {
-                                "from": "windows_sandbox_vm",
-                                "to": "windows_job_restricted",
-                                "reason": vm_error or "runtime failure",
-                                "timestamp": datetime.now().isoformat(),
-                            },
-                        )
-                        result.error = None
-                        result.success = False
-                        result.timed_out = False
-                        result.exit_code = None
-                        result.stdout = ""
-                        result.stderr = ""
-                        result.created_files = []
-                        result.modified_files = []
-                        result.processes_spawned = []
-                        result.findings = []
-                        self._run_windows_sandbox(
-                            result,
-                            execution_sample,
-                            timeout,
-                            block_network,
-                            workspace,
-                            execution_cwd=execution_cwd,
-                            inplace_compat=(execution_sample == original_sample),
-                        )
-                else:
-                    self._run_windows_sandbox(
-                        result,
-                        execution_sample,
-                        timeout,
-                        block_network,
-                        workspace,
-                        execution_cwd=execution_cwd,
-                        inplace_compat=(execution_sample == original_sample),
-                    )
-            elif IS_LINUX:
-                self._run_linux_sandbox(result, sandbox_sample, timeout, block_network, workspace)
-            else:
-                result.error = "Platform not supported for sandbox execution"
+            self._run_windows_sandbox(
+                result,
+                execution_sample,
+                timeout,
+                block_network,
+                workspace,
+                execution_cwd=execution_cwd,
+                inplace_compat=(execution_sample == original_sample),
+            )
 
             result.duration_seconds = time.time() - start
             result.end_time = datetime.now().isoformat()
@@ -860,229 +658,6 @@ class IntegratedSandbox:
                     ], capture_output=True, timeout=10)
                 except Exception as e:
                     logger.warning(f"Failed to remove firewall rule: {e}")
-
-    def _run_windows_sandbox_vm(
-        self,
-        result: SandboxResult,
-        sample_path: Path,
-        timeout: int,
-        block_network: bool,
-    ) -> None:
-        """Run sample in Windows Sandbox VM backend."""
-        from .sandbox_controller import SandboxController
-
-        result.sandbox_method = "windows_sandbox_vm"
-
-        if not block_network:
-            # Windows Sandbox profile used by Sentinel runs with networking disabled.
-            logger.info(
-                "Windows Sandbox VM backend enforces network isolation; ignoring block_network=False"
-            )
-        result.network_blocked = True
-
-        self._emit_event(
-            "sandbox_backend",
-            {
-                "backend": "windows_sandbox_vm",
-                "timestamp": datetime.now().isoformat(),
-            },
-        )
-
-        try:
-            controller = SandboxController()
-            methods = {m.lower() for m in controller.available_methods}
-            if "windows sandbox" not in methods:
-                result.error = "Windows Sandbox VM is not available on this system."
-                return
-
-            vm_result = controller._run_in_windows_sandbox(str(sample_path), timeout)
-
-            vm_error = (vm_result.error or "").strip()
-            result.success = bool(vm_result.success) and not vm_error
-            result.timed_out = vm_result.status == "timeout"
-            result.error = vm_error or None
-            result.duration_seconds = float(vm_result.duration)
-            result.exit_code = None
-
-            # Normalize behavior fields into IntegratedSandbox schema.
-            result.created_files = list(vm_result.files_created or [])
-            result.modified_files = list(vm_result.files_modified or [])
-            result.processes_spawned = [
-                p for p in (vm_result.processes or []) if isinstance(p, dict)
-            ]
-
-            raw = vm_result.raw_report or {}
-            if isinstance(raw, dict):
-                stdout_value = raw.get("stdout")
-                stderr_value = raw.get("stderr")
-                if isinstance(stdout_value, str):
-                    result.stdout = stdout_value[:10000]
-                if isinstance(stderr_value, str):
-                    result.stderr = stderr_value[:10000]
-
-            if result.success:
-                self._emit_event(
-                    "sandbox_complete",
-                    {
-                        "backend": "windows_sandbox_vm",
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                )
-        except Exception as e:
-            logger.exception("Windows Sandbox VM execution failed: %s", e)
-            result.error = str(e)
-
-    def _run_linux_sandbox(
-        self,
-        result: SandboxResult,
-        sample_path: Path,
-        timeout: int,
-        block_network: bool,
-        workspace: Path
-    ) -> None:
-        """Run sample in Linux user namespace sandbox."""
-        result.sandbox_method = "linux_unshare"
-
-        stdout_path = workspace / "stdout.txt"
-        stderr_path = workspace / "stderr.txt"
-
-        try:
-            # Make sample executable
-            os.chmod(sample_path, 0o755)
-
-            # Build unshare command
-            # --user: create new user namespace
-            # --map-root-user: map current user to root inside namespace
-            # --pid: create new PID namespace
-            # --fork: fork before executing
-            # --mount-proc: mount new /proc (requires --pid)
-
-            unshare_args = [
-                "unshare",
-                "--user",
-                "--map-root-user",
-                "--pid",
-                "--fork",
-                "--mount-proc",
-            ]
-
-            # Add network isolation if requested
-            if block_network:
-                unshare_args.append("--net")
-                result.network_blocked = True
-
-            # Determine how to run the sample
-            ext = sample_path.suffix.lower()
-
-            if ext in [".sh"]:
-                cmd = unshare_args + ["/bin/bash", str(sample_path)]
-            elif ext in [".py"]:
-                cmd = unshare_args + [sys.executable, str(sample_path)]
-            elif ext in [".pl"]:
-                cmd = unshare_args + ["perl", str(sample_path)]
-            else:
-                # Try to run as ELF executable
-                cmd = unshare_args + [str(sample_path)]
-
-            # Execute with timeout
-            with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    cwd=str(workspace),
-                    env={
-                        "HOME": str(workspace),
-                        "PATH": "/usr/bin:/bin",
-                        "TERM": "dumb",
-                    }
-                )
-
-                result.processes_spawned.append({
-                    "pid": process.pid,
-                    "name": sample_path.name,
-                    "start_time": datetime.now().isoformat(),
-                })
-
-                # Emit process start event
-                self._emit_event("process_start", {
-                    "pid": process.pid,
-                    "name": sample_path.name,
-                    "path": str(sample_path),
-                    "timestamp": datetime.now().isoformat()
-                })
-
-                # Poll with cancellation support
-                poll_interval = 0.5
-                elapsed = 0.0
-                last_file_check = 0.0
-                file_check_interval = 1.0
-                known_files = set(self._list_files(workspace))
-
-                while elapsed < timeout:
-                    # Check for cancellation
-                    if self._is_cancelled():
-                        result.error = "Sandbox execution cancelled by user"
-                        process.kill()
-                        try:
-                            process.wait(timeout=5)
-                        except Exception:
-                            pass
-                        self._emit_event("session_cancelled", {"timestamp": datetime.now().isoformat()})
-                        break
-
-                    retcode = process.poll()
-                    if retcode is not None:
-                        result.exit_code = retcode
-                        result.success = True
-                        self._emit_event("process_exit", {
-                            "pid": process.pid,
-                            "exit_code": retcode,
-                            "timestamp": datetime.now().isoformat()
-                        })
-                        break
-
-                    # Check for new files
-                    if elapsed - last_file_check >= file_check_interval:
-                        current_files = set(self._list_files(workspace))
-                        new_files = current_files - known_files
-                        for new_file in new_files:
-                            if Path(new_file).name.lower() in INTERNAL_SANDBOX_ARTIFACTS:
-                                continue
-                            self._emit_event("file_create", {
-                                "path": str(workspace / new_file),
-                                "name": new_file,
-                                "timestamp": datetime.now().isoformat()
-                            })
-                            result.created_files.append(new_file)
-                        known_files = current_files
-                        last_file_check = elapsed
-
-                    time.sleep(poll_interval)
-                    elapsed += poll_interval
-                else:
-                    # Timeout reached
-                    result.timed_out = True
-                    result.success = True
-                    self._emit_event("timeout", {"timestamp": datetime.now().isoformat()})
-                    process.kill()
-                    try:
-                        process.wait(timeout=5)
-                    except Exception:
-                        pass
-
-            # Read output
-            try:
-                if stdout_path.exists():
-                    result.stdout = stdout_path.read_text(errors="replace")[:10000]
-                if stderr_path.exists():
-                    result.stderr = stderr_path.read_text(errors="replace")[:10000]
-            except Exception as e:
-                logger.warning(f"Failed to read output: {e}")
-
-        except Exception as e:
-            logger.exception(f"Linux sandbox execution failed: {e}")
-            result.error = str(e)
 
     def _generate_behavior_summary(self, result: SandboxResult) -> str:
         """Generate a human-readable behavior summary."""

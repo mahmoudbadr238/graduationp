@@ -173,12 +173,8 @@ class SandboxSession:
         self.workspace.mkdir(parents=True, exist_ok=True)
 
     def _get_default_workspace(self) -> Path:
-        """Get default session workspace."""
-        if os.name == "nt":
-            base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        else:
-            base = Path.home() / ".config"
-
+        """Get default session workspace (Windows: %APPDATA%/Sentinel/sandbox_sessions/...)."""
+        base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
         return base / "Sentinel" / "sandbox_sessions" / self.session_id
 
     def start(self, sample_path: str, sample_hash: str | None = None) -> None:

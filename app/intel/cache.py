@@ -68,12 +68,8 @@ class IntelCache:
         logger.info(f"IntelCache initialized: {self._db_path}")
 
     def _get_db_path(self) -> Path:
-        """Get the database path in user's app data."""
-        import sys
-        if sys.platform == "win32":
-            base = Path.home() / "AppData" / "Local" / "Sentinel"
-        else:
-            base = Path.home() / ".sentinel"
+        """Get the database path in Windows app data."""
+        base = Path.home() / "AppData" / "Local" / "Sentinel"
         base.mkdir(parents=True, exist_ok=True)
         return base / "intel_cache.db"
 
