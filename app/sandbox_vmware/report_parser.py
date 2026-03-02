@@ -8,9 +8,9 @@ from typing import Any, Mapping
 
 
 def load_report(report_path: str | Path) -> dict[str, Any]:
-    """Load a JSON report from disk."""
+    """Load a JSON report from disk (handles UTF-8 with or without BOM)."""
     path = Path(report_path)
-    with path.open("r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8-sig") as handle:
         data = json.load(handle)
     if not isinstance(data, dict):
         raise ValueError("Sandbox report must be a JSON object.")

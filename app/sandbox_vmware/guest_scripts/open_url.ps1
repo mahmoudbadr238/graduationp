@@ -105,4 +105,5 @@ if ($KillOnFinish -and $proc) {
 
 # ── Write report ──────────────────────────────────────────────────────────────
 $report.finished_at = (Get-Date -Format "o")
-$report | ConvertTo-Json -Depth 10 | Set-Content -Path "$outDir\report.json" -Encoding UTF8
+$json = $report | ConvertTo-Json -Depth 10
+[System.IO.File]::WriteAllText("$outDir\report.json", $json, [System.Text.Encoding]::UTF8)
