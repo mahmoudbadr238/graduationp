@@ -259,8 +259,19 @@ Item {
             return
         }
         fileScanResult = null
-        if (Backend)
-            Backend.runIntegratedScan(selectedFilePath, useSandbox, blockNetwork, sandboxTimeout)
+        if (useSandbox) {
+            if (!(sandboxLab && sandboxLab.available)) {
+                if (Backend) Backend.toast("warning", "VMware sandbox is not available — configure VMware Workstation first")
+                return
+            }
+            // Route through VMware: expand lab section, copy file to VM, run, revert to clean snapshot
+            vmwareExpanded = true
+            sandboxLab.runFileInSandbox(selectedFilePath, vmwareMonitorSeconds, vmwareDisableNetwork, vmwareKillOnFinish)
+        } else {
+            // Static analysis only — no sandbox execution
+            if (Backend)
+                Backend.runIntegratedScan(selectedFilePath, false, false, sandboxTimeout)
+        }
     }
     function startUrlCheck() {
         var url = urlInput.text.trim()
@@ -410,14 +421,14 @@ Item {
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true; spacing: 24
-                                    // Sandbox toggle
+                                    // Sandbox toggle (VMware)
                                     RowLayout {
                                         spacing: 8
                                         Rectangle {
                                             width: 44; height: 24; radius: 12
                                             color: useSandbox ? ThemeManager.primary : ThemeManager.surface()
                                             border.color: ThemeManager.border()
-                                            opacity: integratedSandboxAvailable ? 1.0 : 0.5
+                                            opacity: (sandboxLab && sandboxLab.available) ? 1.0 : 0.5
                                             Rectangle {
                                                 x: useSandbox ? parent.width-width-3 : 3
                                                 anchors.verticalCenter: parent.verticalCenter
@@ -425,47 +436,47 @@ Item {
                                                 Behavior on x { NumberAnimation { duration: 140 } }
                                             }
                                             MouseArea {
-                                                anchors.fill: parent; enabled: integratedSandboxAvailable
+                                                anchors.fill: parent
+                                                enabled: (sandboxLab && sandboxLab.available) ? true : false
                                                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                                 onClicked: useSandbox = !useSandbox
                                             }
                                         }
                                         Text {
-                                            text: "Run in Sandbox"; font.pixelSize: 13
-                                            color: integratedSandboxAvailable ? ThemeManager.foreground() : ThemeManager.muted()
+                                            text: "Run in VMware"; font.pixelSize: 13
+                                            color: (sandboxLab && sandboxLab.available) ? ThemeManager.foreground() : ThemeManager.muted()
                                         }
                                     }
-                                    // Block network toggle
+                                    // Disable guest network toggle (only active when sandbox on)
                                     RowLayout {
-                                        spacing: 8; visible: useSandbox
+                                        spacing: 8; visible: useSandbox && (sandboxLab && sandboxLab.available)
                                         Rectangle {
                                             width: 44; height: 24; radius: 12
-                                            color: blockNetwork ? ThemeManager.accent : ThemeManager.surface()
+                                            color: vmwareDisableNetwork ? ThemeManager.accent : ThemeManager.surface()
                                             border.color: ThemeManager.border()
-                                            opacity: (integratedSandboxAvailable && useSandbox) ? 1.0 : 0.5
                                             Rectangle {
-                                                x: blockNetwork ? parent.width-width-3 : 3
+                                                x: vmwareDisableNetwork ? parent.width-width-3 : 3
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: 18; height: 18; radius: 9; color: "#ffffff"
                                                 Behavior on x { NumberAnimation { duration: 140 } }
                                             }
                                             MouseArea {
-                                                anchors.fill: parent
-                                                enabled: integratedSandboxAvailable && useSandbox
-                                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                                onClicked: blockNetwork = !blockNetwork
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: vmwareDisableNetwork = !vmwareDisableNetwork
                                             }
                                         }
                                         Text {
-                                            text: "Block Network"; font.pixelSize: 13
-                                            color: (integratedSandboxAvailable && useSandbox) ? ThemeManager.foreground() : ThemeManager.muted()
+                                            text: "Disable Guest Network"; font.pixelSize: 13
+                                            color: ThemeManager.foreground()
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
                                     Button {
-                                        text: fileScanningInProgress ? "Scanning: " + (fileScanStage||"...") : "Scan File"
-                                        Layout.preferredWidth: 148; Layout.preferredHeight: 42
-                                        enabled: !fileScanningInProgress && selectedFilePath.length > 0
+                                        text: (sandboxLab && sandboxLab.busy)
+                                            ? "Detonating: " + (sandboxLab.currentStep || "...")
+                                            : fileScanningInProgress ? "Scanning: " + (fileScanStage||"...") : "Scan File"
+                                        Layout.preferredWidth: 162; Layout.preferredHeight: 42
+                                        enabled: !(sandboxLab && sandboxLab.busy) && !fileScanningInProgress && selectedFilePath.length > 0
                                         onClicked: startFileScan()
                                         background: Rectangle {
                                             color: parent.enabled
@@ -629,11 +640,16 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true; height: 56
                             color: ThemeManager.panel(); radius: 12
-                            visible: fileScanningInProgress && !sandboxLiveViewVisible
+                            visible: (fileScanningInProgress && !sandboxLiveViewVisible) || (sandboxLab && sandboxLab.busy)
                             RowLayout {
                                 anchors.centerIn: parent; spacing: 14
-                                BusyIndicator { running: fileScanningInProgress; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
-                                Text { text: fileScanStage || "Scanning..."; font.pixelSize: 13; color: ThemeManager.foreground() }
+                                BusyIndicator { running: true; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
+                                Text {
+                                    text: (sandboxLab && sandboxLab.busy)
+                                        ? (sandboxLab.statusText || "VMware: running...")
+                                        : (fileScanStage || "Scanning...")
+                                    font.pixelSize: 13; color: ThemeManager.foreground()
+                                }
                             }
                         }
 
