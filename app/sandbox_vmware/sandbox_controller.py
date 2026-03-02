@@ -21,6 +21,8 @@ from .vmrun_client import VmrunClient, VmrunError
 
 logger = logging.getLogger(__name__)
 
+_GUEST_SCRIPTS_DIR = Path(__file__).parent / "guest_scripts"
+
 
 class VmwareTaskWorker(QObject):
     """Run vmrun work in a background QThread."""
@@ -566,6 +568,33 @@ class SandboxLabController(QObject):
             worker.emit_step("Running", "Waiting for guest OS to become responsive")
             time.sleep(10)
             worker.emit_step("OK", "Guest OS is ready")
+
+            # ── Create sandbox directories in guest ───────────────────────
+            worker.emit_progress(30)
+            worker.emit_step("Running", "Preparing C:\\Sandbox directories in guest")
+            try:
+                self._client.run_program_in_guest(
+                    "powershell.exe",
+                    ["-ExecutionPolicy", "Bypass", "-Command",
+                     "New-Item -ItemType Directory -Force -Path 'C:\\Sandbox\\in','C:\\Sandbox\\out' | Out-Null"],
+                    wait=True,
+                    timeout=60,
+                )
+                worker.emit_step("OK", "Guest sandbox directories ready")
+            except Exception as _mkdir_exc:
+                worker.emit_step("Failed", f"Guest mkdir failed (continuing): {_mkdir_exc}")
+
+            # ── Deploy runner script from host into guest ─────────────────
+            worker.emit_progress(33)
+            if self._run_mode == "file":
+                _host_script = _GUEST_SCRIPTS_DIR / "run.ps1"
+                _guest_script = self._config.guest_runner_path
+            else:
+                _host_script = _GUEST_SCRIPTS_DIR / "open_url.ps1"
+                _guest_script = self._config.guest_open_url_path
+            worker.emit_step("Running", f"Deploying {_host_script.name} to guest")
+            self._client.copy_file_from_host_to_guest(_host_script, _guest_script)
+            worker.emit_step("OK", f"Runner script deployed to {_guest_script}")
 
             if sample_path is not None and guest_sample_path is not None:
                 worker.emit_progress(35)
