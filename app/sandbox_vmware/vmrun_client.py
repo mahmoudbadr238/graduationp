@@ -202,5 +202,6 @@ class VmrunClient:
                 self._config.vmx_path,
                 str(output),
             ],
+            guest_auth=True,
             timeout=timeout,
         )
