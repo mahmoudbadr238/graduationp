@@ -578,40 +578,86 @@ Item {
                                     }
                                 }
 
-                                RowLayout {
-                                    Layout.fillWidth: true; spacing: 12
-                                    Rectangle {
-                                        width: 300; height: 170; color: ThemeManager.surface(); radius: 8
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Image {
-                                            anchors { fill: parent; margins: 2 }
-                                            source: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath : sandboxLab.liveFrameSource) : ""
-                                            fillMode: Image.PreserveAspectFit; cache: false
-                                            visible: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : false
-                                        }
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 6
+
+                                    // ── VM live / replay screen ──────────────────────────────
+                                    RowLayout {
+                                        spacing: 8
                                         Text {
-                                            anchors.centerIn: parent
-                                            text: sandboxLab ? sandboxLab.liveViewState : "No feed"
-                                            color: ThemeManager.muted(); font.pixelSize: 11
-                                            visible: sandboxLab ? !(sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : true
+                                            text: "VM Screen"
+                                            color: ThemeManager.foreground(); font.pixelSize: 12; font.bold: true
                                         }
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true; spacing: 6
-                                        Text { text: "Automation Steps"; font.pixelSize: 12; font.bold: true; color: ThemeManager.foreground() }
-                                        ListView {
-                                            Layout.fillWidth: true; height: 130
-                                            model: sandboxLab ? sandboxLab.stepsModel : []; clip: true
-                                            delegate: Text {
-                                                text: (modelData.time || "") + " [" + (modelData.status || "") + "] " + (modelData.message || ""); font.pixelSize: 11
-                                                color: modelData.status === "Failed" ? ThemeManager.danger : modelData.status === "OK" ? ThemeManager.success : ThemeManager.muted()
-                                                elide: Text.ElideRight; width: parent ? parent.width : 0
+                                        // LIVE badge – blinks while active
+                                        Rectangle {
+                                            id: liveBadge
+                                            visible: sandboxLab ? (sandboxLab.busy && sandboxLab.liveFrameSource.length > 0) : false
+                                            width: 38; height: 18; radius: 4
+                                            color: "#c0392b"
+                                            Text { anchors.centerIn: parent; text: "LIVE"; color: "#ffffff"; font.pixelSize: 10; font.bold: true }
+                                            SequentialAnimation on opacity {
+                                                running: liveBadge.visible; loops: Animation.Infinite
+                                                NumberAnimation { to: 0.3; duration: 600 }
+                                                NumberAnimation { to: 1.0; duration: 600 }
                                             }
                                         }
-                                        Text { text: sandboxLab ? sandboxLab.verdictSummary : ""; font.pixelSize: 12; color: ThemeManager.foreground(); visible: !!(sandboxLab && sandboxLab.verdictSummary.length > 0) }
-                                        Text { text: sandboxLab ? sandboxLab.lastError : ""; font.pixelSize: 11; color: ThemeManager.danger; visible: !!(sandboxLab && sandboxLab.lastError.length > 0); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        // REPLAY badge
+                                        Rectangle {
+                                            visible: sandboxLab ? sandboxLab.replayMode : false
+                                            width: 56; height: 18; radius: 4; color: ThemeManager.primary()
+                                            Text { anchors.centerIn: parent; text: "REPLAY"; color: "#ffffff"; font.pixelSize: 10; font.bold: true }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true; height: 270
+                                        color: "#0d0d0d"; radius: 8
+                                        border.color: (sandboxLab && sandboxLab.busy && sandboxLab.liveFrameSource.length > 0)
+                                                        ? "#c0392b" : ThemeManager.border()
+                                        border.width: (sandboxLab && sandboxLab.busy && sandboxLab.liveFrameSource.length > 0) ? 2 : 1
+
+                                        Image {
+                                            anchors { fill: parent; margins: 3 }
+                                            source: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath : sandboxLab.liveFrameSource) : ""
+                                            fillMode: Image.PreserveAspectFit; cache: false
+                                            smooth: true
+                                            visible: sandboxLab ? (sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : false
+                                        }
+
+                                        // Placeholder shown when no frame available
+                                        ColumnLayout {
+                                            anchors.centerIn: parent; spacing: 8
+                                            visible: sandboxLab ? !(sandboxLab.replayMode ? sandboxLab.replayFramePath.length > 0 : sandboxLab.liveFrameSource.length > 0) : true
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: "🖥"
+                                                font.pixelSize: 32; color: ThemeManager.muted()
+                                            }
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: sandboxLab ? sandboxLab.liveViewState : "No feed"
+                                                color: ThemeManager.muted(); font.pixelSize: 12
+                                            }
+                                        }
                                     }
                                 }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 6
+                                    Text { text: "Automation Steps"; font.pixelSize: 12; font.bold: true; color: ThemeManager.foreground() }
+                                    ListView {
+                                        Layout.fillWidth: true; height: 130
+                                        model: sandboxLab ? sandboxLab.stepsModel : []; clip: true
+                                        delegate: Text {
+                                            text: (modelData.time || "") + " [" + (modelData.status || "") + "] " + (modelData.message || ""); font.pixelSize: 11
+                                            color: modelData.status === "Failed" ? ThemeManager.danger : modelData.status === "OK" ? ThemeManager.success : ThemeManager.muted()
+                                            elide: Text.ElideRight; width: parent ? parent.width : 0
+                                        }
+                                    }
+                                    Text { text: sandboxLab ? sandboxLab.verdictSummary : ""; font.pixelSize: 12; color: ThemeManager.foreground(); visible: !!(sandboxLab && sandboxLab.verdictSummary.length > 0) }
+                                    Text { text: sandboxLab ? sandboxLab.lastError : ""; font.pixelSize: 11; color: ThemeManager.danger; visible: !!(sandboxLab && sandboxLab.lastError.length > 0); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                }
+                                
 
                                 RowLayout {
                                     Layout.fillWidth: true; spacing: 10

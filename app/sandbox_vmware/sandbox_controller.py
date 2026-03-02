@@ -619,8 +619,8 @@ class SandboxLabController(QObject):
             worker.emit_step("OK", "Snapshot restored")
 
             worker.emit_progress(15)
-            worker.emit_step("Running", "Starting VM")
-            self._client.start(nogui=False)
+            worker.emit_step("Running", "Starting VM (headless – live view in app)")
+            self._client.start(nogui=True)
             worker.set_vm_running(True)
             worker.emit_step("OK", "VM started")
 
