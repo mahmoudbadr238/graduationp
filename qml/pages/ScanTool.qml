@@ -308,13 +308,15 @@ Item {
             Item { Layout.fillWidth: true }
             Rectangle {
                 height: 28; width: hdBadge.implicitWidth + 20; radius: 14
-                color: integratedSandboxAvailable
+                color: (sandboxLab && sandboxLab.available)
                     ? Qt.rgba(0,0.8,0.4,0.15) : Qt.rgba(1,0.6,0,0.15)
                 Text {
                     id: hdBadge; anchors.centerIn: parent
-                    text: integratedSandboxStatus || (integratedSandboxAvailable ? "Sandbox Available" : "Sandbox Unavailable")
+                    text: sandboxLab
+                        ? (sandboxLab.available ? "VMware Ready" : "VMware Unavailable")
+                        : "VMware Not Configured"
                     font.pixelSize: 11
-                    color: integratedSandboxAvailable ? ThemeManager.success : ThemeManager.warning
+                    color: (sandboxLab && sandboxLab.available) ? ThemeManager.success : ThemeManager.warning
                 }
             }
         }
@@ -743,7 +745,7 @@ Item {
                             Layout.fillWidth: true
                             height: featCol.implicitHeight + 32
                             color: ThemeManager.surface(); radius: 12
-                            visible: !fileScanningInProgress && fileScanResult === null
+                            visible: !fileScanningInProgress && fileScanResult === null && !vmwareExpanded
                             ColumnLayout {
                                 id: featCol
                                 anchors { fill: parent; margins: 18 }
