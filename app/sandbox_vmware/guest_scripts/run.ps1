@@ -8,6 +8,16 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+
+# ── Windows UI automation helper ─────────────────────────────────────────────
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UIHelper {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@ -ErrorAction SilentlyContinue
 $outDir = "C:\Sandbox\out"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
@@ -51,6 +61,70 @@ try {
 } catch {
     $report.errors.Add("Failed to start sample: $_")
 }
+
+# ── Human interaction simulation (background STA runspace) ───────────────────
+# Simulates a user accepting wizard dialogs, UAC prompts, and installer screens
+$interactRS = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+$interactRS.ApartmentState = [System.Threading.ApartmentState]::STA
+$interactRS.ThreadOptions   = [System.Management.Automation.Runspaces.PSThreadOptions]::ReuseThread
+$interactRS.Open()
+$interactRS.SessionStateProxy.SetVariable('_TargetProc', $proc)
+$interactRS.SessionStateProxy.SetVariable('_MonSecs',    $MonitorSeconds)
+
+$interactPS = [System.Management.Automation.PowerShell]::Create()
+$interactPS.Runspace = $interactRS
+[void]$interactPS.AddScript({
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class _UIH {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+}
+"@ -ErrorAction SilentlyContinue
+
+    $deadline = [datetime]::Now.AddSeconds($_MonSecs + 5)
+    $keys  = @("{ENTER}", " ", "{ENTER}", "y{ENTER}", "%y", "{TAB}{ENTER}", "{ENTER}")
+    $ki    = 0
+    $dialogPatterns = @(
+        '*Install*','*Setup*','*Wizard*','*Finish*','*Complete*','*Next*',
+        '*Accept*','*License*','*Agreement*','*Confirm*','*Warning*','*Alert*',
+        '*User Account Control*','*Windows Security*','*Security Warning*','*Run*'
+    )
+    Start-Sleep -Seconds 2
+    while ([datetime]::Now -lt $deadline) {
+        try {
+            # Focus and send key to target process
+            if ($_TargetProc -and -not $_TargetProc.HasExited) {
+                $hwnd = $_TargetProc.MainWindowHandle
+                if ($hwnd -ne [IntPtr]::Zero) {
+                    [_UIH]::ShowWindow($hwnd, 9); [_UIH]::SetForegroundWindow($hwnd)
+                    Start-Sleep -Milliseconds 250
+                    [System.Windows.Forms.SendKeys]::SendWait($keys[$ki % $keys.Count])
+                }
+            }
+            $ki++
+            # Accept any matching dialog window
+            Get-Process -ErrorAction SilentlyContinue |
+              Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -ne '' } |
+              ForEach-Object {
+                $t = $_.MainWindowTitle
+                foreach ($pat in $dialogPatterns) {
+                    if ($t -like $pat) {
+                        [_UIH]::ShowWindow($_.MainWindowHandle, 9)
+                        [_UIH]::SetForegroundWindow($_.MainWindowHandle)
+                        Start-Sleep -Milliseconds 200
+                        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+                        break
+                    }
+                }
+              }
+        } catch {}
+        Start-Sleep -Seconds 2
+    }
+})
+$interactHandle = $interactPS.BeginInvoke()
 
 # ── Monitor loop ──────────────────────────────────────────────────────────────
 $seenPids = [System.Collections.Generic.HashSet[int]]::new()
@@ -122,7 +196,10 @@ if ($DisableNetwork) {
     try { Get-NetAdapter | Enable-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue } catch {}
 }
 
-# ── Write report ──────────────────────────────────────────────────────────────
+# ── Stop interaction thread ──────────────────────────────────────────────────
+try { $interactPS.Stop(); $interactPS.Dispose(); $interactRS.Close(); $interactRS.Dispose() } catch {}
+
+# ── Write report (no BOM) ─────────────────────────────────────────────────────
 $report.finished_at = (Get-Date -Format "o")
 $json = $report | ConvertTo-Json -Depth 10
 [System.IO.File]::WriteAllText("$outDir\report.json", $json, [System.Text.Encoding]::UTF8)

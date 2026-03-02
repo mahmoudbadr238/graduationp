@@ -501,7 +501,39 @@ class SandboxLabController(QObject):
         return {"success": True, "operation": "reset"}
 
     def _task_run_file(self, worker: VmwareTaskWorker) -> dict[str, Any]:
+        from dataclasses import asdict, is_dataclass
+
         sample_path = Path(self._run_target)
+
+        # ── Static analysis on host (PE, YARA, hashes, entropy, IOCs) ──────
+        static_info: dict[str, Any] = {}
+        worker.emit_step("Running", f"Static analysis: hashing, PE, YARA, IOC extraction…")
+        try:
+            from ..scanning.static_scanner import StaticScanner
+            scanner = StaticScanner()
+            result = scanner.scan_file(str(sample_path), run_clamav=False)
+            raw: dict[str, Any] = result.to_dict() if hasattr(result, "to_dict") else (
+                asdict(result) if is_dataclass(result) else {}
+            )
+            static_info = raw
+            sha_short   = str(raw.get("sha256", ""))[:16]
+            yara_count  = len(raw.get("yara_matches") or [])
+            entropy_val = float((raw.get("static") or {}).get("entropy") or 0)
+            iocs_dict   = raw.get("iocs") or {}
+            ioc_count   = sum(
+                len(v) if isinstance(v, list) else (1 if v else 0)
+                for v in (iocs_dict.values() if isinstance(iocs_dict, dict) else [])
+            )
+            pe_sus      = bool((raw.get("pe_analysis") or {}).get("suspicious_imports"))
+            parts = [f"SHA256={sha_short}…", f"entropy={entropy_val:.2f}", f"YARA={yara_count}"]
+            if pe_sus:
+                parts.append("suspicious PE imports")
+            if ioc_count:
+                parts.append(f"{ioc_count} IOCs")
+            worker.emit_step("OK", "Static: " + "  |  ".join(parts))
+        except Exception as exc:
+            worker.emit_step("Failed", f"Static analysis error (continuing): {exc}")
+
         guest_path = self._guest_path(self._config.guest_in_dir, sample_path.name)
         args = [
             "-ExecutionPolicy", "Bypass",
@@ -513,7 +545,34 @@ class SandboxLabController(QObject):
             args.append("-DisableNetwork")
         if self._run_options["killOnFinish"]:
             args.append("-KillOnFinish")
-        return self._task_run_pipeline(worker, sample_path, guest_path, args)
+
+        payload = self._task_run_pipeline(worker, sample_path, guest_path, args)
+
+        # ── Merge static + behavioral for richer verdict ─────────────────
+        if static_info:
+            payload["static_analysis"] = static_info
+            yara_count = len(static_info.get("yara_matches") or [])
+            iocs_dict  = static_info.get("iocs") or {}
+            ioc_count  = sum(
+                len(v) if isinstance(v, list) else (1 if v else 0)
+                for v in (iocs_dict.values() if isinstance(iocs_dict, dict) else [])
+            )
+            base_score = int(payload.get("score") or 0)
+            boost      = min(30, yara_count * 10 + ioc_count * 3)
+            if boost:
+                payload["score"] = min(100, base_score + boost)
+                highlights = list(payload.get("highlights") or [])
+                if yara_count:
+                    highlights.insert(0, f"YARA: {yara_count} rule(s) matched on host static scan.")
+                if ioc_count:
+                    highlights.insert(0, f"IOCs: {ioc_count} indicator(s) extracted from host file.")
+                payload["highlights"] = highlights
+            # Escalate verdict if static says Malicious and behavioral was lower
+            if static_info.get("verdict") == "Malicious" and payload.get("verdict") not in ("Malicious",):
+                payload["verdict"] = "Malicious"
+                payload["summary"] = f"[Static: Malicious] {payload.get('summary', '')}"
+
+        return payload
 
     def _task_run_url(self, worker: VmwareTaskWorker) -> dict[str, Any]:
         args = [
@@ -623,6 +682,8 @@ class SandboxLabController(QObject):
             error_text = str(exc)
             worker.emit_step("Failed", error_text)
         finally:
+            # Stop capture BEFORE powering off so screenshot timer doesn't fire on a dead VM
+            worker.set_vm_running(False)
             worker.emit_step("Running", "Resetting VM to clean snapshot")
             try:
                 try:
@@ -638,8 +699,6 @@ class SandboxLabController(QObject):
                 else:
                     error_text = cleanup_text
                 worker.emit_step("Failed", cleanup_text)
-            finally:
-                worker.set_vm_running(False)
 
         time.sleep(0.8)
         export_result = self._export_media(self._frames_dir, self._run_dir, worker)
