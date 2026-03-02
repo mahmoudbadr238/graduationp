@@ -603,8 +603,8 @@ Item {
                                             Layout.fillWidth: true; height: 130
                                             model: sandboxLab ? sandboxLab.stepsModel : []; clip: true
                                             delegate: Text {
-                                                text: model.time + " [" + model.status + "] " + model.message; font.pixelSize: 11
-                                                color: model.status === "Failed" ? ThemeManager.danger : model.status === "OK" ? ThemeManager.success : ThemeManager.muted()
+                                                text: (modelData.time || "") + " [" + (modelData.status || "") + "] " + (modelData.message || ""); font.pixelSize: 11
+                                                color: modelData.status === "Failed" ? ThemeManager.danger : modelData.status === "OK" ? ThemeManager.success : ThemeManager.muted()
                                                 elide: Text.ElideRight; width: parent ? parent.width : 0
                                             }
                                         }
