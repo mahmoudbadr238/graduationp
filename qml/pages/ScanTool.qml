@@ -544,8 +544,16 @@ Item {
                                             }
                                         }
                                     }
-                                    RowLayout { spacing: 6; CheckBox { checked: vmwareDisableNetwork; onClicked: vmwareDisableNetwork = checked }; Text { text: "Disable Network"; font.pixelSize: 12; color: ThemeManager.muted() } }
-                                    RowLayout { spacing: 6; CheckBox { checked: vmwareKillOnFinish; onClicked: vmwareKillOnFinish = checked }; Text { text: "Kill on Finish"; font.pixelSize: 12; color: ThemeManager.muted() } }
+                                    RowLayout {
+                                        spacing: 6
+                                        CheckBox { checked: vmwareDisableNetwork; onClicked: vmwareDisableNetwork = checked }
+                                        Text { text: "Disable Network"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                    }
+                                    RowLayout {
+                                        spacing: 6
+                                        CheckBox { checked: vmwareKillOnFinish; onClicked: vmwareKillOnFinish = checked }
+                                        Text { text: "Kill on Finish"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                    }
                                     Item { Layout.fillWidth: true }
                                     Button {
                                         text: (sandboxLab && sandboxLab.busy) ? "Running..." : "Detonate in VMware"
@@ -782,10 +790,12 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true
                             height: urlInputCol.implicitHeight + 36
-                            color: ThemeManager.panel(); radius: 12; border.color: ThemeManager.border(); border.width: 1
+                            color: ThemeManager.panel(); radius: 12
+                            border.color: ThemeManager.border(); border.width: 1
                             ColumnLayout {
                                 id: urlInputCol
-                                anchors { fill: parent; margins: 18 }; spacing: 14
+                                anchors { fill: parent; margins: 18 }
+                                spacing: 14
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { text: "URL Scanner"; font.pixelSize: 16; font.bold: true; color: ThemeManager.foreground() }
@@ -847,7 +857,9 @@ Item {
                         // Progress
                         Rectangle {
                             Layout.fillWidth: true; height: 78; color: ThemeManager.panel(); radius: 12; visible: urlCheckingInProgress
-                            ColumnLayout { anchors { fill: parent; margins: 14 }; spacing: 8
+                            ColumnLayout {
+                                anchors { fill: parent; margins: 14 }
+                                spacing: 8
                                 RowLayout { Layout.fillWidth: true
                                     BusyIndicator { running: urlCheckingInProgress; Layout.preferredWidth: 22; Layout.preferredHeight: 22 }
                                     Text { text: urlScanStage || "Analyzing..."; font.pixelSize: 13; color: ThemeManager.foreground() }
@@ -880,7 +892,9 @@ Item {
                             visible: urlCheckResult !== null && urlCheckResult.success !== false
 
                             ColumnLayout {
-                                id: urlResCol; anchors { fill: parent; margins: 20 }; spacing: 16
+                                id: urlResCol
+                                anchors { fill: parent; margins: 20 }
+                                spacing: 16
 
                                 RowLayout {
                                     Layout.fillWidth: true; spacing: 14
@@ -906,7 +920,9 @@ Item {
                                     color: ThemeManager.surface(); radius: 8
                                     visible: !!(urlCheckResult && urlCheckResult.explanation)
                                     ColumnLayout {
-                                        id: explainInner; anchors { fill: parent; margins: 12 }; spacing: 10
+                                        id: explainInner
+                                        anchors { fill: parent; margins: 12 }
+                                        spacing: 10
                                         Repeater {
                                             model: [
                                                 { h: "What It Is",     k: "what_it_is",  c: ThemeManager.primary },
@@ -935,7 +951,10 @@ Item {
                                 Rectangle {
                                     Layout.fillWidth: true; height: evListCol.implicitHeight + 20
                                     color: ThemeManager.surface(); radius: 8; visible: !!(urlCheckResult && urlCheckResult.evidence && urlCheckResult.evidence.length > 0)
-                                    ColumnLayout { id: evListCol; anchors { fill: parent; margins: 10 }; spacing: 6
+                                    ColumnLayout {
+                                        id: evListCol
+                                        anchors { fill: parent; margins: 10 }
+                                        spacing: 6
                                         Text { text: "Evidence (" + (urlCheckResult ? urlCheckResult.evidence_count : 0) + " findings)"; font.pixelSize: 12; font.bold: true; color: ThemeManager.foreground() }
                                         Repeater {
                                             model: urlCheckResult && urlCheckResult.evidence ? urlCheckResult.evidence : []
@@ -943,7 +962,10 @@ Item {
                                                 Layout.fillWidth: true; height: evItemRow.implicitHeight + 14; radius: 6; border.width: 1
                                                 color: Qt.rgba(severityColor(modelData.severity).r, severityColor(modelData.severity).g, severityColor(modelData.severity).b, 0.1)
                                                 border.color: severityColor(modelData.severity)
-                                                RowLayout { id: evItemRow; anchors { fill: parent; margins: 7 }; spacing: 10
+                                                RowLayout {
+                                                    id: evItemRow
+                                                    anchors { fill: parent; margins: 7 }
+                                                    spacing: 10
                                                     Rectangle { width: 54; height: 20; radius: 4; color: severityColor(modelData.severity); Text { anchors.centerIn: parent; text: modelData.severity ? modelData.severity.toUpperCase() : "INFO"; font.pixelSize: 9; font.bold: true; color: "#ffffff" } }
                                                     ColumnLayout { Layout.fillWidth: true; spacing: 1
                                                         Text { text: modelData.title || ""; font.pixelSize: 12; font.bold: true; color: ThemeManager.foreground() }
@@ -980,7 +1002,9 @@ Item {
                             color: Qt.rgba(ThemeManager.danger.r, ThemeManager.danger.g, ThemeManager.danger.b, 0.08)
                             radius: 12; border.color: ThemeManager.danger; border.width: 1
                             visible: urlCheckResult !== null && urlCheckResult.success === false
-                            RowLayout { anchors { fill: parent; margins: 18 }; spacing: 14
+                            RowLayout {
+                                anchors { fill: parent; margins: 18 }
+                                spacing: 14
                                 Text { text: "X"; font.pixelSize: 28; color: ThemeManager.danger }
                                 ColumnLayout { Layout.fillWidth: true; spacing: 3
                                     Text { text: "Scan Failed"; font.pixelSize: 15; font.bold: true; color: ThemeManager.danger }
@@ -994,7 +1018,10 @@ Item {
                             Layout.fillWidth: true; height: urlFeatCol.implicitHeight + 32
                             color: ThemeManager.surface(); radius: 12
                             visible: !urlCheckingInProgress && urlCheckResult === null
-                            ColumnLayout { id: urlFeatCol; anchors { fill: parent; margins: 18 }; spacing: 12
+                            ColumnLayout {
+                                id: urlFeatCol
+                                anchors { fill: parent; margins: 18 }
+                                spacing: 12
                                 Text { text: "Local URL Analysis"; font.pixelSize: 15; font.bold: true; color: ThemeManager.foreground() }
                                 Text { text: "100% local - no data sent to external servers"; font.pixelSize: 12; color: ThemeManager.muted() }
                                 GridLayout { Layout.fillWidth: true; columns: 2; columnSpacing: 32; rowSpacing: 6
