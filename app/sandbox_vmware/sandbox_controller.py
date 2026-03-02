@@ -22,6 +22,7 @@ from .vmrun_client import VmrunClient, VmrunError
 logger = logging.getLogger(__name__)
 
 _GUEST_SCRIPTS_DIR = Path(__file__).parent / "guest_scripts"
+_GUEST_POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
 
 class VmwareTaskWorker(QObject):
@@ -574,7 +575,7 @@ class SandboxLabController(QObject):
             worker.emit_step("Running", "Preparing C:\\Sandbox directories in guest")
             try:
                 self._client.run_program_in_guest(
-                    "powershell.exe",
+                    _GUEST_POWERSHELL,
                     ["-ExecutionPolicy", "Bypass", "-Command",
                      "New-Item -ItemType Directory -Force -Path 'C:\\Sandbox\\in','C:\\Sandbox\\out' | Out-Null"],
                     wait=True,
@@ -605,7 +606,7 @@ class SandboxLabController(QObject):
             worker.emit_progress(50)
             worker.emit_step("Running", "Launching guest PowerShell automation")
             self._client.run_program_in_guest(
-                "powershell.exe",
+                _GUEST_POWERSHELL,
                 guest_args,
                 wait=True,
                 timeout=max(120, int(self._run_options["monitorSeconds"]) + 180),
