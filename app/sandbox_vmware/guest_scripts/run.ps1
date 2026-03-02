@@ -62,8 +62,31 @@ try {
     $report.errors.Add("Failed to start sample: $_")
 }
 
-# ── Human interaction simulation (background STA runspace) ───────────────────
-# Simulates a user accepting wizard dialogs, UAC prompts, and installer screens
+# ── Human interaction simulation (background STA runspace, real mouse + UIA) ──
+# Uses Win32 SetCursorPos/mouse_event for physical mouse clicks and
+# System.Windows.Automation to locate accept/next buttons by control name.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseOps {
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, int extra);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    public const uint LEFTDOWN = 0x0002;
+    public const uint LEFTUP   = 0x0004;
+    public static void Click(int x, int y) {
+        SetCursorPos(x, y);
+        System.Threading.Thread.Sleep(110);
+        mouse_event(LEFTDOWN, 0, 0, 0, 0);
+        System.Threading.Thread.Sleep(55);
+        mouse_event(LEFTUP, 0, 0, 0, 0);
+        System.Threading.Thread.Sleep(190);
+    }
+    public static void Drift(int x, int y) { SetCursorPos(x, y); System.Threading.Thread.Sleep(40); }
+}
+"@ -ErrorAction SilentlyContinue
+
 $interactRS = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
 $interactRS.ApartmentState = [System.Threading.ApartmentState]::STA
 $interactRS.ThreadOptions   = [System.Management.Automation.Runspaces.PSThreadOptions]::ReuseThread
@@ -74,53 +97,104 @@ $interactRS.SessionStateProxy.SetVariable('_MonSecs',    $MonitorSeconds)
 $interactPS = [System.Management.Automation.PowerShell]::Create()
 $interactPS.Runspace = $interactRS
 [void]$interactPS.AddScript({
-    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
     Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class _UIH {
+public class _Mouse {
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint f, int x, int y, uint d, int e);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+    public const uint DOWN=0x02, UP=0x04;
+    public static void Click(int x, int y) {
+        SetCursorPos(x, y); System.Threading.Thread.Sleep(110);
+        mouse_event(DOWN, 0, 0, 0, 0); System.Threading.Thread.Sleep(55);
+        mouse_event(UP, 0, 0, 0, 0);   System.Threading.Thread.Sleep(190);
+    }
+    public static void Drift(int x, int y) { SetCursorPos(x, y); System.Threading.Thread.Sleep(40); }
 }
 "@ -ErrorAction SilentlyContinue
 
-    $deadline = [datetime]::Now.AddSeconds($_MonSecs + 5)
-    $keys  = @("{ENTER}", " ", "{ENTER}", "y{ENTER}", "%y", "{TAB}{ENTER}", "{ENTER}")
-    $ki    = 0
-    $dialogPatterns = @(
-        '*Install*','*Setup*','*Wizard*','*Finish*','*Complete*','*Next*',
-        '*Accept*','*License*','*Agreement*','*Confirm*','*Warning*','*Alert*',
-        '*User Account Control*','*Windows Security*','*Security Warning*','*Run*'
-    )
-    Start-Sleep -Seconds 2
+    $rng = New-Object System.Random
+    $deadline = [datetime]::Now.AddSeconds($_MonSecs + 10)
+    # Button names that indicate user acceptance / progression
+    $acceptNames = @('ok','next','yes','i agree','accept','install','finish',
+                     'continue','allow','agree','run','execute','apply',
+                     'proceed','confirm','skip','close','open')
+
+    Start-Sleep -Seconds 3
+
     while ([datetime]::Now -lt $deadline) {
         try {
-            # Focus and send key to target process
-            if ($_TargetProc -and -not $_TargetProc.HasExited) {
-                $hwnd = $_TargetProc.MainWindowHandle
-                if ($hwnd -ne [IntPtr]::Zero) {
-                    [_UIH]::ShowWindow($hwnd, 9); [_UIH]::SetForegroundWindow($hwnd)
-                    Start-Sleep -Milliseconds 250
-                    [System.Windows.Forms.SendKeys]::SendWait($keys[$ki % $keys.Count])
-                }
-            }
-            $ki++
-            # Accept any matching dialog window
-            Get-Process -ErrorAction SilentlyContinue |
-              Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -ne '' } |
-              ForEach-Object {
-                $t = $_.MainWindowTitle
-                foreach ($pat in $dialogPatterns) {
-                    if ($t -like $pat) {
-                        [_UIH]::ShowWindow($_.MainWindowHandle, 9)
-                        [_UIH]::SetForegroundWindow($_.MainWindowHandle)
-                        Start-Sleep -Milliseconds 200
-                        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-                        break
+            $buttonCondition = New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Button
+            )
+            $root    = [System.Windows.Automation.AutomationElement]::RootElement
+            $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree, $buttonCondition)
+
+            foreach ($btn in $buttons) {
+                try {
+                    $nameRaw = $btn.GetCurrentPropertyValue(
+                        [System.Windows.Automation.AutomationElement]::NameProperty)
+                    $btnName = ($nameRaw -as [string]).Trim().ToLower()
+                    if (-not $btnName) { continue }
+                    $isAccept = $false
+                    foreach ($a in $acceptNames) {
+                        if ($btnName -like "*$a*") { $isAccept = $true; break }
                     }
-                }
-              }
+                    if (-not $isAccept) { continue }
+
+                    $rect = $btn.GetCurrentPropertyValue(
+                        [System.Windows.Automation.AutomationElement]::BoundingRectangleProperty)
+                    if (-not $rect -or $rect.Width -le 0 -or $rect.Height -le 0) { continue }
+                    if ($rect.Left -lt 0 -or $rect.Top -lt 0) { continue }
+
+                    $cx = [int]($rect.Left + $rect.Width  / 2)
+                    $cy = [int]($rect.Top  + $rect.Height / 2)
+
+                    # Bring parent window to foreground
+                    try {
+                        $walker  = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+                        $hwndProp = [System.Windows.Automation.AutomationElement]::NativeWindowHandleProperty
+                        $node = $walker.GetParent($btn)
+                        while ($node -ne $null) {
+                            $h = $node.GetCurrentPropertyValue($hwndProp)
+                            if ($h -and $h -ne 0) {
+                                [_Mouse]::ShowWindow([IntPtr]([int]$h), 9)
+                                [_Mouse]::SetForegroundWindow([IntPtr]([int]$h))
+                                break
+                            }
+                            $node = $walker.GetParent($node)
+                        }
+                    } catch {}
+
+                    Start-Sleep -Milliseconds 200
+
+                    # Smooth mouse glide to button (5 intermediate waypoints)
+                    $startX = $rng.Next(300, 900); $startY = $rng.Next(200, 600)
+                    for ($s = 1; $s -le 5; $s++) {
+                        $ix = [int]($startX + ($cx - $startX) * $s / 5)
+                        $iy = [int]($startY + ($cy - $startY) * $s / 5)
+                        [_Mouse]::Drift($ix, $iy)
+                    }
+                    [_Mouse]::Click($cx, $cy)
+
+                    # Also invoke via UIA pattern as a fallback
+                    try {
+                        $invoke = $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                        $invoke.Invoke()
+                    } catch {}
+
+                    Start-Sleep -Milliseconds 500
+                } catch {}
+            }
         } catch {}
+
+        # Natural mouse drift between scan cycles
+        [_Mouse]::Drift($rng.Next(200, 1400), $rng.Next(150, 800))
         Start-Sleep -Seconds 2
     }
 })

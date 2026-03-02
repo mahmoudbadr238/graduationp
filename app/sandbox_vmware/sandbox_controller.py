@@ -619,8 +619,8 @@ class SandboxLabController(QObject):
             worker.emit_step("OK", "Snapshot restored")
 
             worker.emit_progress(15)
-            worker.emit_step("Running", "Starting VM in nogui mode")
-            self._client.start(nogui=True)
+            worker.emit_step("Running", "Starting VM")
+            self._client.start(nogui=False)
             worker.set_vm_running(True)
             worker.emit_step("OK", "VM started")
 
@@ -775,6 +775,12 @@ class SandboxLabController(QObject):
             worker.emit_step("Failed", f"GIF export failed: {exc}")
 
         ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            try:
+                import imageio_ffmpeg  # bundled by imageio[ffmpeg]
+                ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+            except Exception:
+                ffmpeg_path = None
         if ffmpeg_path:
             result = subprocess.run(
                 [

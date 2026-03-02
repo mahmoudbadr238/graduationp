@@ -58,7 +58,7 @@ numpy>=1.24.0                   # Required for tensor operations
 # ─────────────────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0            # Environment variable management (.env files)
 colorama>=0.4.6                 # Cross-platform colored terminal output
-imageio>=2.36.0                 # GIF export for Sandbox Lab proof media
+imageio[ffmpeg]>=2.36.0         # GIF/MP4 export for Sandbox Lab proof media (ffmpeg bundled)
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
