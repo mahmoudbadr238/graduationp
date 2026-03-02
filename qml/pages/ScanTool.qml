@@ -312,9 +312,7 @@ Item {
                     ? Qt.rgba(0,0.8,0.4,0.15) : Qt.rgba(1,0.6,0,0.15)
                 Text {
                     id: hdBadge; anchors.centerIn: parent
-                    text: integratedSandboxAvailable
-                        ? "Available (" + integratedSandboxStatus + ")"
-                        : integratedSandboxStatus
+                    text: integratedSandboxStatus || (integratedSandboxAvailable ? "Sandbox Available" : "Sandbox Unavailable")
                     font.pixelSize: 11
                     color: integratedSandboxAvailable ? ThemeManager.success : ThemeManager.warning
                 }
@@ -507,7 +505,7 @@ Item {
                                     color: (sandboxLab && sandboxLab.available) ? ThemeManager.muted() : ThemeManager.warning
                                     elide: Text.ElideRight
                                 }
-                                Text { text: vmwareExpanded ? "^" : "v"; font.pixelSize: 12; color: ThemeManager.muted() }
+                                Text { text: vmwareExpanded ? "▲" : "▼"; font.pixelSize: 11; color: ThemeManager.muted() }
                                 MouseArea {
                                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: vmwareExpanded = !vmwareExpanded
@@ -761,10 +759,23 @@ Item {
                                             integratedSandboxAvailable ? "Process Sandbox (Job Object)" : "Process Sandbox (unavailable)",
                                             integratedSandboxAvailable ? "Network Blocking" : "Network Blocking (unavailable)"
                                         ]
-                                        Text {
-                                            text: (index < 6 || integratedSandboxAvailable ? "[OK] " : "[ ] ") + modelData
-                                            font.pixelSize: 12
-                                            color: (index < 6 || integratedSandboxAvailable) ? ThemeManager.muted() : ThemeManager.border()
+                                        RowLayout {
+                                            spacing: 6
+                                            Rectangle {
+                                                width: 16; height: 16; radius: 8
+                                                color: (index < 6 || integratedSandboxAvailable) ? Qt.rgba(0,0.78,0.38,0.18) : Qt.rgba(0.5,0.5,0.5,0.12)
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: (index < 6 || integratedSandboxAvailable) ? "✓" : "–"
+                                                    font.pixelSize: 10; font.bold: true
+                                                    color: (index < 6 || integratedSandboxAvailable) ? ThemeManager.success : ThemeManager.muted()
+                                                }
+                                            }
+                                            Text {
+                                                text: modelData
+                                                font.pixelSize: 12
+                                                color: (index < 6 || integratedSandboxAvailable) ? ThemeManager.muted() : ThemeManager.border()
+                                            }
                                         }
                                     }
                                 }
@@ -1033,7 +1044,19 @@ Item {
                                             "IOC extraction (IPs, domains)",   "YARA rule matching",
                                             "Evidence-based scoring",          "AI-powered explanations"
                                         ]
-                                        Text { text: "[OK] " + modelData; font.pixelSize: 12; color: ThemeManager.muted() }
+                                        RowLayout {
+                                            spacing: 6
+                                            Rectangle {
+                                                width: 16; height: 16; radius: 8
+                                                color: Qt.rgba(0,0.78,0.38,0.18)
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: "✓"; font.pixelSize: 10; font.bold: true
+                                                    color: ThemeManager.success
+                                                }
+                                            }
+                                            Text { text: modelData; font.pixelSize: 12; color: ThemeManager.muted() }
+                                        }
                                     }
                                 }
                                 RowLayout { spacing: 8
