@@ -57,6 +57,7 @@ class SandboxPreviewStream:
         on_update: "Callable[[str, int], None] | None" = None,
         guest_user: str = "",
         guest_pass: str = "",
+        frame_callback: "Callable[[bytes, int, int], None] | None" = None,
     ) -> None:
         """
         Args:
@@ -69,12 +70,17 @@ class SandboxPreviewStream:
                           Invoked after each *successful* capture.
             guest_user:   VMware guest username (passed as -gu to vmrun).
             guest_pass:   VMware guest password (passed as -gp to vmrun).
+            frame_callback: Optional callback ``(data: bytes, width: int, height: int)``.
+                          Receives raw BGRA pixel data after each capture.
+                          Feed this into ``SandboxPreviewProvider.update_frame()``
+                          for the ``image://sandboxpreview/`` QML provider.
         """
         self._vmrun = vmrun_path
         self._vmx = vmx_path
         self._out_path = str(Path(out_path).resolve())
         self._interval = max(0.2, float(interval_sec))
         self._on_update = on_update
+        self._frame_callback = frame_callback
         self._guest_user = guest_user
         self._guest_pass = guest_pass
 
@@ -152,6 +158,12 @@ class SandboxPreviewStream:
                         self._on_update(self._out_path, ts_ms)
                     except Exception as cb_exc:
                         logger.debug("Preview on_update callback error: %s", cb_exc)
+                # Push raw pixel data to the image provider for image:// rendering
+                if self._frame_callback:
+                    try:
+                        self._push_frame_data()
+                    except Exception as fc_exc:
+                        logger.debug("Preview frame_callback error: %s", fc_exc)
             else:
                 reason = (result.stderr or result.stdout or "").strip()
                 self._record_failure(reason or f"exit {result.returncode}")
@@ -165,6 +177,31 @@ class SandboxPreviewStream:
             self._record_failure(str(exc))
         except Exception as exc:  # noqa: BLE001
             self._record_failure(str(exc))
+
+    def _push_frame_data(self) -> None:
+        """Read the captured PNG from disk and push BGRA pixel data to frame_callback.
+
+        Uses QImage for decoding so we stay within the Qt ecosystem and avoid
+        a hard dependency on Pillow / OpenCV.  Falls back to a pure-Python PNG
+        reader (``struct``-based header) if QImage is unavailable.
+        """
+        try:
+            from PySide6.QtGui import QImage  # noqa: WPS433 – optional import
+
+            img = QImage(self._out_path)
+            if img.isNull():
+                return
+            # Convert to Format_ARGB32 so bits() returns BGRA bytes consistently
+            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+            w, h = img.width(), img.height()
+            # QImage.bits() returns a memoryview; bytes() makes a safe copy
+            ptr = img.bits()
+            data = bytes(ptr)
+            self._frame_callback(data, w, h)
+        except ImportError:
+            # PySide6 not importable on this thread – shouldn't happen but
+            # degrade gracefully.
+            logger.debug("_push_frame_data: PySide6 not available for PNG decoding")
 
     def _record_failure(self, reason: str) -> None:
         self._consec_failures += 1

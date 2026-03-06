@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Property, QObject, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QImage
 
 from .config import SandboxConfig, load_sandbox_config
 from .report_parser import build_llm_prompt, load_report, score_report
@@ -1650,8 +1650,21 @@ class SandboxLabController(QObject):
         )
         if should_capture and not self._capture_timer.isActive():
             self._capture_timer.start()
+            # Start the global SandboxPreviewController refresh timer
+            try:
+                from ..ui.sandbox_preview_provider import get_preview_controller
+                ctrl = get_preview_controller()
+                ctrl.set_status("Streaming VMware guest desktop…")
+                ctrl.start()
+            except Exception:
+                pass
         elif not should_capture and self._capture_timer.isActive():
             self._capture_timer.stop()
+            try:
+                from ..ui.sandbox_preview_provider import get_preview_controller
+                get_preview_controller().stop()
+            except Exception:
+                pass
 
         if not self._vm_running:
             self._set_live_state("VM not running")
@@ -1694,6 +1707,18 @@ class SandboxLabController(QObject):
                     self._captureFrameReady.emit(
                         QUrl.fromLocalFile(str(frame_path)).toString()
                     )
+                    # Also push the frame into the image://sandboxpreview/ provider
+                    # so both SandboxLabPage and ScanCenter can use it.
+                    try:
+                        from ..ui.sandbox_preview_provider import get_preview_provider
+                        provider = get_preview_provider()
+                        img = QImage(str(frame_path))
+                        if not img.isNull():
+                            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+                            data = bytes(img.bits())
+                            provider.update_frame(data, img.width(), img.height())
+                    except Exception:
+                        pass  # Non-critical: file:/// fallback still works
             except Exception as exc:
                 if not abort_ev.is_set():
                     self._captureFailure.emit(str(exc))

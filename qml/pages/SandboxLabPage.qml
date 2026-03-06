@@ -23,6 +23,8 @@ ScrollView {
     property string _verdict:   (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.verdictSummary : ""
     property var    _result:    (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.resultSummary  : ({})
     property string _liveFrame:          (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.liveFrameSource    : ""
+    property int    _pvFrame:            0    // frame counter for image://sandboxpreview/ cache-bust
+    property bool   _pvLive:             false
     property string _lastError:          (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.lastError          : ""
     property var    _steps:              (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.stepsModel          : []
     property bool   _automationVisible:  (typeof SandboxLab !== "undefined" && SandboxLab !== null) ? SandboxLab.automationVisible   : false
@@ -64,6 +66,15 @@ ScrollView {
             root._replayFrames = SandboxLab.replayFramesModel
             root._replayIndex  = Math.max(0, SandboxLab.replayFramesModel.length - 1)
         }
+    }
+
+    // ── SandboxPreview image-provider connections (live feed) ─────────────────
+    Connections {
+        target: (typeof SandboxPreview !== "undefined" && SandboxPreview !== null)
+                ? SandboxPreview : null
+        enabled: target !== null
+        function onFrameUpdated()  { root._pvFrame++; root._pvLive = true  }
+        function onPreviewStopped(){ root._pvLive = false }
     }
 
     // ── File picker dialog ────────────────────────────────────────────────────
@@ -707,10 +718,12 @@ ScrollView {
                     }
                 }
 
-                // Live screenshot
+                // Live screenshot — image provider (smooth) with file:/// fallback
                 Image {
                     id: frameImg
-                    source: root._liveFrame !== "" ? ("file:///" + root._liveFrame) : ""
+                    source: root._pvLive
+                        ? "image://sandboxpreview/frame?t=" + root._pvFrame
+                        : (root._liveFrame !== "" ? ("file:///" + root._liveFrame) : "")
                     Layout.fillWidth: true
                     Layout.preferredHeight: 280
                     fillMode: Image.PreserveAspectFit

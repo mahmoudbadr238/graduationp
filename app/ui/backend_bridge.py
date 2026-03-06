@@ -5280,20 +5280,41 @@ class BackendBridge(QObject):
                         _preview_out = str(
                             Path(_os.path.abspath("data/artifacts/sandbox_preview.png"))
                         )
+
+                        # Build frame_callback that feeds raw BGRA data into the
+                        # image://sandboxpreview/ QML image provider for live video
+                        _frame_cb = None
+                        if self._preview_provider is not None:
+                            def _on_frame_data(data: bytes, w: int, h: int) -> None:
+                                self._preview_provider.update_frame(data, w, h)
+                            _frame_cb = _on_frame_data
+
                         def _on_preview_update(path: str, ts_ms: int) -> None:
                             # PySide6 queues cross-thread signals automatically
                             url = "file:///" + path.replace("\\", "/") + "?ts=" + str(ts_ms)
                             self.scanCenterPreviewUpdated.emit(url)
+                            # Also signal the SandboxPreviewController so QML
+                            # image://sandboxpreview/ cache-busting increments
+                            self.sandboxPreviewFrameReady.emit(
+                                self._preview_provider.frame_count
+                                if self._preview_provider else 0
+                            )
+
                         _stream = SandboxPreviewStream(
                             vmrun_path=_cfg.vmrun_path,
                             vmx_path=_cfg.vmx_path,
                             out_path=_preview_out,
                             interval_sec=0.7,
                             on_update=_on_preview_update,
+                            frame_callback=_frame_cb,
                             guest_user=_cfg.guest_user or "",
                             guest_pass=_cfg.guest_pass or "",
                         )
                         _stream.start()
+                        # Start the SandboxPreviewController refresh timer
+                        if self._preview_controller is not None:
+                            self._preview_controller.set_status("Streaming VMware guest desktop…")
+                            self.sandboxPreviewStarted.emit()
                     except Exception as _prev_exc:
                         logger.debug("Could not start preview stream: %s", _prev_exc)
 
@@ -5374,6 +5395,7 @@ class BackendBridge(QObject):
                     _stream.stop()
                 if opts.use_sandbox:
                     self.scanCenterPreviewUpdated.emit("")  # clears QML panel
+                    self.sandboxPreviewStopped.emit()       # stops controller refresh timer
                 self._scancenter_controller = None
 
         _t.Thread(target=_run, daemon=True, name="scancenter-scan").start()

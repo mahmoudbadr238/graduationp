@@ -36,6 +36,8 @@ Item {
     property real   sandboxPreviewLastMs: 0    // Date.now() of last good capture
     property bool   showPreview:          true // user toggle (persists while page is open)
     property bool   sandboxPanelVisible:  false // true when sandbox panel is open
+    property int    _pvFrame:             0    // frame counter for image:// cache-bust
+    property bool   _pvLive:              false // true while image provider is streaming
 
     // ── Agent Timeline state ────────────────────────────────────────────
     property bool replayActive:      false
@@ -65,6 +67,22 @@ Item {
         if (b < 1024)    return b + " B"
         if (b < 1048576) return (b / 1024).toFixed(1) + " KB"
         return (b / 1048576).toFixed(2) + " MB"
+    }
+
+    // ── SandboxPreview image-provider connections (live video feed) ──────
+    Connections {
+        target: (typeof SandboxPreview !== "undefined" && SandboxPreview !== null)
+                ? SandboxPreview : null
+        enabled: target !== null
+
+        function onFrameUpdated() {
+            root._pvFrame++
+            root._pvLive = true
+            root.sandboxPreviewLastMs = Date.now()
+            if (!sandboxAgeTimer.running) sandboxAgeTimer.restart()
+        }
+        function onPreviewStarted() { root._pvLive = true;  root.sandboxPanelVisible = true }
+        function onPreviewStopped() { root._pvLive = false }
     }
 
     // ── Backend connections ────────────────────────────────────────────────
@@ -1070,36 +1088,65 @@ Item {
                                     Layout.preferredWidth: Math.round(parent.width * 0.45)
                                     Layout.fillHeight: true
 
+                                    // Primary live feed: image provider (smooth, no disk I/O)
+                                    Image {
+                                        id: pvImgLive
+                                        anchors.fill: parent; anchors.margins: 8
+                                        fillMode: Image.PreserveAspectFit
+                                        cache: false; asynchronous: true
+                                        source: root._pvLive
+                                            ? "image://sandboxpreview/frame?t=" + root._pvFrame
+                                            : ""
+                                        visible: root._pvLive
+                                    }
+
+                                    // Fallback: file:/// URL (shown when provider stream is not active)
                                     Image {
                                         id: pvImg
                                         anchors.fill: parent; anchors.margins: 8
                                         fillMode: Image.PreserveAspectFit
                                         cache: false; asynchronous: true
-                                        source: root.sandboxPreviewUrl
-                                        visible: root.sandboxPreviewUrl !== ""
+                                        source: (!root._pvLive && root.sandboxPreviewUrl !== "")
+                                            ? root.sandboxPreviewUrl : ""
+                                        visible: !root._pvLive && root.sandboxPreviewUrl !== ""
                                     }
 
+                                    // "LIVE" badge + age overlay
                                     Rectangle {
-                                        anchors.left: pvImg.left; anchors.bottom: pvImg.bottom
-                                        anchors.margins: 12
-                                        visible: root.sandboxPreviewUrl !== ""
-                                        implicitWidth: ageOvTxt.implicitWidth + 10; implicitHeight: 18; radius: 4
-                                        color: Qt.rgba(0, 0, 0, 0.58)
-                                        Text {
-                                            id: ageOvTxt; anchors.centerIn: parent
-                                            text: {
-                                                var _ignored = sandboxAgeTimer.tick
-                                                var dt = root.sandboxPreviewLastMs > 0
-                                                    ? Math.round((Date.now() - root.sandboxPreviewLastMs) / 1000) : 0
-                                                return "Last updated: " + dt + "s ago"
+                                        anchors.left: parent.left; anchors.bottom: parent.bottom
+                                        anchors.leftMargin: 16; anchors.bottomMargin: 16
+                                        visible: root._pvLive || root.sandboxPreviewUrl !== ""
+                                        implicitWidth: ageRow.implicitWidth + 12; implicitHeight: 20; radius: 4
+                                        color: Qt.rgba(0, 0, 0, 0.62)
+                                        Row {
+                                            id: ageRow; anchors.centerIn: parent; spacing: 6
+                                            Rectangle {
+                                                width: 6; height: 6; radius: 3; y: 5
+                                                color: root._pvLive ? "#22c55e" : ThemeManager.muted()
+                                                SequentialAnimation on opacity {
+                                                    running: root._pvLive; loops: Animation.Infinite
+                                                    NumberAnimation { to: 0.35; duration: 600 }
+                                                    NumberAnimation { to: 1.0;  duration: 600 }
+                                                }
                                             }
-                                            color: "white"; font.pixelSize: 9
+                                            Text {
+                                                id: ageOvTxt
+                                                text: {
+                                                    var _ignored = sandboxAgeTimer.tick
+                                                    if (root._pvLive) return "LIVE"
+                                                    var dt = root.sandboxPreviewLastMs > 0
+                                                        ? Math.round((Date.now() - root.sandboxPreviewLastMs) / 1000) : 0
+                                                    return dt + "s ago"
+                                                }
+                                                color: "white"; font.pixelSize: 9; font.bold: root._pvLive
+                                            }
                                         }
                                     }
 
+                                    // Placeholder when no preview at all
                                     Rectangle {
                                         anchors.fill: parent; anchors.margins: 8
-                                        visible: root.sandboxPreviewUrl === ""
+                                        visible: !root._pvLive && root.sandboxPreviewUrl === ""
                                         color: ThemeManager.surface()
                                         border.color: ThemeManager.border(); border.width: 1; radius: 6
                                         ColumnLayout {
