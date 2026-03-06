@@ -129,6 +129,7 @@ class BackendBridge(QObject):
     scanCenterHistoryLoaded = Signal(list)      # list[dict] history rows
     scanCenterExplainFinished = Signal(dict)    # AiExplanation.to_dict()
     scanCenterExported  = Signal(dict)          # {ok, report_path, zip_path, sha256}
+    scanCenterPhaseUpdate = Signal(str)         # JSON: {phase, status, summary, score, pct}
     # Emitted from the preview-capture thread; carries a cache-busted file:/// URL
     # or an empty string when the preview stops.
     scanCenterPreviewUpdated = Signal(str)      # "file:///path/to/preview.png?ts=N" | ""
@@ -5234,10 +5235,39 @@ class BackendBridge(QObject):
             _stream = None
             # ── Reset Agent Timeline for this new scan ─────────────────────
             self.agentStepsCleared.emit()
+            # Emit initial phase states (all pending)
+            for _ph in ["static", "iocs", "sandbox", "verdict"]:
+                self.scanCenterPhaseUpdate.emit(json.dumps({
+                    "phase": _ph, "status": "pending", "summary": "", "score": -1, "pct": 0
+                }))
 
             def _on_agent_step(step: dict) -> None:
-                """Forward a pipeline step dict to the QML Agent Timeline."""
+                """Forward a pipeline step dict to the QML Agent Timeline
+                and emit structured phase updates for the phase-card UI."""
                 self.agentStepAdded.emit(json.dumps(step))
+                # Map agent-step stages to phase-card updates
+                _stage = (step.get("stage") or "").lower()
+                _status_raw = (step.get("status") or "ok").lower()
+                _title = step.get("title", "")
+                _result = step.get("result", "")
+                _phase_map = {
+                    "static": "static", "hashing": "static", "validate": "static",
+                    "iocs": "iocs",
+                    "sandbox": "sandbox",
+                    "verdict": "verdict",
+                }
+                _phase = _phase_map.get(_stage)
+                if _phase:
+                    _ph_status = "running" if _status_raw == "running" else (
+                        "done" if _status_raw == "ok" else (
+                        "warn" if _status_raw == "warn" else "error"))
+                    self.scanCenterPhaseUpdate.emit(json.dumps({
+                        "phase": _phase,
+                        "status": _ph_status,
+                        "summary": _title + (" — " + _result if _result else ""),
+                        "score": -1,
+                        "pct": 0,
+                    }))
 
             try:
                 # ── Start live preview stream when sandbox is requested ───────
@@ -5275,6 +5305,29 @@ class BackendBridge(QObject):
                 )
                 self._scancenter_current_report = report.to_dict()
                 self.scanCenterFinished.emit(self._scancenter_current_report)
+
+                # ── Auto-trigger AI explanation after pipeline completes ──────
+                try:
+                    from ..scancenter.groq_explainer import explain_report as _ai_explain
+                    _ai_result = _ai_explain(report)
+                    if _ai_result is not None:
+                        from dataclasses import asdict as _asdict
+                        _ai_dict = _asdict(_ai_result) if hasattr(_ai_result, '__dataclass_fields__') else (
+                            _ai_result.to_dict() if hasattr(_ai_result, 'to_dict') else {}
+                        )
+                        if _ai_dict:
+                            self.scanCenterExplainFinished.emit(_ai_dict)
+                            logger.info("Auto-AI explanation generated successfully")
+                except Exception as _ai_exc:
+                    logger.debug("Auto-AI explanation skipped: %s", _ai_exc)
+
+                # ── Emit final verdict phase as done ──────────────────────────
+                self.scanCenterPhaseUpdate.emit(json.dumps({
+                    "phase": "verdict", "status": "done",
+                    "summary": f"Score: {report.verdict.score}/100 — {report.verdict.risk}" if report.verdict else "Complete",
+                    "score": report.verdict.score if report.verdict else 0,
+                    "pct": 100,
+                }))
 
                 # ── Push actionable success notification ──────────────────────
                 try:

@@ -91,6 +91,11 @@ Item {
         function onScanCenterExplainFinished(ex) {
             explainBusy.running = false
             root.explainData = ex
+            // Auto-switch to Explanation tab when AI auto-generates it
+            if (root.fileReport !== null && fileSubBar.currentIndex === 0) {
+                // Brief delay so user sees Overview first, then show explanation indicator
+                // We add a subtle glow on the Explanation tab instead of auto-switching
+            }
         }
         function onScanCenterExported(result) {
             if (result.ok) expOkLabel.text = "Exported → " + (result.report_path || "")
@@ -130,9 +135,38 @@ Item {
         }
         function onAgentStepsCleared() {
             agentTimelineListModel.clear()
+            phaseModel.clear()
             root.replayActive      = false
             root.replayCurrentStep = -1
             root.sandboxPreviewUrl = ""  // reset image (new scan starting)
+        }
+
+        // Phase-card updates — emitted by backend for each pipeline phase
+        function onScanCenterPhaseUpdate(phaseJson) {
+            try {
+                var p = JSON.parse(phaseJson)
+                var found = false
+                for (var i = 0; i < phaseModel.count; i++) {
+                    if (phaseModel.get(i).phase === p.phase) {
+                        phaseModel.set(i, {
+                            phase:   p.phase,
+                            status:  p.status,
+                            summary: p.summary || "",
+                            score:   p.score !== undefined ? p.score : -1
+                        })
+                        found = true
+                        break
+                    }
+                }
+                if (!found) {
+                    phaseModel.append({
+                        phase:   p.phase,
+                        status:  p.status,
+                        summary: p.summary || "",
+                        score:   p.score !== undefined ? p.score : -1
+                    })
+                }
+            } catch (_e) {}
         }
 
         // When the app navigates back to scan-tool (e.g. notification action),
@@ -258,6 +292,7 @@ Item {
 
     ListModel { id: histModel }
     ListModel { id: agentTimelineListModel }
+    ListModel { id: phaseModel }   // Phase-card tracker: {phase, status, summary, score}
 
     // ══════════════════════════════════════════════════════════════════════
     //  Root column
@@ -728,6 +763,100 @@ Item {
                                 font.pixelSize: (ThemeManager.fontSize_small() || 12)
                                 Layout.preferredWidth: 34
                                 horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+
+                    // ── Phase Cards ───────────────────────────────────────
+                    // 4 mini-cards showing live status of each pipeline phase
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: phaseModel.count > 0 ? phaseRow.implicitHeight + 20 : 0
+                        visible: phaseModel.count > 0
+                        color: ThemeManager.panel(); clip: true
+                        Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                        RowLayout {
+                            id: phaseRow
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 16; anchors.rightMargin: 16
+                            spacing: 8
+
+                            Repeater {
+                                model: phaseModel
+                                delegate: Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 58
+                                    radius: 8
+                                    color: ThemeManager.surface()
+                                    border.width: 1
+                                    border.color: {
+                                        if (model.status === "done") return ThemeManager.success
+                                        if (model.status === "running") return ThemeManager.accent
+                                        if (model.status === "error" || model.status === "warn") return ThemeManager.warning
+                                        return ThemeManager.border()
+                                    }
+                                    Behavior on border.color { ColorAnimation { duration: 200 } }
+
+                                    ColumnLayout {
+                                        anchors.fill: parent; anchors.margins: 8
+                                        spacing: 4
+
+                                        RowLayout {
+                                            spacing: 6
+                                            // Status icon
+                                            Text {
+                                                text: {
+                                                    if (model.status === "done") return "✅"
+                                                    if (model.status === "running") return "⏳"
+                                                    if (model.status === "error") return "❌"
+                                                    if (model.status === "warn") return "⚠️"
+                                                    return "⏸"
+                                                }
+                                                font.pixelSize: 14
+                                            }
+                                            // Phase name
+                                            Text {
+                                                text: {
+                                                    var names = {
+                                                        "static": "Static Analysis",
+                                                        "iocs": "IOC Extraction",
+                                                        "sandbox": "Sandbox",
+                                                        "verdict": "Verdict"
+                                                    }
+                                                    return names[model.phase] || model.phase
+                                                }
+                                                color: ThemeManager.foreground()
+                                                font.pixelSize: 11
+                                                font.weight: Font.SemiBold
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            // Spinner for running phase
+                                            BusyIndicator {
+                                                visible: model.status === "running"
+                                                implicitWidth: 14; implicitHeight: 14
+                                                running: visible
+                                            }
+                                        }
+                                        // Summary text
+                                        Text {
+                                            text: model.summary || (model.status === "pending" ? "Waiting…" : "")
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+
+                                    // Subtle glow / pulse for running state
+                                    SequentialAnimation on opacity {
+                                        loops: Animation.Infinite
+                                        running: model.status === "running"
+                                        NumberAnimation { to: 0.7; duration: 700 }
+                                        NumberAnimation { to: 1.0; duration: 700 }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1490,6 +1619,179 @@ Item {
                                                 spacing: 8; Layout.fillWidth: true
                                                 Text { text: "•"; color: root.fileReport ? root.riskColor(((root.fileReport.verdict) || {}).risk || "") : ThemeManager.muted(); font.pixelSize: 16 }
                                                 Text { text: modelData; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_small() || 12); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Risk Score Gauge ──────────────────────────
+                                Rectangle {
+                                    visible: root.fileReport !== null
+                                    Layout.fillWidth: true
+                                    implicitHeight: 240
+                                    color: ThemeManager.panel(); radius: 10
+                                    border.color: ThemeManager.border(); border.width: 1
+
+                                    property int scoreVal: ((root.fileReport || {}).verdict || {}).score || 0
+                                    property string riskLabel: ((root.fileReport || {}).verdict || {}).risk || "Unknown"
+                                    property real animatedScore: 0
+                                    NumberAnimation on animatedScore {
+                                        id: gaugeAnim
+                                        from: 0; to: parent.scoreVal
+                                        duration: 900
+                                        easing.type: Easing.OutCubic
+                                    }
+                                    Component.onCompleted: gaugeAnim.start()
+                                    onScoreValChanged: { gaugeAnim.from = 0; gaugeAnim.to = scoreVal; gaugeAnim.restart() }
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 4
+
+                                        // Canvas arc gauge
+                                        Item {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            implicitWidth: 160; implicitHeight: 110
+
+                                            Canvas {
+                                                id: gaugeCanvas
+                                                anchors.fill: parent
+                                                property real pct: parent.parent.parent.animatedScore / 100
+
+                                                onPctChanged: requestPaint()
+                                                onPaint: {
+                                                    var ctx = getContext("2d")
+                                                    ctx.reset()
+                                                    var cx = width / 2
+                                                    var cy = height - 10
+                                                    var r  = Math.min(cx, cy) - 12
+                                                    var startA = Math.PI    // 180° (left)
+                                                    var endA   = 2 * Math.PI // 360° (right)
+
+                                                    // Background track
+                                                    ctx.beginPath()
+                                                    ctx.arc(cx, cy, r, startA, endA)
+                                                    ctx.lineWidth = 14
+                                                    ctx.strokeStyle = ThemeManager.surface()
+                                                    ctx.lineCap = "round"
+                                                    ctx.stroke()
+
+                                                    // Colored arc
+                                                    var sweepAngle = startA + (endA - startA) * Math.min(1, Math.max(0, pct))
+                                                    if (pct > 0) {
+                                                        ctx.beginPath()
+                                                        ctx.arc(cx, cy, r, startA, sweepAngle)
+                                                        ctx.lineWidth = 14
+                                                        ctx.lineCap = "round"
+                                                        // Gradient from green → yellow → orange → red
+                                                        var sc = parent.parent.parent.scoreVal
+                                                        if (sc >= 70) ctx.strokeStyle = ThemeManager.danger
+                                                        else if (sc >= 40) ctx.strokeStyle = "#f97316"
+                                                        else if (sc >= 20) ctx.strokeStyle = ThemeManager.warning
+                                                        else ctx.strokeStyle = ThemeManager.success
+                                                        ctx.stroke()
+                                                    }
+                                                }
+                                            }
+
+                                            // Score number centered in the arc
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.bottom: parent.bottom
+                                                anchors.bottomMargin: 14
+                                                text: Math.round(parent.parent.parent.animatedScore)
+                                                color: ThemeManager.foreground()
+                                                font.pixelSize: 38
+                                                font.weight: Font.Bold
+                                            }
+                                        }
+
+                                        // "/ 100" subtitle
+                                        Text {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: "/ 100"
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: 13
+                                        }
+
+                                        // Risk badge
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            implicitWidth: gaugeBadgeText.implicitWidth + 20
+                                            implicitHeight: 26; radius: 13
+                                            color: root.fileReport
+                                                   ? root.riskColor(((root.fileReport.verdict) || {}).risk || "")
+                                                   : "transparent"
+                                            Text {
+                                                id: gaugeBadgeText; anchors.centerIn: parent
+                                                text: (((root.fileReport || {}).verdict || {}).risk || "").toUpperCase()
+                                                color: "#ffffff"
+                                                font.pixelSize: 11; font.weight: Font.Bold
+                                            }
+                                        }
+
+                                        // Label underneath
+                                        Text {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: ((root.fileReport || {}).verdict || {}).label || ""
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: 11
+                                        }
+                                    }
+                                }
+
+                                // ── AI Summary (auto-populated on Overview) ──
+                                Rectangle {
+                                    visible: root.explainData !== null && (root.explainData || {}).one_line_summary
+                                    Layout.fillWidth: true
+                                    implicitHeight: aiSumCol.implicitHeight + 24
+                                    color: Qt.rgba(ThemeManager.accent.r || 0.2, ThemeManager.accent.g || 0.5, ThemeManager.accent.b || 1.0, 0.07)
+                                    radius: 10
+                                    border.width: 1
+                                    border.color: Qt.rgba(ThemeManager.accent.r || 0.2, ThemeManager.accent.g || 0.5, ThemeManager.accent.b || 1.0, 0.25)
+
+                                    ColumnLayout {
+                                        id: aiSumCol
+                                        anchors.left: parent.left; anchors.right: parent.right
+                                        anchors.top: parent.top; anchors.margins: 12
+                                        spacing: 6
+
+                                        RowLayout {
+                                            spacing: 6
+                                            Text { text: "🤖"; font.pixelSize: 14 }
+                                            Text {
+                                                text: "AI Analysis"
+                                                color: ThemeManager.foreground()
+                                                font.pixelSize: 12; font.weight: Font.SemiBold
+                                            }
+                                        }
+                                        Text {
+                                            text: (root.explainData || {}).one_line_summary || ""
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                        // Quick reasons
+                                        Repeater {
+                                            model: {
+                                                var r = (root.explainData || {}).top_reasons || []
+                                                return r.length > 3 ? r.slice(0, 3) : r
+                                            }
+                                            RowLayout {
+                                                spacing: 6; Layout.fillWidth: true
+                                                Text { text: "•"; color: ThemeManager.accent; font.pixelSize: 12 }
+                                                Text { text: modelData; color: ThemeManager.foreground(); font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                            }
+                                        }
+                                        Text {
+                                            visible: ((root.explainData || {}).top_reasons || []).length > 3
+                                            text: "View full explanation →"
+                                            color: ThemeManager.accent
+                                            font.pixelSize: 10
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: fileSubBar.currentIndex = 4 // switch to Explanation tab
                                             }
                                         }
                                     }
