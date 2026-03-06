@@ -16,7 +16,6 @@ PRIVACY BY DESIGN:
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import logging
 import os
@@ -25,7 +24,6 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +32,10 @@ logger = logging.getLogger(__name__)
 # VERDICTS
 # =============================================================================
 
+
 class ThreatVerdict(Enum):
     """Standardized threat verdict across all providers."""
+
     CLEAN = "clean"
     SUSPICIOUS = "suspicious"
     MALICIOUS = "malicious"
@@ -57,6 +57,7 @@ class ThreatVerdict(Enum):
 @dataclass
 class IntelResult:
     """Standardized result from any intelligence provider."""
+
     verdict: ThreatVerdict
     score: int  # 0-100, higher = more malicious
     provider: str
@@ -114,7 +115,9 @@ class IntelResult:
         if self.verdict == ThreatVerdict.SUSPICIOUS:
             return f"⚠️ Suspicious ({self.detection_ratio} detections)"
         if self.verdict == ThreatVerdict.MALICIOUS:
-            threats = ", ".join(self.threat_names[:3]) if self.threat_names else "malware"
+            threats = (
+                ", ".join(self.threat_names[:3]) if self.threat_names else "malware"
+            )
             return f"🔴 Malicious: {threats} ({self.detection_ratio})"
         return "❓ Unknown - not in database"
 
@@ -122,6 +125,7 @@ class IntelResult:
 # =============================================================================
 # PROVIDER BASE
 # =============================================================================
+
 
 class IntelProvider(ABC):
     """Base class for threat intelligence providers."""
@@ -155,14 +159,15 @@ class IntelProvider(ABC):
 # VIRUSTOTAL
 # =============================================================================
 
+
 class VirusTotalClient(IntelProvider):
     """
     VirusTotal API v3 client.
-    
+
     Supports:
     - File hash lookups (SHA256 only - privacy first)
     - URL lookups (base64 encoded)
-    
+
     Rate limits:
     - Free API: 4 requests/minute, 500/day
     - Handles rate limiting gracefully
@@ -189,6 +194,7 @@ class VirusTotalClient(IntelProvider):
         if self._session is None:
             try:
                 import aiohttp
+
                 self._session = aiohttp.ClientSession(
                     headers={"x-apikey": self.api_key} if self.api_key else {}
                 )
@@ -206,7 +212,7 @@ class VirusTotalClient(IntelProvider):
     async def check_file_hash(self, sha256: str) -> IntelResult:
         """
         Look up a file by SHA256 hash.
-        
+
         PRIVACY: Only the hash is sent, never the file content.
         """
         if not self.is_configured:
@@ -242,6 +248,7 @@ class VirusTotalClient(IntelProvider):
 
         try:
             import aiohttp
+
             session = await self._get_session()
             if not session:
                 return IntelResult(
@@ -255,7 +262,9 @@ class VirusTotalClient(IntelProvider):
 
             url = f"{self.API_BASE}/files/{sha256.lower()}"
 
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
                 # Handle rate limiting
                 self._requests_remaining = int(
                     resp.headers.get("x-api-quota-remaining", 999)
@@ -381,7 +390,7 @@ class VirusTotalClient(IntelProvider):
     async def check_url(self, url: str) -> IntelResult:
         """
         Look up a URL.
-        
+
         URLs are base64 encoded as required by VT API v3.
         """
         if not self.is_configured:
@@ -406,6 +415,7 @@ class VirusTotalClient(IntelProvider):
 
         try:
             import aiohttp
+
             session = await self._get_session()
             if not session:
                 return IntelResult(
@@ -421,7 +431,9 @@ class VirusTotalClient(IntelProvider):
             url_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
             api_url = f"{self.API_BASE}/urls/{url_id}"
 
-            async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.get(
+                api_url, timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
                 self._requests_remaining = int(
                     resp.headers.get("x-api-quota-remaining", 999)
                 )
@@ -540,6 +552,7 @@ class VirusTotalClient(IntelProvider):
 # =============================================================================
 
 _vt_client: VirusTotalClient | None = None
+
 
 def get_virustotal_client() -> VirusTotalClient:
     """Get the singleton VirusTotal client."""

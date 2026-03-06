@@ -21,17 +21,17 @@ logger = logging.getLogger(__name__)
 class UrlExplanation:
     """Human-readable explanation of URL scan results."""
 
-    what_it_is: str          # Brief description of the URL/site
-    why_risky: str           # Why it may be dangerous (or safe)
-    what_to_do: str          # Recommended action
-    technical_summary: str   # Brief technical details
-    confidence: str          # How confident we are (low/medium/high)
+    what_it_is: str  # Brief description of the URL/site
+    why_risky: str  # Why it may be dangerous (or safe)
+    what_to_do: str  # Recommended action
+    technical_summary: str  # Brief technical details
+    confidence: str  # How confident we are (low/medium/high)
 
 
 class UrlExplainer:
     """
     Generates AI-powered explanations for URL scan results.
-    
+
     Uses local LLM when available, falls back to template-based
     explanations when model is unavailable.
     """
@@ -39,7 +39,7 @@ class UrlExplainer:
     def __init__(self, llm_engine=None):
         """
         Initialize the explainer.
-        
+
         Args:
             llm_engine: Optional local LLM engine for AI explanations.
                        Falls back to templates if None.
@@ -50,10 +50,10 @@ class UrlExplainer:
     def explain(self, result: UrlScanResult) -> UrlExplanation:
         """
         Generate explanation for URL scan result.
-        
+
         Args:
             result: The UrlScanResult to explain
-            
+
         Returns:
             UrlExplanation with human-readable analysis
         """
@@ -78,10 +78,7 @@ class UrlExplainer:
 
     def _build_prompt(self, result: UrlScanResult) -> str:
         """Build prompt for LLM."""
-        evidence_text = "\n".join(
-            f"- {e.title}: {e.detail}"
-            for e in result.evidence
-        )
+        evidence_text = "\n".join(f"- {e.title}: {e.detail}" for e in result.evidence)
 
         redirect_text = " -> ".join(result.redirects) if result.redirects else "None"
 
@@ -115,17 +112,23 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
 
         return prompt
 
-    def _parse_ai_response(self, response: str, result: UrlScanResult) -> UrlExplanation:
+    def _parse_ai_response(
+        self, response: str, result: UrlScanResult
+    ) -> UrlExplanation:
         """Parse LLM response into structured explanation."""
         # Simple parsing - look for sections
-        what_it_is = self._extract_section(response, "WHAT IT IS",
-            default=self._generate_what_it_is(result))
-        why_risky = self._extract_section(response, "WHY RISKY",
-            default=self._generate_why_risky(result))
-        what_to_do = self._extract_section(response, "WHAT TO DO",
-            default=self._generate_what_to_do(result))
-        confidence = self._extract_section(response, "CONFIDENCE",
-            default=self._assess_confidence(result))
+        what_it_is = self._extract_section(
+            response, "WHAT IT IS", default=self._generate_what_it_is(result)
+        )
+        why_risky = self._extract_section(
+            response, "WHY RISKY", default=self._generate_why_risky(result)
+        )
+        what_to_do = self._extract_section(
+            response, "WHAT TO DO", default=self._generate_what_to_do(result)
+        )
+        confidence = self._extract_section(
+            response, "CONFIDENCE", default=self._assess_confidence(result)
+        )
 
         technical = self._generate_technical_summary(result)
 
@@ -134,7 +137,7 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
             why_risky=why_risky,
             what_to_do=what_to_do,
             technical_summary=technical,
-            confidence=confidence
+            confidence=confidence,
         )
 
     def _extract_section(self, text: str, section: str, default: str) -> str:
@@ -159,7 +162,7 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
             why_risky=self._generate_why_risky(result),
             what_to_do=self._generate_what_to_do(result),
             technical_summary=self._generate_technical_summary(result),
-            confidence=self._assess_confidence(result)
+            confidence=self._assess_confidence(result),
         )
 
     def _generate_what_it_is(self, result: UrlScanResult) -> str:
@@ -266,12 +269,10 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
             "suspicious_tld": "The domain uses a risky extension commonly associated with spam and malware.",
             "ip_address_url": "Using an IP address instead of a domain name is often a sign of malicious activity.",
             "excessive_subdomains": "The URL has an unusually complex structure that may be trying to hide its true destination.",
-
             # Redirect risks
             "excessive_redirects": "The URL bounces through many sites before reaching its destination, which is suspicious.",
             "cross_domain_redirect": "The URL redirects to a completely different website than expected.",
             "redirect_to_suspicious_tld": "The URL redirects to a website with a risky domain extension.",
-
             # Content risks
             "password_field": "The page asks for passwords, which could be an attempt to steal your credentials.",
             "hidden_form": "The page contains hidden forms that may submit your data without your knowledge.",
@@ -279,15 +280,12 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
             "obfuscated_javascript": "The page contains hidden code that may be doing something malicious.",
             "auto_download": "The page may try to automatically download files to your computer.",
             "external_script": "The page loads code from other websites, which could be malicious.",
-
             # Form/Input risks
             "credit_card_form": "The page asks for credit card information.",
             "ssn_field": "The page asks for social security numbers.",
-
             # YARA/Pattern matches
             "yara_match": "The page content matches known malicious patterns.",
             "phishing_pattern": "The page shows signs of being a phishing attempt.",
-
             # Sandbox findings
             "sandbox_network_activity": "When visited in a safe environment, the page tried to contact suspicious servers.",
             "sandbox_file_write": "When visited in a safe environment, the page tried to create files on the computer.",
@@ -358,7 +356,9 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
             parts.append(f"{len(result.redirects)} redirect(s)")
 
         # Evidence count by severity
-        high_count = sum(1 for e in result.evidence if e.severity in ("high", "critical"))
+        high_count = sum(
+            1 for e in result.evidence if e.severity in ("high", "critical")
+        )
         med_count = sum(1 for e in result.evidence if e.severity == "medium")
 
         if high_count:
@@ -419,11 +419,11 @@ Keep explanations simple and avoid technical jargon. Be direct and helpful."""
 def explain_url_scan(result: UrlScanResult, llm_engine=None) -> UrlExplanation:
     """
     Convenience function to explain a URL scan result.
-    
+
     Args:
         result: UrlScanResult to explain
         llm_engine: Optional local LLM engine
-        
+
     Returns:
         UrlExplanation with human-readable analysis
     """

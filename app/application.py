@@ -16,7 +16,7 @@ from .infra.integrations import print_integration_status
 from .infra.privileges import is_admin
 from .ui.backend_bridge import BackendBridge
 from .ui.gpu_service import get_gpu_service
-from .ui.notification_service import NotificationService
+from .ui.notification_service import NotificationService, get_notification_service
 from .ui.settings_service import SettingsService
 from .ui.system_snapshot_service import SystemSnapshotService
 
@@ -133,9 +133,14 @@ class DesktopSecurityApplication:
             # Register sandbox preview image provider for live preview
             try:
                 from .ui.sandbox_preview_provider import register_preview_provider
-                preview_controller = register_preview_provider(self.engine, self.backend)
+
+                preview_controller = register_preview_provider(
+                    self.engine, self.backend
+                )
                 if preview_controller:
-                    self.engine.rootContext().setContextProperty("SandboxPreview", preview_controller)
+                    self.engine.rootContext().setContextProperty(
+                        "SandboxPreview", preview_controller
+                    )
                     print("[OK] Sandbox preview provider registered")
             except ImportError as e:
                 print(f"[WARNING] Sandbox preview provider not available: {e}")
@@ -179,7 +184,9 @@ class DesktopSecurityApplication:
                 self.engine.rootContext().setContextProperty(
                     "SnapshotService", self.snapshot_service
                 )
-                self.snapshot_service.start(5000)  # Start with 5s interval for lower CPU usage
+                self.snapshot_service.start(
+                    5000
+                )  # Start with 5s interval for lower CPU usage
                 print(
                     f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
                 )
@@ -218,7 +225,7 @@ class DesktopSecurityApplication:
 
             # IMMEDIATE: Notification Service (cross-platform)
             try:
-                self.notification_service = NotificationService()
+                self.notification_service = get_notification_service()
                 self.engine.rootContext().setContextProperty(
                     "NotificationService", self.notification_service
                 )

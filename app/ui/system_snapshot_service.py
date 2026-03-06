@@ -5,7 +5,6 @@ import socket
 import subprocess
 import threading
 import time
-from typing import Dict, List, Optional
 
 import psutil
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -618,6 +617,7 @@ class SystemSnapshotService(QObject):
 
     def _update_security_info(self):
         """Gather security information about the system (runs in background thread)."""
+
         # Run in background thread to never block the UI
         def gather_security_info():
             self._do_update_security_info()

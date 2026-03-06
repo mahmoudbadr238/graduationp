@@ -6,7 +6,6 @@ Includes watchdog for hang detection and error recovery
 
 import logging
 import time
-from typing import Optional
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtQml import QmlElement

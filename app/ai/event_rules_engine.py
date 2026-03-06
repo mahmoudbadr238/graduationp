@@ -70,7 +70,7 @@ class DeterministicExplanation:
 class EventRulesEngine:
     """
     Deterministic event lookup engine.
-    
+
     Loads the knowledge base JSON and provides instant lookups.
     This class is designed to be fast and run on the UI thread.
     """
@@ -97,7 +97,11 @@ class EventRulesEngine:
         # Find the knowledge base file
         possible_paths = [
             Path(__file__).parent / "knowledge" / "event_rules.json",
-            Path(__file__).parent.parent.parent / "app" / "ai" / "knowledge" / "event_rules.json",
+            Path(__file__).parent.parent.parent
+            / "app"
+            / "ai"
+            / "knowledge"
+            / "event_rules.json",
         ]
 
         kb_path = None
@@ -122,7 +126,9 @@ class EventRulesEngine:
                 len(provider.get("common_events", {}))
                 for provider in self._rules.values()
             )
-            logger.info(f"EventRulesEngine loaded: {len(self._rules)} providers, {event_count} events")
+            logger.info(
+                f"EventRulesEngine loaded: {len(self._rules)} providers, {event_count} events"
+            )
 
         except Exception as e:
             logger.error(f"Failed to load event rules: {e}")
@@ -136,15 +142,15 @@ class EventRulesEngine:
     ) -> DeterministicExplanation:
         """
         Look up an event in the knowledge base.
-        
+
         This is INSTANT - no network, no AI, no async.
-        
+
         Args:
             provider: Event provider/source name
             event_id: Event ID number
             level: Event level (Information, Warning, Error, Critical)
             raw_message: Raw event message text
-        
+
         Returns:
             DeterministicExplanation with matched or fallback data
         """
@@ -185,7 +191,9 @@ class EventRulesEngine:
         result.extracted_entities = self._extract_entities(raw_message)
 
         # Customize actions based on extracted entities
-        result.actions = self._customize_actions(result.actions, result.extracted_entities)
+        result.actions = self._customize_actions(
+            result.actions, result.extracted_entities
+        )
 
         return result
 
@@ -211,7 +219,9 @@ class EventRulesEngine:
 
         return None
 
-    def _apply_fallback_template(self, result: DeterministicExplanation) -> DeterministicExplanation:
+    def _apply_fallback_template(
+        self, result: DeterministicExplanation
+    ) -> DeterministicExplanation:
         """Apply a fallback template based on event level."""
         level_lower = result.level.lower()
 
@@ -226,7 +236,9 @@ class EventRulesEngine:
 
         template = self._templates.get(template_key, {})
 
-        result.title = template.get("title", f"{result.level} event from {result.provider}")
+        result.title = template.get(
+            "title", f"{result.level} event from {result.provider}"
+        )
         result.severity = template.get("severity", "Minor")
         result.impact = template.get("impact", "")
         result.causes = template.get("causes", [])
@@ -236,18 +248,27 @@ class EventRulesEngine:
 
         return result
 
-    def _handle_privilege_error(self, result: DeterministicExplanation) -> DeterministicExplanation:
+    def _handle_privilege_error(
+        self, result: DeterministicExplanation
+    ) -> DeterministicExplanation:
         """Handle the special 1314 privilege error case."""
         template = self._templates.get("security_1314", {})
 
         result.title = template.get("title", "Security log access denied")
         result.severity = template.get("severity", "Minor")
-        result.impact = template.get("impact", "Cannot read Security event log without admin privileges.")
-        result.causes = template.get("causes", ["Application running without admin rights"])
-        result.actions = template.get("actions", [
-            "Run Sentinel as Administrator",
-            "Right-click Sentinel and select 'Run as administrator'"
-        ])
+        result.impact = template.get(
+            "impact", "Cannot read Security event log without admin privileges."
+        )
+        result.causes = template.get(
+            "causes", ["Application running without admin rights"]
+        )
+        result.actions = template.get(
+            "actions",
+            [
+                "Run Sentinel as Administrator",
+                "Right-click Sentinel and select 'Run as administrator'",
+            ],
+        )
         result.matched = True
         result.template_used = "security_1314"
 
@@ -256,7 +277,7 @@ class EventRulesEngine:
     def _extract_entities(self, raw_message: str) -> dict[str, Any]:
         """
         Extract useful entities from the raw event message.
-        
+
         This is regex-based, fast, deterministic.
         """
         entities: dict[str, Any] = {}
@@ -353,7 +374,7 @@ class EventRulesEngine:
     ) -> list[str]:
         """
         Customize action recommendations based on extracted entities.
-        
+
         E.g., if service_name is found, make actions more specific.
         """
         if not entities:
@@ -383,10 +404,16 @@ class EventRulesEngine:
             customized.append(new_action)
 
         # Add entity-specific actions
-        if "service_name" in entities and not any("service" in a.lower() for a in customized):
-            customized.append(f"Check if '{entities['service_name']}' service is running")
+        if "service_name" in entities and not any(
+            "service" in a.lower() for a in customized
+        ):
+            customized.append(
+                f"Check if '{entities['service_name']}' service is running"
+            )
 
-        if "file_paths" in entities and not any("file" in a.lower() for a in customized):
+        if "file_paths" in entities and not any(
+            "file" in a.lower() for a in customized
+        ):
             customized.append(f"Verify the file exists: {entities['file_paths'][0]}")
 
         return customized

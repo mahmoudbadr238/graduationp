@@ -1,0 +1,22 @@
+{
+  "_comment": "Sentinel VMware Sandbox configuration. Sensitive fields (guest_password) are read from environment variables first; values here are used as fallbacks. Do NOT commit real passwords to source control.",
+  "vmrun_path": "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmrun.exe",
+  "vmx_path": "D:\\vm\\windows10\\Windows 10 x64.vmx",
+  "snapshot_name": "clean",
+  "guest_username": "sandbox",
+  "guest_password": "M@h908070",
+  "guest_workdir": "C:\\Sentinel\\Jobs",
+  "host_artifacts_dir": "data\\artifacts",
+  "monitor_seconds": 30,
+  "boot_wait_seconds": 25,
+  "report_poll_seconds": 90,
+  "_env_overrides": {
+    "SANDBOX_VMRUN":       "vmrun_path",
+    "SANDBOX_VMX":         "vmx_path",
+    "SANDBOX_SNAPSHOT":    "snapshot_name",
+    "SANDBOX_GUEST_USER":  "guest_username",
+    "SANDBOX_GUEST_PASS":  "guest_password",
+    "SANDBOX_GUEST_WORKDIR": "guest_workdir",
+    "SANDBOX_HOST_ARTIFACTS": "host_artifacts_dir"
+  }
+}

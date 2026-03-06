@@ -6,9 +6,9 @@ Avoids jargon and explains findings in plain language.
 """
 
 import logging
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
-from dataclasses import asdict, is_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class FriendlyReportGenerator:
     """
     Generates user-friendly scan reports with plain language.
-    
+
     Designed for normal users, not security professionals.
     """
 
@@ -42,13 +42,14 @@ class FriendlyReportGenerator:
         file_path: str | Path,
         static_result: dict | None = None,
         sandbox_result: dict | None = None,
-        scoring_result = None,
+        scoring_result=None,
     ) -> str:
         """
         Generate a user-friendly file scan report.
-        
+
         Returns the report as a string (not saved to file).
         """
+
         def _to_dict(obj):
             if isinstance(obj, dict):
                 return obj
@@ -80,7 +81,9 @@ class FriendlyReportGenerator:
         lines.append("📋 SECURITY SCAN REPORT")
         lines.append("=" * 60)
         lines.append("")
-        lines.append(f"📅 Scanned on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
+        lines.append(
+            f"📅 Scanned on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
+        )
         lines.append(f"📁 File: {file_path.name}")
         lines.append("")
 
@@ -180,7 +183,7 @@ class FriendlyReportGenerator:
                     "severity": finding.get("severity", "medium"),
                     "title": finding.get("title", "Unknown issue"),
                     "detail": finding.get("detail", ""),
-                    "source": "file analysis"
+                    "source": "file analysis",
                 }
                 key = (
                     str(item["severity"]).lower(),
@@ -194,14 +197,14 @@ class FriendlyReportGenerator:
             # YARA matches
             for match in static_result.get("yara_matches", []):
                 match = _to_dict(match)
-                raw_rule = (
-                    match.get("rule")
-                    or match.get("rule_name")
-                    or ""
-                )
+                raw_rule = match.get("rule") or match.get("rule_name") or ""
                 if not raw_rule and isinstance(match.get("title"), str):
                     title_text = match.get("title", "")
-                    raw_rule = title_text.replace("YARA:", "").strip() if title_text.lower().startswith("yara:") else title_text
+                    raw_rule = (
+                        title_text.replace("YARA:", "").strip()
+                        if title_text.lower().startswith("yara:")
+                        else title_text
+                    )
 
                 title = f"YARA: {raw_rule}" if raw_rule else "YARA: Signature Match"
                 detail = (
@@ -213,7 +216,7 @@ class FriendlyReportGenerator:
                     "severity": match.get("severity", "high"),
                     "title": title,
                     "detail": detail,
-                    "source": "signature matching"
+                    "source": "signature matching",
                 }
                 key = (
                     str(item["severity"]).lower(),
@@ -227,59 +230,75 @@ class FriendlyReportGenerator:
         # Collect findings from sandbox
         if sandbox_result and sandbox_result.get("success"):
             if sandbox_result.get("timed_out"):
-                findings.append({
-                    "severity": "medium",
-                    "title": "Program took too long to finish",
-                    "detail": "The file ran longer than expected. Some malware does this to avoid detection.",
-                    "source": "behavior test"
-                })
+                findings.append(
+                    {
+                        "severity": "medium",
+                        "title": "Program took too long to finish",
+                        "detail": "The file ran longer than expected. Some malware does this to avoid detection.",
+                        "source": "behavior test",
+                    }
+                )
 
             # Network attempts (bad sign)
             network = sandbox_result.get("network_connections", [])
             if network:
-                findings.append({
-                    "severity": "high",
-                    "title": f"Tried to connect to the internet ({len(network)} attempts)",
-                    "detail": "This file tried to reach external servers, which could be for malicious purposes.",
-                    "source": "behavior test"
-                })
+                findings.append(
+                    {
+                        "severity": "high",
+                        "title": f"Tried to connect to the internet ({len(network)} attempts)",
+                        "detail": "This file tried to reach external servers, which could be for malicious purposes.",
+                        "source": "behavior test",
+                    }
+                )
 
             # File modifications
             files_created = sandbox_result.get("files_created", [])
             if len(files_created) > 5:
-                findings.append({
-                    "severity": "medium",
-                    "title": f"Created many files ({len(files_created)})",
-                    "detail": "Programs that create lots of files might be installing unwanted software.",
-                    "source": "behavior test"
-                })
+                findings.append(
+                    {
+                        "severity": "medium",
+                        "title": f"Created many files ({len(files_created)})",
+                        "detail": "Programs that create lots of files might be installing unwanted software.",
+                        "source": "behavior test",
+                    }
+                )
 
             # Registry modifications
             registry = sandbox_result.get("registry_modifications", [])
             if registry:
-                findings.append({
-                    "severity": "high",
-                    "title": f"Modified Windows settings ({len(registry)} changes)",
-                    "detail": "This file tried to change system settings, which is often a sign of malware.",
-                    "source": "behavior test"
-                })
+                findings.append(
+                    {
+                        "severity": "high",
+                        "title": f"Modified Windows settings ({len(registry)} changes)",
+                        "detail": "This file tried to change system settings, which is often a sign of malware.",
+                        "source": "behavior test",
+                    }
+                )
 
             # Child processes
             children = sandbox_result.get("child_processes", [])
             if len(children) > 2:
-                findings.append({
-                    "severity": "medium",
-                    "title": f"Launched other programs ({len(children)})",
-                    "detail": "Starting multiple programs can indicate spreading or installing additional malware.",
-                    "source": "behavior test"
-                })
+                findings.append(
+                    {
+                        "severity": "medium",
+                        "title": f"Launched other programs ({len(children)})",
+                        "detail": "Starting multiple programs can indicate spreading or installing additional malware.",
+                        "source": "behavior test",
+                    }
+                )
 
         if findings:
             lines.append("⚠️ PROBLEMS FOUND")
             lines.append("")
 
             # Sort by severity
-            severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+            severity_order = {
+                "critical": 0,
+                "high": 1,
+                "medium": 2,
+                "low": 3,
+                "info": 4,
+            }
             findings.sort(key=lambda x: severity_order.get(x["severity"], 5))
 
             for i, finding in enumerate(findings[:10], 1):  # Limit to 10
@@ -307,7 +326,11 @@ class FriendlyReportGenerator:
         if sandbox_result and sandbox_result.get("success"):
             session_summary = sandbox_result.get("session_summary")
             if session_summary:
-                lines.extend(self._generate_sandbox_evidence_section(sandbox_result, session_summary))
+                lines.extend(
+                    self._generate_sandbox_evidence_section(
+                        sandbox_result, session_summary
+                    )
+                )
             else:
                 # Basic sandbox section without session data
                 lines.extend(self._generate_basic_sandbox_section(sandbox_result))
@@ -325,12 +348,20 @@ class FriendlyReportGenerator:
                 lines.append("  ❌ Run a full system antivirus scan")
                 lines.append("  ❌ If you already ran it, check your system for issues")
             elif score > 50:
-                lines.append("  ⚠️ Do NOT run this file unless you absolutely trust the source")
+                lines.append(
+                    "  ⚠️ Do NOT run this file unless you absolutely trust the source"
+                )
                 lines.append("  ⚠️ Consider deleting it to be safe")
-                lines.append("  ⚠️ If you must use it, scan with another antivirus first")
+                lines.append(
+                    "  ⚠️ If you must use it, scan with another antivirus first"
+                )
             elif score > 20:
-                lines.append("  ⚠️ Be cautious - only run if you trust where it came from")
-                lines.append("  ⚠️ Consider getting a second opinion from another scanner")
+                lines.append(
+                    "  ⚠️ Be cautious - only run if you trust where it came from"
+                )
+                lines.append(
+                    "  ⚠️ Consider getting a second opinion from another scanner"
+                )
                 lines.append("  ⚠️ Watch for unusual behavior if you run it")
             else:
                 lines.append("  ✅ This file looks safe to use")
@@ -359,7 +390,7 @@ class FriendlyReportGenerator:
     ) -> str:
         """
         Generate a user-friendly URL scan report.
-        
+
         Returns the report as a string.
         """
         lines = []
@@ -369,7 +400,9 @@ class FriendlyReportGenerator:
         lines.append("🌐 URL SAFETY REPORT")
         lines.append("=" * 60)
         lines.append("")
-        lines.append(f"📅 Checked on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
+        lines.append(
+            f"📅 Checked on: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
+        )
         lines.append(f"🔗 URL: {url}")
         lines.append("")
 
@@ -408,7 +441,12 @@ class FriendlyReportGenerator:
 
             for reason in reasons[:8]:
                 severity = reason.get("severity", "info")
-                emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(severity, "ℹ️")
+                emoji = {
+                    "critical": "🔴",
+                    "high": "🟠",
+                    "medium": "🟡",
+                    "low": "🟢",
+                }.get(severity, "ℹ️")
                 lines.append(f"  {emoji} {reason.get('title', 'Unknown')}")
                 if reason.get("detail"):
                     lines.append(f"     → {reason['detail'][:80]}")
@@ -439,7 +477,9 @@ class FriendlyReportGenerator:
 
         return "\n".join(lines)
 
-    def _generate_sandbox_evidence_section(self, sandbox_result: dict, session_summary: dict) -> list:
+    def _generate_sandbox_evidence_section(
+        self, sandbox_result: dict, session_summary: dict
+    ) -> list:
         """Generate detailed sandbox behavior evidence section with tables."""
         lines = []
         lines.append("")
@@ -453,9 +493,13 @@ class FriendlyReportGenerator:
         timed_out = sandbox_result.get("timed_out", False)
 
         if timed_out:
-            lines.append(f"  ⏱️ Ran for {duration:.1f} seconds before being stopped (timeout)")
+            lines.append(
+                f"  ⏱️ Ran for {duration:.1f} seconds before being stopped (timeout)"
+            )
         else:
-            outcome = "successfully" if exit_code == 0 else f"with exit code {exit_code}"
+            outcome = (
+                "successfully" if exit_code == 0 else f"with exit code {exit_code}"
+            )
             lines.append(f"  ⏱️ Finished {outcome} in {duration:.1f} seconds")
 
         lines.append("")
@@ -554,7 +598,9 @@ class FriendlyReportGenerator:
                         op = event_type.replace("file_", "")
                         description = f"File {op}: {path.split(chr(92))[-1] if path else 'unknown'}"
                     elif "registry" in event_type:
-                        description = f"Registry: {evt.get('registry_key', 'unknown key')}"
+                        description = (
+                            f"Registry: {evt.get('registry_key', 'unknown key')}"
+                        )
                     elif "network" in event_type:
                         addr = evt.get("remote_address", "?")
                         port = evt.get("remote_port", "?")
@@ -596,11 +642,21 @@ class FriendlyReportGenerator:
         process_events = events_by_type.get("process_start", [])
         if process_events:
             lines.append("")
-            lines.append("  ┌─────────────────────────────────────────────────────────┐")
-            lines.append("  │ ⚙️  PROCESS EVIDENCE                                     │")
-            lines.append("  ├───────┬───────────────────────┬─────────────────────────┤")
-            lines.append("  │  PID  │ Process Name          │ Command Line            │")
-            lines.append("  ├───────┼───────────────────────┼─────────────────────────┤")
+            lines.append(
+                "  ┌─────────────────────────────────────────────────────────┐"
+            )
+            lines.append(
+                "  │ ⚙️  PROCESS EVIDENCE                                     │"
+            )
+            lines.append(
+                "  ├───────┬───────────────────────┬─────────────────────────┤"
+            )
+            lines.append(
+                "  │  PID  │ Process Name          │ Command Line            │"
+            )
+            lines.append(
+                "  ├───────┼───────────────────────┼─────────────────────────┤"
+            )
 
             for proc in process_events[:10]:
                 pid = str(proc.get("pid", "?"))[:5].ljust(5)
@@ -609,25 +665,46 @@ class FriendlyReportGenerator:
                 lines.append(f"  │ {pid} │ {name} │ {cmd} │")
 
             if len(process_events) > 10:
-                lines.append(f"  │  ...  │ ... and {len(process_events) - 10} more processes                │")
+                lines.append(
+                    f"  │  ...  │ ... and {len(process_events) - 10} more processes                │"
+                )
 
-            lines.append("  └───────┴───────────────────────┴─────────────────────────┘")
+            lines.append(
+                "  └───────┴───────────────────────┴─────────────────────────┘"
+            )
             lines.append("")
 
         # File Evidence Table
-        file_events = (events_by_type.get("file_create", []) +
-                       events_by_type.get("file_modify", []) +
-                       events_by_type.get("file_delete", []))
+        file_events = (
+            events_by_type.get("file_create", [])
+            + events_by_type.get("file_modify", [])
+            + events_by_type.get("file_delete", [])
+        )
         if file_events:
             lines.append("")
-            lines.append("  ┌─────────────────────────────────────────────────────────┐")
-            lines.append("  │ 📄 FILE EVIDENCE                                        │")
-            lines.append("  ├────────────┬────────────────────────────────────────────┤")
-            lines.append("  │ Operation  │ File Path                                  │")
-            lines.append("  ├────────────┼────────────────────────────────────────────┤")
+            lines.append(
+                "  ┌─────────────────────────────────────────────────────────┐"
+            )
+            lines.append(
+                "  │ 📄 FILE EVIDENCE                                        │"
+            )
+            lines.append(
+                "  ├────────────┬────────────────────────────────────────────┤"
+            )
+            lines.append(
+                "  │ Operation  │ File Path                                  │"
+            )
+            lines.append(
+                "  ├────────────┼────────────────────────────────────────────┤"
+            )
 
             for evt in file_events[:10]:
-                op = evt.get("event_type", "?").replace("file_", "").upper()[:10].ljust(10)
+                op = (
+                    evt.get("event_type", "?")
+                    .replace("file_", "")
+                    .upper()[:10]
+                    .ljust(10)
+                )
                 path = str(evt.get("file_path", ""))
                 # Truncate path intelligently
                 if len(path) > 42:
@@ -636,24 +713,42 @@ class FriendlyReportGenerator:
                 lines.append(f"  │ {op} │ {path} │")
 
             if len(file_events) > 10:
-                lines.append(f"  │    ...     │ ... and {len(file_events) - 10} more file operations           │")
+                lines.append(
+                    f"  │    ...     │ ... and {len(file_events) - 10} more file operations           │"
+                )
 
-            lines.append("  └────────────┴────────────────────────────────────────────┘")
+            lines.append(
+                "  └────────────┴────────────────────────────────────────────┘"
+            )
             lines.append("")
 
         # Registry Evidence Table
-        registry_events = (events_by_type.get("registry_create", []) +
-                          events_by_type.get("registry_modify", []))
+        registry_events = events_by_type.get(
+            "registry_create", []
+        ) + events_by_type.get("registry_modify", [])
         if registry_events:
             lines.append("")
-            lines.append("  ┌─────────────────────────────────────────────────────────┐")
+            lines.append(
+                "  ┌─────────────────────────────────────────────────────────┐"
+            )
             lines.append("  │ 🗝️  REGISTRY EVIDENCE                                   │")
-            lines.append("  ├────────────┬────────────────────────────────────────────┤")
-            lines.append("  │ Operation  │ Registry Key                               │")
-            lines.append("  ├────────────┼────────────────────────────────────────────┤")
+            lines.append(
+                "  ├────────────┬────────────────────────────────────────────┤"
+            )
+            lines.append(
+                "  │ Operation  │ Registry Key                               │"
+            )
+            lines.append(
+                "  ├────────────┼────────────────────────────────────────────┤"
+            )
 
             for evt in registry_events[:8]:
-                op = evt.get("event_type", "?").replace("registry_", "").upper()[:10].ljust(10)
+                op = (
+                    evt.get("event_type", "?")
+                    .replace("registry_", "")
+                    .upper()[:10]
+                    .ljust(10)
+                )
                 key = str(evt.get("registry_key", ""))
                 if len(key) > 42:
                     key = "..." + key[-39:]
@@ -661,21 +756,36 @@ class FriendlyReportGenerator:
                 lines.append(f"  │ {op} │ {key} │")
 
             if len(registry_events) > 8:
-                lines.append(f"  │    ...     │ ... and {len(registry_events) - 8} more registry changes         │")
+                lines.append(
+                    f"  │    ...     │ ... and {len(registry_events) - 8} more registry changes         │"
+                )
 
-            lines.append("  └────────────┴────────────────────────────────────────────┘")
+            lines.append(
+                "  └────────────┴────────────────────────────────────────────┘"
+            )
             lines.append("")
 
         # Network Evidence Table
-        network_events = (events_by_type.get("network_connect", []) +
-                         events_by_type.get("network_blocked", []))
+        network_events = events_by_type.get("network_connect", []) + events_by_type.get(
+            "network_blocked", []
+        )
         if network_events:
             lines.append("")
-            lines.append("  ┌─────────────────────────────────────────────────────────┐")
-            lines.append("  │ 🌐 NETWORK EVIDENCE                                     │")
-            lines.append("  ├──────────┬─────────────────────────┬──────────┬─────────┤")
-            lines.append("  │ Status   │ Remote Address          │ Port     │ Protocol│")
-            lines.append("  ├──────────┼─────────────────────────┼──────────┼─────────┤")
+            lines.append(
+                "  ┌─────────────────────────────────────────────────────────┐"
+            )
+            lines.append(
+                "  │ 🌐 NETWORK EVIDENCE                                     │"
+            )
+            lines.append(
+                "  ├──────────┬─────────────────────────┬──────────┬─────────┤"
+            )
+            lines.append(
+                "  │ Status   │ Remote Address          │ Port     │ Protocol│"
+            )
+            lines.append(
+                "  ├──────────┼─────────────────────────┼──────────┼─────────┤"
+            )
 
             for evt in network_events[:8]:
                 blocked = evt.get("blocked", False)
@@ -686,21 +796,33 @@ class FriendlyReportGenerator:
                 lines.append(f"  │ {status} │ {addr} │ {port} │ {proto} │")
 
             if len(network_events) > 8:
-                lines.append(f"  │   ...    │ ... and {len(network_events) - 8} more connections                  │")
+                lines.append(
+                    f"  │   ...    │ ... and {len(network_events) - 8} more connections                  │"
+                )
 
-            lines.append("  └──────────┴─────────────────────────┴──────────┴─────────┘")
+            lines.append(
+                "  └──────────┴─────────────────────────┴──────────┴─────────┘"
+            )
             lines.append("")
 
         # Suspicious Behaviors
         suspicious_events = session_summary.get("suspicious_behaviors", [])
         if suspicious_events:
             lines.append("")
-            lines.append("  ┌─────────────────────────────────────────────────────────┐")
-            lines.append("  │ ⚠️  SUSPICIOUS BEHAVIORS                                 │")
-            lines.append("  ├─────────────────────────────────────────────────────────┤")
+            lines.append(
+                "  ┌─────────────────────────────────────────────────────────┐"
+            )
+            lines.append(
+                "  │ ⚠️  SUSPICIOUS BEHAVIORS                                 │"
+            )
+            lines.append(
+                "  ├─────────────────────────────────────────────────────────┤"
+            )
 
             for evt in suspicious_events[:5]:
-                desc = str(evt.get("description", evt.get("behavior_category", "Unknown")))
+                desc = str(
+                    evt.get("description", evt.get("behavior_category", "Unknown"))
+                )
                 # Wrap description
                 while len(desc) > 55:
                     lines.append(f"  │ {desc[:55]} │")
@@ -713,12 +835,18 @@ class FriendlyReportGenerator:
                     for ind in indicators[:2]:
                         ind_text = f"  → {ind}"[:55].ljust(55)
                         lines.append(f"  │ {ind_text} │")
-                lines.append("  ├─────────────────────────────────────────────────────────┤")
+                lines.append(
+                    "  ├─────────────────────────────────────────────────────────┤"
+                )
 
             if len(suspicious_events) > 5:
-                lines.append(f"  │ ... and {len(suspicious_events) - 5} more suspicious behaviors                    │")
+                lines.append(
+                    f"  │ ... and {len(suspicious_events) - 5} more suspicious behaviors                    │"
+                )
 
-            lines.append("  └─────────────────────────────────────────────────────────┘")
+            lines.append(
+                "  └─────────────────────────────────────────────────────────┘"
+            )
             lines.append("")
 
         # Files created list (legacy format for compatibility)

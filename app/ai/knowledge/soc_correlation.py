@@ -16,22 +16,24 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ThreatLevel(Enum):
     """Threat level classification."""
-    SAFE = "safe"          # Normal operation
-    LOW = "low"            # Minor concern, monitor
-    MEDIUM = "medium"      # Investigate soon
-    HIGH = "high"          # Investigate immediately
+
+    SAFE = "safe"  # Normal operation
+    LOW = "low"  # Minor concern, monitor
+    MEDIUM = "medium"  # Investigate soon
+    HIGH = "high"  # Investigate immediately
     CRITICAL = "critical"  # Active threat, immediate action
 
 
 class AttackPattern(Enum):
     """Known attack patterns."""
+
     BRUTE_FORCE = "brute_force"
     CREDENTIAL_STUFFING = "credential_stuffing"
     LATERAL_MOVEMENT = "lateral_movement"
@@ -45,6 +47,7 @@ class AttackPattern(Enum):
 @dataclass
 class CorrelationRule:
     """A rule for correlating related events."""
+
     name: str
     description: str
     primary_event_id: int
@@ -65,6 +68,7 @@ class CorrelationRule:
 @dataclass
 class EventScore:
     """Scored assessment of an event."""
+
     event_id: int
     base_score: int  # 0-100, from event type alone
     context_score: int  # Adjustment based on context
@@ -72,7 +76,9 @@ class EventScore:
 
     @property
     def total_score(self) -> int:
-        return min(100, max(0, self.base_score + self.context_score + self.pattern_score))
+        return min(
+            100, max(0, self.base_score + self.context_score + self.pattern_score)
+        )
 
     @property
     def threat_level(self) -> ThreatLevel:
@@ -104,7 +110,6 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["TargetUserName", "IpAddress"],
         threat_score_bonus=30,
     ),
-
     # New service installation → process creation (malware persistence)
     7045: CorrelationRule(
         name="Service Persistence Check",
@@ -117,7 +122,6 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["ServiceName", "ImagePath"],
         threat_score_bonus=25,
     ),
-
     # Special privileges → sensitive operations (privilege escalation)
     4672: CorrelationRule(
         name="Privilege Escalation Check",
@@ -130,7 +134,6 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["SubjectUserName", "LogonType"],
         threat_score_bonus=20,
     ),
-
     # Defender detections → actions taken
     1116: CorrelationRule(
         name="Defender Detection Correlation",
@@ -143,7 +146,6 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
         match_fields=["ThreatName", "Path"],
         threat_score_bonus=40,
     ),
-
     # Audit policy change → potential defense evasion
     4719: CorrelationRule(
         name="Audit Tampering Check",
@@ -165,45 +167,41 @@ CORRELATION_RULES: dict[int, CorrelationRule] = {
 
 EVENT_BASE_SCORES: dict[int, int] = {
     # Security events
-    4624: 5,    # Successful login - very common
-    4625: 25,   # Failed login - concerning if repeated
-    4634: 5,    # Logoff - informational
-    4648: 20,   # Explicit credentials - worth monitoring
-    4672: 15,   # Special privileges - expected for admins
-    4688: 5,    # Process created - informational
-    4689: 5,    # Process ended - informational
-    4697: 30,   # Service installed via security - more suspicious
-    4719: 45,   # Audit policy change - significant
-    4732: 25,   # Added to group - monitor
-    4733: 20,   # Removed from group - monitor
-    4768: 10,   # Kerberos TGT request - normal
-    4769: 10,   # Kerberos service ticket - normal
-    4771: 20,   # Kerberos preauth failed
-    4776: 15,   # NTLM auth attempt
-
+    4624: 5,  # Successful login - very common
+    4625: 25,  # Failed login - concerning if repeated
+    4634: 5,  # Logoff - informational
+    4648: 20,  # Explicit credentials - worth monitoring
+    4672: 15,  # Special privileges - expected for admins
+    4688: 5,  # Process created - informational
+    4689: 5,  # Process ended - informational
+    4697: 30,  # Service installed via security - more suspicious
+    4719: 45,  # Audit policy change - significant
+    4732: 25,  # Added to group - monitor
+    4733: 20,  # Removed from group - monitor
+    4768: 10,  # Kerberos TGT request - normal
+    4769: 10,  # Kerberos service ticket - normal
+    4771: 20,  # Kerberos preauth failed
+    4776: 15,  # NTLM auth attempt
     # Service events
-    7000: 25,   # Service failed to start
-    7001: 20,   # Service dependency failure
-    7009: 15,   # Service timeout
-    7023: 20,   # Service terminated with error
-    7031: 15,   # Service crash recovered
-    7034: 25,   # Service crashed
-    7036: 5,    # Service state change - informational
-    7040: 10,   # Startup type changed
-    7045: 30,   # New service installed
-
+    7000: 25,  # Service failed to start
+    7001: 20,  # Service dependency failure
+    7009: 15,  # Service timeout
+    7023: 20,  # Service terminated with error
+    7031: 15,  # Service crash recovered
+    7034: 25,  # Service crashed
+    7036: 5,  # Service state change - informational
+    7040: 10,  # Startup type changed
+    7045: 30,  # New service installed
     # Power events
-    41: 35,     # Unexpected shutdown
-    42: 5,      # Sleep - informational
-
+    41: 35,  # Unexpected shutdown
+    42: 5,  # Sleep - informational
     # Defender events
-    1116: 60,   # Malware detected
-    1117: 40,   # Malware action taken
-    1118: 30,   # Malware action failed
-    1119: 20,   # Malware action completed
-
+    1116: 60,  # Malware detected
+    1117: 40,  # Malware action taken
+    1118: 30,  # Malware action failed
+    1119: 20,  # Malware action completed
     # DCOM
-    10016: 5,   # DCOM permission - usually noise
+    10016: 5,  # DCOM permission - usually noise
 }
 
 
@@ -211,9 +209,11 @@ EVENT_BASE_SCORES: dict[int, int] = {
 # CONTEXT ADJUSTMENTS
 # =============================================================================
 
+
 @dataclass
 class ContextFactor:
     """A factor that adjusts threat score based on context."""
+
     name: str
     description: str
     score_adjustment: int
@@ -253,8 +253,8 @@ class AdminAccountFactor(ContextFactor):
 
     def matches(self, event: dict, context: dict) -> bool:
         username = (
-            event.get("fields", {}).get("TargetUserName", "") or
-            event.get("fields", {}).get("SubjectUserName", "")
+            event.get("fields", {}).get("TargetUserName", "")
+            or event.get("fields", {}).get("SubjectUserName", "")
         ).lower()
         return "admin" in username or username == "administrator"
 
@@ -293,15 +293,15 @@ class ExternalIPFactor(ContextFactor):
             return False
         # Check if private IP
         return not (
-            ip.startswith("10.") or
-            ip.startswith("192.168.") or
-            ip.startswith("172.16.") or
-            ip.startswith("172.17.") or
-            ip.startswith("172.18.") or
-            ip.startswith("172.19.") or
-            ip.startswith("172.2") or
-            ip.startswith("172.30.") or
-            ip.startswith("172.31.")
+            ip.startswith("10.")
+            or ip.startswith("192.168.")
+            or ip.startswith("172.16.")
+            or ip.startswith("172.17.")
+            or ip.startswith("172.18.")
+            or ip.startswith("172.19.")
+            or ip.startswith("172.2")
+            or ip.startswith("172.30.")
+            or ip.startswith("172.31.")
         )
 
 
@@ -318,10 +318,11 @@ CONTEXT_FACTORS: list[ContextFactor] = [
 # SCORING ENGINE
 # =============================================================================
 
+
 class EventScoringEngine:
     """
     Scores events based on type, context, and patterns.
-    
+
     Used to prioritize events and determine threat level.
     """
 
@@ -338,12 +339,12 @@ class EventScoringEngine:
     ) -> EventScore:
         """
         Score a single event.
-        
+
         Args:
             event: The event to score
             related_events: Other recent events for correlation
             context: Additional context (user info, time, etc.)
-        
+
         Returns:
             EventScore with breakdown and threat level
         """
@@ -383,7 +384,8 @@ class EventScoringEngine:
         # Count related events within time window
         # Simplified: just check count for now
         related_count = sum(
-            1 for e in related_events
+            1
+            for e in related_events
             if e.get("event_id", e.get("eventId")) in rule.related_event_ids
         )
 
@@ -432,7 +434,6 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             4776: "NTLM authentication - check for pass-the-hash",
         },
     },
-
     7045: {
         "normal_explanation": "Service installation during software updates is expected.",
         "suspicious_explanation": "Unexpected service installation may indicate malware persistence.",
@@ -456,7 +457,6 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             7036: "Service start after installation",
         },
     },
-
     4672: {
         "normal_explanation": "Admin logging in gets special privileges - this is expected.",
         "suspicious_explanation": "Unexpected privilege assignments may indicate escalation attack.",
@@ -479,7 +479,6 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
             4688: "Processes started with elevated privileges",
         },
     },
-
     1116: {
         "normal_explanation": "Defender detected and blocked a threat. The action taken shows if remediation worked.",
         "suspicious_explanation": "Detection indicates malware was present. Verify it was fully removed.",
@@ -508,6 +507,7 @@ SOC_TEMPLATES: dict[int, dict[str, Any]] = {
 
 # Singleton
 _scoring_engine: EventScoringEngine | None = None
+
 
 def get_scoring_engine() -> EventScoringEngine:
     """Get the singleton scoring engine."""

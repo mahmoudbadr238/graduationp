@@ -7,7 +7,6 @@ from the sandbox window to the QML UI at video-like refresh rates.
 
 import logging
 import threading
-from typing import Optional
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtGui import QImage
@@ -19,13 +18,13 @@ logger = logging.getLogger(__name__)
 class SandboxPreviewProvider(QQuickImageProvider):
     """
     QQuickImageProvider that serves sandbox window capture frames.
-    
+
     Usage in QML:
         Image {
             source: "image://sandboxpreview/frame"
             cache: false
         }
-    
+
     Call update_frame() from backend to push new frames.
     """
 
@@ -40,18 +39,18 @@ class SandboxPreviewProvider(QQuickImageProvider):
         """Create a placeholder image for when no frame is available."""
         # Create a dark placeholder with "Waiting for window..." text
         img = QImage(640, 480, QImage.Format.Format_RGB32)
-        img.fill(0xFF1a1a2e)  # Dark blue-gray
+        img.fill(0xFF1A1A2E)  # Dark blue-gray
         return img
 
     def requestImage(self, id: str, size, requestedSize) -> QImage:
         """
         Called by QML to request the current frame.
-        
+
         Args:
             id: Image identifier (ignored, we only have one stream)
             size: Output size (will be set to actual frame size)
             requestedSize: Requested size from QML (may be ignored)
-        
+
         Returns:
             Current frame or placeholder
         """
@@ -63,7 +62,7 @@ class SandboxPreviewProvider(QQuickImageProvider):
     def update_frame(self, data: bytes, width: int, height: int) -> None:
         """
         Update the current frame from BGRA pixel data.
-        
+
         Args:
             data: Raw BGRA pixel data
             width: Frame width
@@ -102,7 +101,7 @@ class SandboxPreviewProvider(QQuickImageProvider):
 class SandboxPreviewController(QObject):
     """
     Controller for sandbox preview that can be exposed to QML.
-    
+
     Manages the preview state and provides signals for UI updates.
     """
 
@@ -154,7 +153,9 @@ class SandboxPreviewController(QObject):
     def set_window_found(self, title: str):
         """Called when the sandbox window is found."""
         self._window_title = title
-        self._status = f"Capturing: {title[:40]}..." if len(title) > 40 else f"Capturing: {title}"
+        self._status = (
+            f"Capturing: {title[:40]}..." if len(title) > 40 else f"Capturing: {title}"
+        )
         self.statusChanged.emit(self._status)
         self.windowFound.emit(title)
 
@@ -208,18 +209,18 @@ def get_preview_controller() -> SandboxPreviewController:
 def register_preview_provider(engine, backend=None) -> SandboxPreviewController:
     """
     Register the preview provider with a QML engine.
-    
+
     Call this during application initialization:
         controller = register_preview_provider(engine, backend)
         engine.rootContext().setContextProperty("SandboxPreview", controller)
-    
+
     Then use in QML:
         Image { source: "image://sandboxpreview/frame?t=" + frameCounter }
-    
+
     Args:
         engine: QQmlApplicationEngine instance
         backend: Optional BackendBridge to connect signals
-    
+
     Returns:
         SandboxPreviewController for QML property binding
     """
@@ -243,7 +244,11 @@ def register_preview_provider(engine, backend=None) -> SandboxPreviewController:
                 backend.sandboxPreviewStopped.connect(controller.stop)
             if hasattr(backend, "sandboxWindowFound"):
                 backend.sandboxWindowFound.connect(
-                    lambda found: controller.set_window_found("Sandbox Window") if found else controller.set_status("Waiting for window...")
+                    lambda found: (
+                        controller.set_window_found("Sandbox Window")
+                        if found
+                        else controller.set_status("Waiting for window...")
+                    )
                 )
         except Exception as e:
             logger.warning(f"Failed to connect backend signals: {e}")

@@ -5,13 +5,13 @@ Provides local, offline file scanning using YARA rules.
 No network dependencies.
 """
 
-import logging
 import importlib
 import importlib.util
+import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,9 @@ def _load_native_yara_extension():
             logger.debug(f"Loaded YARA native extension from {candidate}")
             return module
         except Exception as exc:
-            logger.debug(f"Failed to load YARA native extension from {candidate}: {exc}")
+            logger.debug(
+                f"Failed to load YARA native extension from {candidate}: {exc}"
+            )
             continue
     return None
 
@@ -88,6 +90,7 @@ if not YARA_AVAILABLE and isinstance(_YARA_BOOTSTRAP_ERROR, ImportError):
 @dataclass
 class YaraMatch:
     """Represents a single YARA rule match."""
+
     rule_name: str
     description: str
     severity: str  # low, medium, high, critical
@@ -99,7 +102,7 @@ class YaraMatch:
 class YaraEngine:
     """
     YARA scanning engine for offline malware detection.
-    
+
     Features:
     - Loads rules from app/scanning/yara_rules/
     - Supports custom rule additions
@@ -117,7 +120,7 @@ class YaraEngine:
     def __init__(self, rules_dir: Path | None = None):
         """
         Initialize the YARA engine.
-        
+
         Args:
             rules_dir: Optional path to YARA rules directory.
                       Defaults to app/scanning/yara_rules/
@@ -134,7 +137,9 @@ class YaraEngine:
         if YARA_AVAILABLE:
             self._load_rules()
         else:
-            logger.warning("YARA not available - rule matching disabled (mode=fallback_patterns)")
+            logger.warning(
+                "YARA not available - rule matching disabled (mode=fallback_patterns)"
+            )
 
     def _get_default_rules_dir(self) -> Path:
         """Get the default rules directory."""
@@ -153,7 +158,9 @@ class YaraEngine:
                 return False
 
             # Find all .yar and .yara files
-            rule_files = list(self._rules_dir.glob("*.yar")) + list(self._rules_dir.glob("*.yara"))
+            rule_files = list(self._rules_dir.glob("*.yar")) + list(
+                self._rules_dir.glob("*.yara")
+            )
 
             if not rule_files:
                 logger.warning(f"No YARA rule files found in {self._rules_dir}")
@@ -182,10 +189,10 @@ class YaraEngine:
     def scan_file(self, file_path: str) -> list[YaraMatch]:
         """
         Scan a file with YARA rules.
-        
+
         Args:
             file_path: Path to the file to scan
-            
+
         Returns:
             List of YaraMatch objects for each matching rule
         """
@@ -206,10 +213,10 @@ class YaraEngine:
     def scan_data(self, data: bytes) -> list[YaraMatch]:
         """
         Scan raw bytes with YARA rules.
-        
+
         Args:
             data: Raw bytes to scan
-            
+
         Returns:
             List of YaraMatch objects for each matching rule
         """
@@ -242,13 +249,19 @@ class YaraEngine:
                     if hasattr(string_match, "instances"):
                         for instance in string_match.instances:
                             try:
-                                matched_strings.append(instance.matched_data.decode("utf-8", errors="replace")[:50])
+                                matched_strings.append(
+                                    instance.matched_data.decode(
+                                        "utf-8", errors="replace"
+                                    )[:50]
+                                )
                             except Exception:
                                 matched_strings.append(str(instance)[:50])
                     # Older format: (offset, identifier, data)
                     elif len(string_match) >= 3:
                         try:
-                            matched_strings.append(string_match[2].decode("utf-8", errors="replace")[:50])
+                            matched_strings.append(
+                                string_match[2].decode("utf-8", errors="replace")[:50]
+                            )
                         except Exception:
                             matched_strings.append(str(string_match[2])[:50])
 
@@ -258,7 +271,7 @@ class YaraEngine:
                 severity=meta.get("severity", "medium"),
                 category=meta.get("category", "unknown"),
                 matched_strings=matched_strings[:5],  # Limit to 5 examples
-                tags=list(match.tags) if hasattr(match, "tags") else []
+                tags=list(match.tags) if hasattr(match, "tags") else [],
             )
             results.append(yara_match)
 
@@ -267,10 +280,10 @@ class YaraEngine:
     def calculate_score(self, matches: list[YaraMatch]) -> int:
         """
         Calculate a score from YARA matches.
-        
+
         Args:
             matches: List of YaraMatch objects
-            
+
         Returns:
             Score from 0-100 based on match severity
         """
@@ -288,23 +301,25 @@ class YaraEngine:
     def get_findings(self, matches: list[YaraMatch]) -> list[dict[str, Any]]:
         """
         Convert YARA matches to finding dictionaries.
-        
+
         Args:
             matches: List of YaraMatch objects
-            
+
         Returns:
             List of finding dictionaries suitable for reports
         """
         findings = []
 
         for match in matches:
-            findings.append({
-                "title": f"YARA: {match.rule_name}",
-                "detail": match.description,
-                "severity": match.severity,
-                "category": match.category,
-                "matched_strings": match.matched_strings,
-            })
+            findings.append(
+                {
+                    "title": f"YARA: {match.rule_name}",
+                    "detail": match.description,
+                    "severity": match.severity,
+                    "category": match.category,
+                    "matched_strings": match.matched_strings,
+                }
+            )
 
         return findings
 
@@ -323,31 +338,25 @@ class FallbackPatternScanner:
         (rb"Invoke-Expression", "PowerShell code execution", "high"),
         (rb"DownloadString", "PowerShell download", "high"),
         (rb"Net\.WebClient", "Network download capability", "medium"),
-
         # Process injection
         (rb"VirtualAllocEx", "Memory allocation (injection)", "critical"),
         (rb"WriteProcessMemory", "Process memory write", "critical"),
         (rb"CreateRemoteThread", "Remote thread creation", "critical"),
-
         # Registry persistence
         (rb"CurrentVersion\\Run", "Registry persistence", "high"),
         (rb"reg add", "Registry modification", "medium"),
         (rb"schtasks", "Scheduled task creation", "high"),
-
         # Credential access
         (rb"mimikatz", "Credential dumping tool", "critical"),
         (rb"sekurlsa", "Credential extraction", "critical"),
         (rb"lsass", "LSASS access", "high"),
-
         # Security bypass
         (rb"DisableRealtimeMonitoring", "Disable antivirus", "critical"),
         (rb"Set-MpPreference", "Defender modification", "high"),
-
         # Ransomware indicators
         (rb"encrypt", "Encryption functionality", "medium"),
         (rb"ransom", "Ransomware indicator", "critical"),
         (rb"bitcoin", "Cryptocurrency reference", "medium"),
-
         # Network
         (rb"TCPClient", "Network connection", "low"),
         (rb"System\.Net\.Sockets", "Socket programming", "low"),
@@ -360,12 +369,14 @@ class FallbackPatternScanner:
         for pattern, description, severity in self.PATTERNS:
             try:
                 if pattern.lower() in data.lower():
-                    findings.append({
-                        "title": f"Pattern: {description}",
-                        "detail": "Found suspicious pattern in file",
-                        "severity": severity,
-                        "category": "pattern_match",
-                    })
+                    findings.append(
+                        {
+                            "title": f"Pattern: {description}",
+                            "detail": "Found suspicious pattern in file",
+                            "severity": severity,
+                            "category": "pattern_match",
+                        }
+                    )
             except Exception:
                 continue
 

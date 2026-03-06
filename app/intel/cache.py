@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CacheEntry:
     """A cached intelligence result."""
+
     key: str
     provider: str  # "virustotal", "abuseipdb", etc.
     lookup_type: str  # "file_hash", "url", "ip", "domain"
@@ -39,7 +40,7 @@ class CacheEntry:
 class IntelCache:
     """
     Thread-safe persistent cache for threat intelligence.
-    
+
     Uses SQLite for durability and fast lookups.
     Default TTL: 24 hours for most results, 1 hour for "unknown".
     """
@@ -100,20 +101,15 @@ class IntelCache:
         data = f"{provider}:{lookup_type}:{normalized}"
         return hashlib.sha256(data.encode()).hexdigest()
 
-    def get(
-        self,
-        provider: str,
-        lookup_type: str,
-        value: str
-    ) -> CacheEntry | None:
+    def get(self, provider: str, lookup_type: str, value: str) -> CacheEntry | None:
         """
         Get a cached result if available and not expired.
-        
+
         Args:
             provider: Service name (virustotal, abuseipdb, etc.)
             lookup_type: Type of lookup (file_hash, url, ip, domain)
             value: The actual value looked up (hash, url, etc.)
-        
+
         Returns:
             CacheEntry if found and valid, None otherwise
         """
@@ -122,10 +118,7 @@ class IntelCache:
         try:
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                cursor = conn.execute(
-                    "SELECT * FROM intel_cache WHERE key = ?",
-                    (key,)
-                )
+                cursor = conn.execute("SELECT * FROM intel_cache WHERE key = ?", (key,))
                 row = cursor.fetchone()
 
                 if row is None:
@@ -166,7 +159,7 @@ class IntelCache:
     ) -> None:
         """
         Cache an intelligence result.
-        
+
         Args:
             provider: Service name
             lookup_type: Type of lookup
@@ -188,20 +181,23 @@ class IntelCache:
 
         try:
             with sqlite3.connect(self._db_path) as conn:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT OR REPLACE INTO intel_cache 
                     (key, provider, lookup_type, result, verdict, score, timestamp, ttl_hours)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    key,
-                    provider,
-                    lookup_type,
-                    json.dumps(result),
-                    verdict,
-                    score,
-                    time.time(),
-                    ttl_hours,
-                ))
+                """,
+                    (
+                        key,
+                        provider,
+                        lookup_type,
+                        json.dumps(result),
+                        verdict,
+                        score,
+                        time.time(),
+                        ttl_hours,
+                    ),
+                )
                 conn.commit()
         except Exception as e:
             logger.error(f"Cache set error: {e}")
@@ -211,10 +207,13 @@ class IntelCache:
         try:
             with sqlite3.connect(self._db_path) as conn:
                 # Delete entries where timestamp + (ttl_hours * 3600) < now
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     DELETE FROM intel_cache 
                     WHERE timestamp + (ttl_hours * 3600) < ?
-                """, (time.time(),))
+                """,
+                    (time.time(),),
+                )
                 conn.commit()
                 return cursor.rowcount
         except Exception as e:
@@ -233,6 +232,7 @@ class IntelCache:
 
 # Singleton getter
 _cache: IntelCache | None = None
+
 
 def get_intel_cache() -> IntelCache:
     """Get the singleton intel cache instance."""

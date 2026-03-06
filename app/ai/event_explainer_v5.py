@@ -22,7 +22,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
@@ -175,7 +175,9 @@ class ExplanationWorker(QRunnable):
         # Check persistent cache first
         if self.db_repo and hasattr(self.db_repo, "get_event_explanation"):
             cached = self.db_repo.get_event_explanation(
-                provider, event_id, message_hash,
+                provider,
+                event_id,
+                message_hash,
                 detail_level=self.detail_level,
             )
             if cached:
@@ -231,9 +233,13 @@ class ExplanationWorker(QRunnable):
                     technical_brief=td.get("technical_brief", ""),
                     # New brief fields from response
                     brief_user=td.get("brief_user", response.answer),
-                    brief_technical=td.get("brief_technical", td.get("technical_brief", "")),
+                    brief_technical=td.get(
+                        "brief_technical", td.get("technical_brief", "")
+                    ),
                     confidence=td.get("confidence", 0.9),
-                    evidence=td.get("evidence", [f"Event {event_id}", f"Provider: {provider}"]),
+                    evidence=td.get(
+                        "evidence", [f"Event {event_id}", f"Provider: {provider}"]
+                    ),
                     detail_level=self.detail_level,
                     source="groq",
                     latency_ms=response.latency_ms,
@@ -247,7 +253,9 @@ class ExplanationWorker(QRunnable):
                 # Save to persistent cache
                 if self.db_repo and hasattr(self.db_repo, "save_event_explanation"):
                     self.db_repo.save_event_explanation(
-                        provider, event_id, message_hash,
+                        provider,
+                        event_id,
+                        message_hash,
                         result.to_dict(),
                         detail_level=self.detail_level,
                         ai_provider="groq",
@@ -280,7 +288,9 @@ class ExplanationWorker(QRunnable):
                 brief_user=brief_user,
                 brief_technical=brief_technical,
                 confidence=0.85 if self.kb_explanation.get("matched") else 0.5,
-                evidence=[f"KB matched: {kb_title}"] if self.kb_explanation.get("matched") else [],
+                evidence=[f"KB matched: {kb_title}"]
+                if self.kb_explanation.get("matched")
+                else [],
                 detail_level=self.detail_level,
                 source="local_kb",
                 event_id=event_id,
@@ -311,7 +321,7 @@ class ExplanationWorker(QRunnable):
 class EventExplainerV5(QObject):
     """
     Event explainer with Groq AI and persistent caching.
-    
+
     Pipeline:
     1. explain_event_instant() - Offline KB lookup (UI thread safe)
     2. explain_event_async() - AI enhancement in background thread
@@ -337,6 +347,7 @@ class EventExplainerV5(QObject):
         """Initialize the offline rules engine."""
         try:
             from .event_rules_engine import EventRulesEngine
+
             self._rules_engine = EventRulesEngine()
             logger.info("EventRulesEngine initialized for V5 explainer")
         except Exception as e:
@@ -345,12 +356,12 @@ class EventExplainerV5(QObject):
     def explain_event_instant(self, event_dict: dict[str, Any]) -> ExplanationResult:
         """
         Get instant explanation using offline rules engine.
-        
+
         This is safe to call on the UI thread - no blocking, no network.
-        
+
         Args:
             event_dict: Event data with event_id, provider, level, message
-        
+
         Returns:
             ExplanationResult with KB-based explanation
         """
@@ -401,13 +412,13 @@ class EventExplainerV5(QObject):
     ) -> str:
         """
         Request AI-enhanced explanation in background.
-        
+
         Emits explanationReady or explanationFailed when done.
-        
+
         Args:
             event_dict: Event data
             detail_level: "full" or "simple"
-        
+
         Returns:
             request_id for tracking/cancellation
         """
@@ -449,10 +460,10 @@ class EventExplainerV5(QObject):
     def cancel_request(self, request_id: str) -> bool:
         """
         Cancel a pending explanation request.
-        
+
         Args:
             request_id: ID from explain_event_async
-        
+
         Returns:
             True if request was found and cancelled
         """

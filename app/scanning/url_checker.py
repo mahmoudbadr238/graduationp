@@ -14,7 +14,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class URLCheckResult:
     """Result from URL analysis."""
+
     # Input
     original_url: str
     normalized_url: str
@@ -46,7 +47,7 @@ class URLCheckResult:
 class URLChecker:
     """
     Local URL security checker.
-    
+
     Features:
     - Heuristic analysis (no network)
     - Local blocklist/allowlist
@@ -58,7 +59,7 @@ class URLChecker:
     def __init__(self, lists_dir: Path | None = None):
         """
         Initialize the URL checker.
-        
+
         Args:
             lists_dir: Optional path to URL lists directory.
                       Defaults to app/scanning/url_lists/
@@ -85,8 +86,10 @@ class URLChecker:
         self._allowlist_domains = self._load_list("allowlist_domains.txt")
         self._suspicious_tlds = self._load_list("suspicious_tlds.txt")
 
-        logger.info(f"Loaded URL lists: {len(self._blocked_domains)} blocked domains, "
-                   f"{len(self._allowlist_domains)} allowed domains")
+        logger.info(
+            f"Loaded URL lists: {len(self._blocked_domains)} blocked domains, "
+            f"{len(self._allowlist_domains)} allowed domains"
+        )
 
     def _load_list(self, filename: str) -> set[str]:
         """Load a list file, returning a set of entries."""
@@ -112,10 +115,10 @@ class URLChecker:
     def check_url(self, url: str) -> URLCheckResult:
         """
         Analyze a URL for security concerns.
-        
+
         Args:
             url: The URL to analyze
-            
+
         Returns:
             URLCheckResult with analysis details
         """
@@ -152,22 +155,26 @@ class URLChecker:
         # Check blocklist first
         if self._is_blocked(domain):
             result.is_blocked = True
-            result.reasons.append({
-                "title": "Domain in blocklist",
-                "detail": f"Domain '{domain}' is in the local blocklist",
-                "severity": "critical",
-                "score": 50
-            })
+            result.reasons.append(
+                {
+                    "title": "Domain in blocklist",
+                    "detail": f"Domain '{domain}' is in the local blocklist",
+                    "severity": "critical",
+                    "score": 50,
+                }
+            )
 
         # Check allowlist
         if self._is_allowlisted(domain):
             result.is_allowlisted = True
-            result.reasons.append({
-                "title": "Domain in allowlist",
-                "detail": f"Domain '{domain}' is in the trusted allowlist",
-                "severity": "info",
-                "score": -20
-            })
+            result.reasons.append(
+                {
+                    "title": "Domain in allowlist",
+                    "detail": f"Domain '{domain}' is in the trusted allowlist",
+                    "severity": "info",
+                    "score": -20,
+                }
+            )
 
         # Heuristic checks
         self._check_suspicious_tld(result, tld)
@@ -266,12 +273,14 @@ class URLChecker:
     def _check_suspicious_tld(self, result: URLCheckResult, tld: str) -> None:
         """Check for suspicious TLDs."""
         if tld.lower() in self._suspicious_tlds:
-            result.reasons.append({
-                "title": "Suspicious TLD",
-                "detail": f"TLD '{tld}' is commonly used for malicious purposes",
-                "severity": "medium",
-                "score": 15
-            })
+            result.reasons.append(
+                {
+                    "title": "Suspicious TLD",
+                    "detail": f"TLD '{tld}' is commonly used for malicious purposes",
+                    "severity": "medium",
+                    "score": 15,
+                }
+            )
 
     def _check_ip_literal(self, result: URLCheckResult, domain: str) -> None:
         """Check if domain is an IP address."""
@@ -281,22 +290,26 @@ class URLChecker:
         # IPv4 check
         ipv4_pattern = r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
         if re.match(ipv4_pattern, host):
-            result.reasons.append({
-                "title": "IP Address URL",
-                "detail": "URL uses IP address instead of domain name",
-                "severity": "high",
-                "score": 20
-            })
+            result.reasons.append(
+                {
+                    "title": "IP Address URL",
+                    "detail": "URL uses IP address instead of domain name",
+                    "severity": "high",
+                    "score": 20,
+                }
+            )
 
     def _check_url_length(self, result: URLCheckResult, url: str) -> None:
         """Check for excessively long URLs."""
         if len(url) > 200:
-            result.reasons.append({
-                "title": "Excessively Long URL",
-                "detail": f"URL length ({len(url)} chars) may indicate obfuscation",
-                "severity": "low",
-                "score": 5
-            })
+            result.reasons.append(
+                {
+                    "title": "Excessively Long URL",
+                    "detail": f"URL length ({len(url)} chars) may indicate obfuscation",
+                    "severity": "low",
+                    "score": 5,
+                }
+            )
 
     def _check_subdomain_count(self, result: URLCheckResult, domain: str) -> None:
         """Check for excessive subdomains."""
@@ -305,23 +318,27 @@ class URLChecker:
         parts = host.split(".")
 
         if len(parts) > 4:
-            result.reasons.append({
-                "title": "Excessive Subdomains",
-                "detail": f"{len(parts)} domain levels may indicate spoofing",
-                "severity": "medium",
-                "score": 10
-            })
+            result.reasons.append(
+                {
+                    "title": "Excessive Subdomains",
+                    "detail": f"{len(parts)} domain levels may indicate spoofing",
+                    "severity": "medium",
+                    "score": 10,
+                }
+            )
 
     def _check_at_symbol(self, result: URLCheckResult, url: str) -> None:
         """Check for @ symbol in URL (credential attack)."""
         parsed = urlparse(url)
         if "@" in parsed.netloc:
-            result.reasons.append({
-                "title": "@ Symbol in URL",
-                "detail": "URL contains @ which may hide true destination",
-                "severity": "high",
-                "score": 25
-            })
+            result.reasons.append(
+                {
+                    "title": "@ Symbol in URL",
+                    "detail": "URL contains @ which may hide true destination",
+                    "severity": "high",
+                    "score": 25,
+                }
+            )
 
     def _check_unicode_confusables(self, result: URLCheckResult, domain: str) -> None:
         """Check for Unicode confusable characters."""
@@ -349,12 +366,14 @@ class URLChecker:
                 found.append(confusables[char])
 
         if found:
-            result.reasons.append({
-                "title": "Unicode Confusable Characters",
-                "detail": f"Domain contains look-alike characters: {', '.join(found[:3])}",
-                "severity": "critical",
-                "score": 35
-            })
+            result.reasons.append(
+                {
+                    "title": "Unicode Confusable Characters",
+                    "detail": f"Domain contains look-alike characters: {', '.join(found[:3])}",
+                    "severity": "critical",
+                    "score": 35,
+                }
+            )
 
     def _check_percent_encoding(self, result: URLCheckResult, url: str) -> None:
         """Check for suspicious percent encoding."""
@@ -362,12 +381,14 @@ class URLChecker:
         encoded_count = url.count("%")
 
         if encoded_count > 10:
-            result.reasons.append({
-                "title": "Heavy URL Encoding",
-                "detail": f"{encoded_count} encoded characters may indicate obfuscation",
-                "severity": "medium",
-                "score": 12
-            })
+            result.reasons.append(
+                {
+                    "title": "Heavy URL Encoding",
+                    "detail": f"{encoded_count} encoded characters may indicate obfuscation",
+                    "severity": "medium",
+                    "score": 12,
+                }
+            )
 
     def _check_suspicious_keywords(self, result: URLCheckResult, url: str) -> None:
         """Check for suspicious keywords in URL."""
@@ -379,12 +400,14 @@ class URLChecker:
                 found_keywords.append(keyword)
 
         if found_keywords:
-            result.reasons.append({
-                "title": "Suspicious Keywords",
-                "detail": f"URL contains suspicious patterns: {', '.join(found_keywords[:3])}",
-                "severity": "medium",
-                "score": 8 * min(len(found_keywords), 3)
-            })
+            result.reasons.append(
+                {
+                    "title": "Suspicious Keywords",
+                    "detail": f"URL contains suspicious patterns: {', '.join(found_keywords[:3])}",
+                    "severity": "medium",
+                    "score": 8 * min(len(found_keywords), 3),
+                }
+            )
 
     def _check_executable_download(self, result: URLCheckResult, path: str) -> None:
         """Check if URL points to executable download."""
@@ -406,12 +429,14 @@ class URLChecker:
         path_lower = path.lower()
         for ext, desc in dangerous_extensions.items():
             if path_lower.endswith(ext):
-                result.reasons.append({
-                    "title": f"Executable Download: {ext}",
-                    "detail": f"URL points to {desc} download",
-                    "severity": "high",
-                    "score": 20
-                })
+                result.reasons.append(
+                    {
+                        "title": f"Executable Download: {ext}",
+                        "detail": f"URL points to {desc} download",
+                        "severity": "high",
+                        "score": 20,
+                    }
+                )
                 break
 
     def _check_typosquatting(self, result: URLCheckResult, domain: str) -> None:
@@ -435,12 +460,14 @@ class URLChecker:
             if re.search(pattern, domain_lower):
                 real_domain = brand.lower().replace(" ", "") + ".com"
                 if real_domain not in domain_lower:
-                    result.reasons.append({
-                        "title": f"Possible Typosquatting: {brand}",
-                        "detail": f"Domain resembles {brand} but isn't official",
-                        "severity": "high",
-                        "score": 25
-                    })
+                    result.reasons.append(
+                        {
+                            "title": f"Possible Typosquatting: {brand}",
+                            "detail": f"Domain resembles {brand} but isn't official",
+                            "severity": "high",
+                            "score": 25,
+                        }
+                    )
                     break
 
     def _check_suspicious_port(self, result: URLCheckResult, domain: str) -> None:
@@ -449,12 +476,14 @@ class URLChecker:
             try:
                 port = int(domain.split(":")[1])
                 if port not in [80, 443, 8080, 8443]:
-                    result.reasons.append({
-                        "title": "Non-Standard Port",
-                        "detail": f"URL uses port {port} which is unusual",
-                        "severity": "low",
-                        "score": 5
-                    })
+                    result.reasons.append(
+                        {
+                            "title": "Non-Standard Port",
+                            "detail": f"URL uses port {port} which is unusual",
+                            "severity": "low",
+                            "score": 5,
+                        }
+                    )
             except Exception:
                 pass
 
@@ -467,12 +496,14 @@ class URLChecker:
             main_part = ".".join(parts[:-1])
             digits = sum(c.isdigit() for c in main_part)
             if len(main_part) > 5 and digits / len(main_part) > 0.5:
-                result.reasons.append({
-                    "title": "Heavily Numeric Domain",
-                    "detail": "Domain contains excessive numbers",
-                    "severity": "medium",
-                    "score": 10
-                })
+                result.reasons.append(
+                    {
+                        "title": "Heavily Numeric Domain",
+                        "detail": "Domain contains excessive numbers",
+                        "severity": "medium",
+                        "score": 10,
+                    }
+                )
 
     def _calculate_score(self, result: URLCheckResult) -> int:
         """Calculate overall score from reasons."""

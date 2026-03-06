@@ -6,7 +6,7 @@ import platform
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class SecurityInfo:
             return SecurityInfo._is_admin
         try:
             import ctypes
+
             SecurityInfo._is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
         except Exception:
             SecurityInfo._is_admin = False
@@ -682,11 +683,14 @@ class SecurityInfo:
         """
         # Check cache first
         now = time.time()
-        if SecurityInfo._cache and (now - SecurityInfo._cache_time) < SecurityInfo._cache_ttl:
+        if (
+            SecurityInfo._cache
+            and (now - SecurityInfo._cache_time) < SecurityInfo._cache_ttl
+        ):
             return SecurityInfo._cache
 
         # Check if running as admin
-        is_admin = SecurityInfo._check_admin()
+        SecurityInfo._check_admin()
 
         # Run all queries in parallel for speed
         results = {}

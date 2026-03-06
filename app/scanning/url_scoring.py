@@ -6,7 +6,7 @@ Maps score to verdict and generates summary.
 
 Score Ranges:
     0-20:   Safe - No significant risk indicators
-    21-50:  Suspicious - Some concerning indicators, review recommended  
+    21-50:  Suspicious - Some concerning indicators, review recommended
     51-80:  Likely Malicious - Multiple threat indicators detected
     81-100: Malicious - High confidence threat detection
 """
@@ -30,7 +30,6 @@ EVIDENCE_WEIGHTS = {
         "low": 5,
         "info": 0,
     },
-
     # Title-based specific weights (override severity-based)
     "title_keywords": {
         # Structure issues
@@ -41,12 +40,10 @@ EVIDENCE_WEIGHTS = {
         "localhost": 30,
         "private": 30,
         "suspicious tld": 12,
-
         # Redirect issues
         "multiple redirects": 10,
         "excessive redirects": 25,
         "javascript redirect": 15,
-
         # Content issues
         "download content": 25,
         "download attempt": 35,
@@ -57,16 +54,13 @@ EVIDENCE_WEIGHTS = {
         "obfuscation": 15,
         "cryptocurrency": 10,
         "brand name": 15,
-
         # Security issues
         "ssl": 20,
         "tls": 20,
         "certificate": 20,
-
         # Behavior issues
         "popup": 12,
         "excessive navigation": 10,
-
         # YARA matches
         "yara": 30,
     },
@@ -96,7 +90,7 @@ class UrlScoringResult:
 class UrlScorer:
     """
     Calculates threat scores for URL scan results.
-    
+
     Uses evidence items and their severities/categories to compute
     an overall threat score and verdict.
     """
@@ -107,10 +101,10 @@ class UrlScorer:
     def score(self, scan_result: dict) -> UrlScoringResult:
         """
         Calculate threat score from URL scan result.
-        
+
         Args:
             scan_result: Output from UrlScanner.scan_static() or scan_sandbox()
-        
+
         Returns:
             UrlScoringResult with score, verdict, and breakdown
         """
@@ -138,7 +132,9 @@ class UrlScorer:
         signals = scan_result.get("signals", {})
 
         # YARA matches
-        yara_count = signals.get("yara_matches", 0) or len(scan_result.get("yara_matches", []))
+        yara_count = signals.get("yara_matches", 0) or len(
+            scan_result.get("yara_matches", [])
+        )
         if yara_count > 0:
             yara_pts = min(yara_count * 30, 50)
             if "yara_matches" not in self._breakdown:
@@ -180,11 +176,11 @@ class UrlScorer:
         if hasattr(evidence, "title"):
             title = evidence.title.lower()
             severity = evidence.severity.lower()
-            category = getattr(evidence, "category", "general")
+            getattr(evidence, "category", "general")
         else:
             title = str(evidence.get("title", "")).lower()
             severity = str(evidence.get("severity", "info")).lower()
-            category = evidence.get("category", "general")
+            evidence.get("category", "general")
 
         # Check for keyword-based scoring
         points = 0
@@ -222,7 +218,7 @@ class UrlScorer:
     def _build_summary(self, scan_result: dict, score: int, verdict_label: str) -> str:
         """Build one-line summary."""
         input_url = scan_result.get("input_url", "")
-        final_url = scan_result.get("final_url", input_url)
+        scan_result.get("final_url", input_url)
         evidence_count = len(scan_result.get("evidence", []))
         redirect_count = len(scan_result.get("redirects", []))
         sandbox_used = scan_result.get("sandbox_used", False)
@@ -256,10 +252,10 @@ class UrlScorer:
 def score_url_scan(scan_result: dict) -> UrlScoringResult:
     """
     Convenience function to score URL scan results.
-    
+
     Args:
         scan_result: Output from UrlScanner methods
-    
+
     Returns:
         UrlScoringResult with threat assessment
     """

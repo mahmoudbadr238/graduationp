@@ -7,9 +7,21 @@ def test_pe_with_generic_indicators_is_not_forced_malicious():
     """Generic URL/IP-style indicators on PE binaries should not auto-score as malicious."""
     static_result = {
         "yara_matches": [
-            {"rule": "Suspicious_URL_Pattern", "severity": "low", "category": "indicator"},
-            {"rule": "Suspicious_IP_Address", "severity": "low", "category": "indicator"},
-            {"rule": "Suspicious_Base64_Blob", "severity": "medium", "category": "obfuscation"},
+            {
+                "rule": "Suspicious_URL_Pattern",
+                "severity": "low",
+                "category": "indicator",
+            },
+            {
+                "rule": "Suspicious_IP_Address",
+                "severity": "low",
+                "category": "indicator",
+            },
+            {
+                "rule": "Suspicious_Base64_Blob",
+                "severity": "medium",
+                "category": "obfuscation",
+            },
         ],
         "pe_info": {"is_pe": True},
         "iocs": {
@@ -29,9 +41,21 @@ def test_high_confidence_yara_still_scores_high():
     """High/critical YARA hits still produce a high-risk verdict."""
     static_result = {
         "yara_matches": [
-            {"rule": "Suspicious_Process_Injection", "severity": "critical", "category": "defense_evasion"},
-            {"rule": "Suspicious_Credential_Access", "severity": "critical", "category": "credential_access"},
-            {"rule": "Suspicious_Disable_Security", "severity": "high", "category": "defense_evasion"},
+            {
+                "rule": "Suspicious_Process_Injection",
+                "severity": "critical",
+                "category": "defense_evasion",
+            },
+            {
+                "rule": "Suspicious_Credential_Access",
+                "severity": "critical",
+                "category": "credential_access",
+            },
+            {
+                "rule": "Suspicious_Disable_Security",
+                "severity": "high",
+                "category": "defense_evasion",
+            },
         ],
         "pe_info": {"is_pe": True},
         "iocs": {},

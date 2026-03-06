@@ -34,6 +34,7 @@ _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 # Data Classes
 # ============================================================================
 
+
 @dataclass
 class DefenderStatus:
     """Windows Defender status from Get-MpComputerStatus and Get-MpPreference."""
@@ -161,6 +162,7 @@ class SecuritySnapshot:
 # PowerShell Queries
 # ============================================================================
 
+
 def _run_powershell(cmd: str, timeout: int = 8) -> tuple[bool, str]:
     """Run PowerShell command and return (success, output)."""
     if not _IS_WINDOWS:
@@ -234,21 +236,31 @@ def _get_defender_status() -> DefenderStatus:
 
             status.query_success = True
             status.antivirus_enabled = data.get("AntivirusEnabled", False) or False
-            status.realtime_protection = data.get("RealTimeProtectionEnabled", False) or False
+            status.realtime_protection = (
+                data.get("RealTimeProtectionEnabled", False) or False
+            )
             status.tamper_protection = data.get("IsTamperProtected")
-            status.behavior_monitoring = data.get("BehaviorMonitorEnabled", False) or False
+            status.behavior_monitoring = (
+                data.get("BehaviorMonitorEnabled", False) or False
+            )
 
             # Signature info
             sig_age = data.get("AntivirusSignatureAge")
             if sig_age is not None:
                 status.signature_age_days = int(sig_age)
 
-            status.signature_version = data.get("AntivirusSignatureVersion", "Unknown") or "Unknown"
+            status.signature_version = (
+                data.get("AntivirusSignatureVersion", "Unknown") or "Unknown"
+            )
             status.engine_version = data.get("AMEngineVersion", "Unknown") or "Unknown"
-            status.definitions_current = not (data.get("DefenderSignaturesOutOfDate", True) or False)
+            status.definitions_current = not (
+                data.get("DefenderSignaturesOutOfDate", True) or False
+            )
 
             # Scan info
-            status.last_quick_scan = data.get("LastQuickScanTime", "Unknown") or "Unknown"
+            status.last_quick_scan = (
+                data.get("LastQuickScanTime", "Unknown") or "Unknown"
+            )
             status.last_full_scan = data.get("LastFullScanTime", "Unknown") or "Unknown"
             status.full_scan_required = data.get("FullScanRequired", False) or False
             status.quick_scan_overdue = data.get("QuickScanOverdue", False) or False
@@ -327,14 +339,14 @@ def _get_firewall_status() -> FirewallStatus:
                     status.disabled_profiles.append(profile.get("Name", name))
 
             status.all_profiles_enabled = (
-                status.domain_enabled and
-                status.private_enabled and
-                status.public_enabled
+                status.domain_enabled
+                and status.private_enabled
+                and status.public_enabled
             )
             status.any_profile_disabled = (
-                not status.domain_enabled or
-                not status.private_enabled or
-                not status.public_enabled
+                not status.domain_enabled
+                or not status.private_enabled
+                or not status.public_enabled
             )
 
         except json.JSONDecodeError as e:
@@ -351,6 +363,7 @@ def _check_admin() -> bool:
         return False
     try:
         import ctypes
+
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
     except Exception:
         return False
@@ -377,12 +390,18 @@ def _assess_overall_status(snapshot: SecuritySnapshot) -> tuple[str, list[str]]:
             critical += 1
 
         if snapshot.defender.definitions_current:
-            findings.append(f"✅ Virus definitions are current (age: {snapshot.defender.signature_age_days} days)")
+            findings.append(
+                f"✅ Virus definitions are current (age: {snapshot.defender.signature_age_days} days)"
+            )
         elif snapshot.defender.signature_age_days > 7:
-            findings.append(f"⚠️ Virus definitions are {snapshot.defender.signature_age_days} days old")
+            findings.append(
+                f"⚠️ Virus definitions are {snapshot.defender.signature_age_days} days old"
+            )
             issues += 1
         elif snapshot.defender.signature_age_days >= 0:
-            findings.append(f"✅ Virus definitions are {snapshot.defender.signature_age_days} days old")
+            findings.append(
+                f"✅ Virus definitions are {snapshot.defender.signature_age_days} days old"
+            )
 
         if snapshot.defender.tamper_protection is True:
             findings.append("✅ Tamper protection is ON")
@@ -400,11 +419,15 @@ def _assess_overall_status(snapshot: SecuritySnapshot) -> tuple[str, list[str]]:
     # Check Firewall
     if snapshot.firewall.query_success:
         if snapshot.firewall.all_profiles_enabled:
-            findings.append("✅ All firewall profiles are enabled (Domain, Private, Public)")
+            findings.append(
+                "✅ All firewall profiles are enabled (Domain, Private, Public)"
+            )
         elif snapshot.firewall.enabled_profiles:
             enabled = ", ".join(snapshot.firewall.enabled_profiles)
             disabled = ", ".join(snapshot.firewall.disabled_profiles)
-            findings.append(f"⚠️ Firewall partially enabled: {enabled} ON, {disabled} OFF")
+            findings.append(
+                f"⚠️ Firewall partially enabled: {enabled} ON, {disabled} OFF"
+            )
             issues += 1
         else:
             findings.append("❌ All firewall profiles are disabled")
@@ -427,6 +450,7 @@ def _assess_overall_status(snapshot: SecuritySnapshot) -> tuple[str, list[str]]:
 # ============================================================================
 # Cached Snapshot Manager
 # ============================================================================
+
 
 class SecuritySnapshotManager:
     """Manager for security snapshot with caching."""
@@ -453,24 +477,34 @@ class SecuritySnapshotManager:
     def get_snapshot(self, force_refresh: bool = False) -> SecuritySnapshot:
         """
         Get security snapshot (cached for 5-10 seconds).
-        
+
         Args:
             force_refresh: Force a fresh collection, ignoring cache
-        
+
         Returns:
             SecuritySnapshot with current status
         """
         now = time.time()
 
         # Return cached if valid
-        if not force_refresh and self._cache and (now - self._cache_time) < self._cache_ttl:
-            logger.debug(f"Returning cached snapshot (age: {now - self._cache_time:.1f}s)")
+        if (
+            not force_refresh
+            and self._cache
+            and (now - self._cache_time) < self._cache_ttl
+        ):
+            logger.debug(
+                f"Returning cached snapshot (age: {now - self._cache_time:.1f}s)"
+            )
             return self._cache
 
         # Collect new snapshot
         with self._collection_lock:
             # Double-check cache (another thread may have updated it)
-            if not force_refresh and self._cache and (now - self._cache_time) < self._cache_ttl:
+            if (
+                not force_refresh
+                and self._cache
+                and (now - self._cache_time) < self._cache_ttl
+            ):
                 return self._cache
 
             start = time.time()
@@ -481,7 +515,9 @@ class SecuritySnapshotManager:
             self._cache = snapshot
             self._cache_time = time.time()
 
-            logger.info(f"Security snapshot collected in {snapshot.collection_time_ms}ms")
+            logger.info(
+                f"Security snapshot collected in {snapshot.collection_time_ms}ms"
+            )
             return snapshot
 
     def _collect_snapshot(self) -> SecuritySnapshot:
@@ -495,7 +531,9 @@ class SecuritySnapshotManager:
         snapshot.firewall = _get_firewall_status()
 
         # Assess overall status
-        snapshot.overall_status, snapshot.key_findings = _assess_overall_status(snapshot)
+        snapshot.overall_status, snapshot.key_findings = _assess_overall_status(
+            snapshot
+        )
 
         return snapshot
 
@@ -509,17 +547,18 @@ class SecuritySnapshotManager:
 # Public API
 # ============================================================================
 
+
 def get_security_snapshot(force_refresh: bool = False) -> SecuritySnapshot:
     """
     Get current security snapshot (cached for 5-10 seconds).
-    
+
     Collects:
     - Windows Defender status (real-time protection, signatures, scans)
     - Windows Firewall status (all profiles, policies)
-    
+
     Args:
         force_refresh: Force fresh collection, ignoring cache
-    
+
     Returns:
         SecuritySnapshot with current status
     """
@@ -535,10 +574,11 @@ def get_security_snapshot_json(force_refresh: bool = False) -> str:
 def prewarm_security_snapshot() -> None:
     """
     Pre-warm the security snapshot cache in a background thread.
-    
+
     Call this at app startup to avoid delay on first chatbot security question.
     The PowerShell queries can take 3-5 seconds on first call.
     """
+
     def _prewarm():
         try:
             manager = SecuritySnapshotManager.get_instance()
@@ -547,7 +587,9 @@ def prewarm_security_snapshot() -> None:
         except Exception as e:
             logger.warning(f"Security snapshot pre-warm failed: {e}")
 
-    thread = threading.Thread(target=_prewarm, daemon=True, name="SecuritySnapshotPrewarm")
+    thread = threading.Thread(
+        target=_prewarm, daemon=True, name="SecuritySnapshotPrewarm"
+    )
     thread.start()
 
 
@@ -555,10 +597,11 @@ def prewarm_security_snapshot() -> None:
 # Response Templates
 # ============================================================================
 
+
 def generate_defender_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
     """
     Generate deterministic response template for Defender questions.
-    
+
     Returns dict with:
         - quick_status: 2-4 bullet lines
         - what_this_means: 3-6 sentences
@@ -584,11 +627,18 @@ def generate_defender_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
             if defender.signature_age_days <= 1:
                 quick_status.append("✅ Definitions: Up to date")
             elif defender.signature_age_days <= 7:
-                quick_status.append(f"✅ Definitions: {defender.signature_age_days} days old")
+                quick_status.append(
+                    f"✅ Definitions: {defender.signature_age_days} days old"
+                )
             else:
-                quick_status.append(f"⚠️ Definitions: {defender.signature_age_days} days old (outdated)")
+                quick_status.append(
+                    f"⚠️ Definitions: {defender.signature_age_days} days old (outdated)"
+                )
 
-        if defender.last_quick_scan != "Unknown" and defender.last_quick_scan != "Never":
+        if (
+            defender.last_quick_scan != "Unknown"
+            and defender.last_quick_scan != "Never"
+        ):
             quick_status.append(f"📅 Last quick scan: {defender.last_quick_scan}")
     else:
         quick_status.append("⚠️ Could not query Defender status")
@@ -637,9 +687,7 @@ def generate_defender_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
                 "Windows recommends running a full scan to check for threats."
             )
     else:
-        what_this_means.append(
-            "I couldn't query Windows Defender status directly."
-        )
+        what_this_means.append("I couldn't query Windows Defender status directly.")
         what_this_means.append(
             "This might be because Defender is not installed, or there's a permissions issue."
         )
@@ -681,11 +729,11 @@ def generate_defender_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
             needs_action = True
 
         if not needs_action:
-            what_you_can_do.append("No action needed - your protection is working correctly!")
+            what_you_can_do.append(
+                "No action needed - your protection is working correctly!"
+            )
     else:
-        what_you_can_do.append(
-            "Check if Windows Defender is installed and running"
-        )
+        what_you_can_do.append("Check if Windows Defender is installed and running")
         what_you_can_do.append(
             "Open Windows Security from the Start menu to check your protection status"
         )
@@ -694,14 +742,16 @@ def generate_defender_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
         "quick_status": quick_status,
         "what_this_means": what_this_means,
         "what_you_can_do": what_you_can_do,
-        "severity": "critical" if not defender.realtime_protection else ("warning" if defender.signature_age_days > 7 else "good"),
+        "severity": "critical"
+        if not defender.realtime_protection
+        else ("warning" if defender.signature_age_days > 7 else "good"),
     }
 
 
 def generate_firewall_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
     """
     Generate deterministic response template for Firewall questions.
-    
+
     Returns dict with:
         - quick_status: 2-4 bullet lines
         - what_this_means: 3-6 sentences
@@ -717,13 +767,19 @@ def generate_firewall_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
             quick_status.append("✅ All firewall profiles: ON")
         else:
             if firewall.enabled_profiles:
-                quick_status.append(f"✅ Enabled: {', '.join(firewall.enabled_profiles)}")
+                quick_status.append(
+                    f"✅ Enabled: {', '.join(firewall.enabled_profiles)}"
+                )
             if firewall.disabled_profiles:
-                quick_status.append(f"❌ Disabled: {', '.join(firewall.disabled_profiles)}")
+                quick_status.append(
+                    f"❌ Disabled: {', '.join(firewall.disabled_profiles)}"
+                )
 
         # Show policies for public profile (most important)
         if firewall.public_enabled:
-            quick_status.append(f"🛡️ Public network: Inbound {firewall.public_inbound_policy}, Outbound {firewall.public_outbound_policy}")
+            quick_status.append(
+                f"🛡️ Public network: Inbound {firewall.public_inbound_policy}, Outbound {firewall.public_outbound_policy}"
+            )
     else:
         quick_status.append("⚠️ Could not query Firewall status")
         quick_status.append(f"ℹ️ Reason: {firewall.error_message}")
@@ -765,16 +821,12 @@ def generate_firewall_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
                 )
 
         else:
-            what_this_means.append(
-                "Your Windows Firewall is completely disabled."
-            )
+            what_this_means.append("Your Windows Firewall is completely disabled.")
             what_this_means.append(
                 "Your computer is vulnerable to network-based attacks and unauthorized access."
             )
     else:
-        what_this_means.append(
-            "I couldn't query Windows Firewall status directly."
-        )
+        what_this_means.append("I couldn't query Windows Firewall status directly.")
         what_this_means.append(
             "The firewall service might not be running, or there's a permissions issue."
         )
@@ -803,7 +855,9 @@ def generate_firewall_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
             )
 
         if not what_you_can_do:
-            what_you_can_do.append("No action needed - your firewall is configured correctly!")
+            what_you_can_do.append(
+                "No action needed - your firewall is configured correctly!"
+            )
     else:
         what_you_can_do.append(
             "Check if Windows Firewall service is running (services.msc → Windows Defender Firewall)"
@@ -816,14 +870,16 @@ def generate_firewall_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
         "quick_status": quick_status,
         "what_this_means": what_this_means,
         "what_you_can_do": what_you_can_do,
-        "severity": "critical" if not firewall.enabled_profiles else ("warning" if firewall.any_profile_disabled else "good"),
+        "severity": "critical"
+        if not firewall.enabled_profiles
+        else ("warning" if firewall.any_profile_disabled else "good"),
     }
 
 
 def generate_overall_security_response(snapshot: SecuritySnapshot) -> dict[str, Any]:
     """
     Generate deterministic response template for general security status questions.
-    
+
     Returns dict with:
         - quick_status: 2-4 bullet lines
         - what_this_means: 3-6 sentences
@@ -846,7 +902,9 @@ def generate_overall_security_response(snapshot: SecuritySnapshot) -> dict[str, 
         if firewall.all_profiles_enabled:
             quick_status.append("✅ Firewall: All profiles enabled")
         elif firewall.enabled_profiles:
-            quick_status.append(f"⚠️ Firewall: Only {', '.join(firewall.enabled_profiles)} enabled")
+            quick_status.append(
+                f"⚠️ Firewall: Only {', '.join(firewall.enabled_profiles)} enabled"
+            )
         else:
             quick_status.append("❌ Firewall: All profiles disabled")
 

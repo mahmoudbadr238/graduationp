@@ -536,7 +536,7 @@ def collect_amd_adl_metrics() -> list[dict[str, Any]]:
 
 def collect_amd_wmi_metrics() -> list[dict[str, Any]]:
     """Collect AMD GPU metrics via WMI Performance Counters (fallback when ADL fails).
-    
+
     Uses LUID-based indexing since all GPUs show phys_0 in performance counters.
     LUIDs are sorted and mapped to VideoController order for GPU identification.
     """
@@ -555,7 +555,9 @@ def collect_amd_wmi_metrics() -> list[dict[str, Any]]:
         luid_video_encode = {}
 
         try:
-            for counter in perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine():
+            for (
+                counter
+            ) in perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine():
                 name = counter.Name or ""
                 if "luid_" not in name.lower():
                     continue
@@ -571,9 +573,13 @@ def collect_amd_wmi_metrics() -> list[dict[str, Any]]:
                     elif "_engtype_copy" in name_lower:
                         luid_copy_usage[luid] = max(luid_copy_usage.get(luid, 0), util)
                     elif "_engtype_videodecode" in name_lower:
-                        luid_video_decode[luid] = max(luid_video_decode.get(luid, 0), util)
+                        luid_video_decode[luid] = max(
+                            luid_video_decode.get(luid, 0), util
+                        )
                     elif "_engtype_videoencode" in name_lower:
-                        luid_video_encode[luid] = max(luid_video_encode.get(luid, 0), util)
+                        luid_video_encode[luid] = max(
+                            luid_video_encode.get(luid, 0), util
+                        )
                 except (ValueError, IndexError, AttributeError):
                     pass
         except Exception:
@@ -608,12 +614,16 @@ def collect_amd_wmi_metrics() -> list[dict[str, Any]]:
         for gpu in c.Win32_VideoController():
             name = gpu.Name or ""
             pnp_id = gpu.PNPDeviceID or ""
-            all_gpus_ordered.append({
-                "name": name,
-                "pnp_id": pnp_id,
-                "driver": gpu.DriverVersion or "Unknown",
-                "adapter_ram": int(gpu.AdapterRAM or 0) // (1024**2) if gpu.AdapterRAM else 0,
-            })
+            all_gpus_ordered.append(
+                {
+                    "name": name,
+                    "pnp_id": pnp_id,
+                    "driver": gpu.DriverVersion or "Unknown",
+                    "adapter_ram": int(gpu.AdapterRAM or 0) // (1024**2)
+                    if gpu.AdapterRAM
+                    else 0,
+                }
+            )
 
         # Step 5: Map sorted LUIDs to VideoControllers by index
         luid_to_gpu = {}
@@ -638,58 +648,62 @@ def collect_amd_wmi_metrics() -> list[dict[str, Any]]:
             mem_used_mb = mem_used_bytes // (1024 * 1024)
 
             adapter_ram = gpu_info["adapter_ram"]
-            mem_percent = round((mem_used_mb / adapter_ram * 100), 1) if adapter_ram > 0 else 0.0
+            mem_percent = (
+                round((mem_used_mb / adapter_ram * 100), 1) if adapter_ram > 0 else 0.0
+            )
 
-            gpus.append({
-                "id": amd_idx,
-                "name": gpu_info["name"],
-                "vendor": "AMD",
-                "source": "WMI",
-                # Utilization
-                "usage": round(usage_3d, 1),
-                "memControllerUtil": round(usage_copy, 1),
-                "encoderUtil": int(video_encode),
-                "decoderUtil": int(video_decode),
-                # Memory
-                "memUsedMB": mem_used_mb,
-                "memTotalMB": adapter_ram,
-                "memFreeMB": max(0, adapter_ram - mem_used_mb),
-                "memPercent": mem_percent,
-                # Temperature - not available via WMI
-                "tempC": 0,
-                "tempHotspot": 0,
-                "tempMemory": 0,
-                # Clocks - not available via WMI
-                "clockMHz": 0,
-                "clockMemMHz": 0,
-                "clockSMMHz": 0,
-                "clockVideoMHz": 0,
-                "maxClockMHz": 0,
-                "maxClockMemMHz": 0,
-                # Power - not available via WMI
-                "powerW": 0.0,
-                "powerLimitW": 0.0,
-                "powerDefaultW": 0.0,
-                "powerMinW": 0.0,
-                "powerMaxW": 0.0,
-                "powerPercent": 0.0,
-                # Fan - not available via WMI
-                "fanPercent": 0,
-                "fanRPM": 0,
-                "fanCount": 0,
-                # PCIe
-                "pcieGen": 0,
-                "pcieWidth": 0,
-                "pcieTxKBs": 0,
-                "pcieRxKBs": 0,
-                # Info
-                "driverVersion": gpu_info["driver"],
-                "cudaVersion": "N/A",
-                "vbiosVersion": "Unknown",
-                "pciBus": gpu_info["pnp_id"],
-                "perfState": "Unknown",
-                "_luid": luid,
-            })
+            gpus.append(
+                {
+                    "id": amd_idx,
+                    "name": gpu_info["name"],
+                    "vendor": "AMD",
+                    "source": "WMI",
+                    # Utilization
+                    "usage": round(usage_3d, 1),
+                    "memControllerUtil": round(usage_copy, 1),
+                    "encoderUtil": int(video_encode),
+                    "decoderUtil": int(video_decode),
+                    # Memory
+                    "memUsedMB": mem_used_mb,
+                    "memTotalMB": adapter_ram,
+                    "memFreeMB": max(0, adapter_ram - mem_used_mb),
+                    "memPercent": mem_percent,
+                    # Temperature - not available via WMI
+                    "tempC": 0,
+                    "tempHotspot": 0,
+                    "tempMemory": 0,
+                    # Clocks - not available via WMI
+                    "clockMHz": 0,
+                    "clockMemMHz": 0,
+                    "clockSMMHz": 0,
+                    "clockVideoMHz": 0,
+                    "maxClockMHz": 0,
+                    "maxClockMemMHz": 0,
+                    # Power - not available via WMI
+                    "powerW": 0.0,
+                    "powerLimitW": 0.0,
+                    "powerDefaultW": 0.0,
+                    "powerMinW": 0.0,
+                    "powerMaxW": 0.0,
+                    "powerPercent": 0.0,
+                    # Fan - not available via WMI
+                    "fanPercent": 0,
+                    "fanRPM": 0,
+                    "fanCount": 0,
+                    # PCIe
+                    "pcieGen": 0,
+                    "pcieWidth": 0,
+                    "pcieTxKBs": 0,
+                    "pcieRxKBs": 0,
+                    # Info
+                    "driverVersion": gpu_info["driver"],
+                    "cudaVersion": "N/A",
+                    "vbiosVersion": "Unknown",
+                    "pciBus": gpu_info["pnp_id"],
+                    "perfState": "Unknown",
+                    "_luid": luid,
+                }
+            )
             amd_idx += 1
     except Exception:
         pass
@@ -800,11 +814,7 @@ def collect_intel_metrics(wmi_enabled: bool) -> list[dict[str, Any]]:
         # Get memory usage
         gpu_mem_dedicated = {}
         try:
-            for (
-                counter
-            ) in (
-                perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory()
-            ):
+            for counter in perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory():
                 name = counter.Name or ""
                 if "phys_" not in name.lower():
                     continue
@@ -972,9 +982,7 @@ def main():
             if ENABLE_INTEL_GPU and intel_enabled:
                 try:
                     intel_gpus = run_with_timeout(
-                        lambda: collect_intel_metrics(intel_enabled),
-                        WMI_TIMEOUT,
-                        []
+                        lambda: collect_intel_metrics(intel_enabled), WMI_TIMEOUT, []
                     )
                     all_gpus.extend(intel_gpus)
                 except Exception as e:

@@ -21,7 +21,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ except Exception:
 # Try to import pefile for PE analysis
 try:
     import pefile
+
     PEFILE_AVAILABLE = True
 except ImportError:
     PEFILE_AVAILABLE = False
@@ -56,13 +57,11 @@ SUSPICIOUS_IMPORTS = {
     "RtlCreateUserThread": ("Undocumented thread creation", "critical"),
     "QueueUserAPC": ("APC injection", "high"),
     "SetThreadContext": ("Thread context manipulation", "critical"),
-
     # Memory manipulation
     "VirtualAlloc": ("Memory allocation", "medium"),
     "VirtualProtect": ("Memory protection change", "high"),
     "VirtualProtectEx": ("Remote memory protection change", "critical"),
     "RtlMoveMemory": ("Memory copy operation", "low"),
-
     # Code execution
     "WinExec": ("Command execution", "high"),
     "ShellExecuteA": ("Shell execution", "medium"),
@@ -71,7 +70,6 @@ SUSPICIOUS_IMPORTS = {
     "ShellExecuteExW": ("Extended shell execution", "medium"),
     "CreateProcessA": ("Process creation", "medium"),
     "CreateProcessW": ("Process creation", "medium"),
-
     # Registry manipulation
     "RegSetValueA": ("Registry modification", "medium"),
     "RegSetValueW": ("Registry modification", "medium"),
@@ -79,25 +77,21 @@ SUSPICIOUS_IMPORTS = {
     "RegSetValueExW": ("Registry modification", "medium"),
     "RegCreateKeyA": ("Registry key creation", "medium"),
     "RegCreateKeyW": ("Registry key creation", "medium"),
-
     # DLL injection
     "LoadLibraryA": ("DLL loading", "low"),
     "LoadLibraryW": ("DLL loading", "low"),
     "LoadLibraryExA": ("Extended DLL loading", "medium"),
     "LoadLibraryExW": ("Extended DLL loading", "medium"),
     "GetProcAddress": ("Function resolution", "low"),
-
     # Privilege escalation
     "AdjustTokenPrivileges": ("Privilege adjustment", "high"),
     "OpenProcessToken": ("Token access", "medium"),
     "ImpersonateLoggedOnUser": ("User impersonation", "high"),
-
     # Keylogging/Hooking
     "SetWindowsHookExA": ("Windows hook installation", "high"),
     "SetWindowsHookExW": ("Windows hook installation", "high"),
     "GetAsyncKeyState": ("Keystroke monitoring", "high"),
     "GetKeyState": ("Key state monitoring", "medium"),
-
     # Network
     "URLDownloadToFileA": ("File download", "high"),
     "URLDownloadToFileW": ("File download", "high"),
@@ -106,12 +100,10 @@ SUSPICIOUS_IMPORTS = {
     "HttpOpenRequestA": ("HTTP request", "medium"),
     "HttpOpenRequestW": ("HTTP request", "medium"),
     "WSAStartup": ("Network socket initialization", "low"),
-
     # Crypto
     "CryptEncrypt": ("Data encryption", "medium"),
     "CryptDecrypt": ("Data decryption", "medium"),
     "CryptAcquireContextA": ("Cryptographic context", "low"),
-
     # Anti-debugging
     "IsDebuggerPresent": ("Debugger detection", "high"),
     "CheckRemoteDebuggerPresent": ("Remote debugger detection", "high"),
@@ -129,6 +121,7 @@ EXECUTABLE_EXTENSIONS = {".exe", ".dll", ".sys", ".scr", ".com", ".pif", ".msi"}
 @dataclass
 class Finding:
     """A single finding from static analysis."""
+
     title: str
     detail: str
     severity: str  # low, medium, high, critical
@@ -138,6 +131,7 @@ class Finding:
 @dataclass
 class IOCExtraction:
     """Extracted Indicators of Compromise."""
+
     urls: list[str] = field(default_factory=list)
     ips: list[str] = field(default_factory=list)
     domains: list[str] = field(default_factory=list)
@@ -149,6 +143,7 @@ class IOCExtraction:
 @dataclass
 class PEAnalysis:
     """PE file analysis results."""
+
     is_pe: bool = False
     is_dll: bool = False
     is_64bit: bool = False
@@ -169,6 +164,7 @@ class PEAnalysis:
 @dataclass
 class ScanResult:
     """Complete scan result."""
+
     # Basic info
     file_path: str
     file_name: str
@@ -192,6 +188,12 @@ class ScanResult:
     # Static analysis details
     static: dict[str, Any] = field(default_factory=dict)
 
+    # Additional hashes and metadata
+    sha1: str = field(default="")
+    md5: str = field(default="")
+    file_type: str = field(default="")
+    signature: dict[str, Any] = field(default_factory=dict)
+
     # Sandbox results (if run)
     sandbox: dict[str, Any] | None = None
 
@@ -201,13 +203,14 @@ class ScanResult:
     def to_dict(self) -> dict[str, Any]:
         """JSON-serializable dict for PySide6 signal emission."""
         from dataclasses import asdict
+
         return asdict(self)
 
 
 class StaticScanner:
     """
     Local static file scanner.
-    
+
     Performs comprehensive offline analysis:
     - Hash calculation
     - Metadata extraction
@@ -248,7 +251,9 @@ class StaticScanner:
 
         if not GPU_COMPUTE_AVAILABLE:
             if requested == "gpu":
-                logger.warning("GPU compute requested but CuPy/Numpy is unavailable; falling back to CPU")
+                logger.warning(
+                    "GPU compute requested but CuPy/Numpy is unavailable; falling back to CPU"
+                )
             self._compute_backend = "cpu"
             return
 
@@ -256,10 +261,14 @@ class StaticScanner:
             device_count = int(cp.cuda.runtime.getDeviceCount())  # type: ignore[union-attr]
             self._compute_backend = "gpu" if device_count > 0 else "cpu"
             if requested == "gpu" and device_count <= 0:
-                logger.warning("GPU compute requested but no CUDA device found; falling back to CPU")
+                logger.warning(
+                    "GPU compute requested but no CUDA device found; falling back to CPU"
+                )
         except Exception as e:
             if requested == "gpu":
-                logger.warning(f"GPU compute requested but initialization failed; falling back to CPU ({e})")
+                logger.warning(
+                    f"GPU compute requested but initialization failed; falling back to CPU ({e})"
+                )
             self._compute_backend = "cpu"
 
         logger.info(f"Static scanner compute backend: {self._compute_backend}")
@@ -267,11 +276,11 @@ class StaticScanner:
     def scan_file(self, file_path: str, run_clamav: bool = True) -> ScanResult:
         """
         Perform static analysis on a file.
-        
+
         Args:
             file_path: Path to file to scan
             run_clamav: Whether to run ClamAV if available
-            
+
         Returns:
             ScanResult with all analysis data
         """
@@ -298,7 +307,10 @@ class StaticScanner:
 
         try:
             # Stage 1: Hash and metadata
-            result.sha256 = self._compute_sha256(path)
+            _hashes = self._compute_hashes(path)
+            result.sha256 = _hashes["sha256"]
+            result.sha1 = _hashes["sha1"]
+            result.md5 = _hashes["md5"]
             result.mime_type = self._get_mime_type(path)
 
             # Stage 2: Read file content for analysis
@@ -314,6 +326,10 @@ class StaticScanner:
             if result.extension in EXECUTABLE_EXTENSIONS or self._is_pe_file(content):
                 result.pe_analysis = self._analyze_pe(path, content)
                 self._add_pe_findings(result)
+                result.file_type = self._detect_file_type(content, result.pe_analysis)
+                result.signature = self._check_signature(path, result.pe_analysis)
+            else:
+                result.file_type = result.mime_type
 
             # Stage 4: Script analysis (if applicable)
             if result.extension in SCRIPT_EXTENSIONS:
@@ -324,23 +340,27 @@ class StaticScanner:
                 yara_matches = self._yara_engine.scan_file(str(path))
                 result.yara_matches = self._yara_engine.get_findings(yara_matches)
                 for match in result.yara_matches:
-                    result.findings.append(Finding(
-                        title=match["title"],
-                        detail=match["detail"],
-                        severity=match["severity"],
-                        category=match.get("category", "yara")
-                    ))
+                    result.findings.append(
+                        Finding(
+                            title=match["title"],
+                            detail=match["detail"],
+                            severity=match["severity"],
+                            category=match.get("category", "yara"),
+                        )
+                    )
             else:
                 # Use fallback pattern scanner (results count as YARA matches in UI)
                 pattern_findings = self._pattern_scanner.scan_data(content)
                 result.yara_matches = pattern_findings  # show in YARA count
                 for f in pattern_findings:
-                    result.findings.append(Finding(
-                        title=f["title"],
-                        detail=f["detail"],
-                        severity=f["severity"],
-                        category=f.get("category", "pattern")
-                    ))
+                    result.findings.append(
+                        Finding(
+                            title=f["title"],
+                            detail=f["detail"],
+                            severity=f["severity"],
+                            category=f.get("category", "pattern"),
+                        )
+                    )
 
             # Stage 6: IOC extraction
             result.iocs = self._extract_iocs(content)
@@ -355,12 +375,14 @@ class StaticScanner:
                     "signature": clamav_result.signature_name,
                 }
                 if clamav_result.infected:
-                    result.findings.append(Finding(
-                        title=f"ClamAV Detection: {clamav_result.signature_name}",
-                        detail="File detected as malware by ClamAV",
-                        severity="critical",
-                        category="antivirus"
-                    ))
+                    result.findings.append(
+                        Finding(
+                            title=f"ClamAV Detection: {clamav_result.signature_name}",
+                            detail="File detected as malware by ClamAV",
+                            severity="critical",
+                            category="antivirus",
+                        )
+                    )
             else:
                 result.clamav = {"available": False, "scanned": False}
 
@@ -385,15 +407,92 @@ class StaticScanner:
 
         return result
 
-    def _compute_sha256(self, path: Path) -> str:
-        """Compute SHA256 hash using chunked reading."""
-        sha256 = hashlib.sha256()
-
+    def _compute_hashes(self, path: Path) -> dict[str, str]:
+        """Compute SHA-256, SHA-1 and MD5 in a single pass."""
+        h256 = hashlib.sha256()
+        h1 = hashlib.sha1()
+        hmd5 = hashlib.md5()
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
-                sha256.update(chunk)
+                h256.update(chunk)
+                h1.update(chunk)
+                hmd5.update(chunk)
+        return {
+            "sha256": h256.hexdigest(),
+            "sha1": h1.hexdigest(),
+            "md5": hmd5.hexdigest(),
+        }
 
-        return sha256.hexdigest()
+    def _compute_sha256(self, path: Path) -> str:
+        """Compute SHA256 hash (kept for backward compatibility)."""
+        return self._compute_hashes(path)["sha256"]
+
+    @staticmethod
+    def _detect_file_type(content: bytes, pe: "PEAnalysis | None") -> str:
+        """Return a human-readable file type string (VirusTotal-style)."""
+        if pe and pe.is_pe:
+            arch = "64-bit" if pe.is_64bit else "32-bit"
+            if pe.is_dll:
+                return f"PE32{'+' if pe.is_64bit else ''} dynamic link library ({arch})"
+            return f"PE32{'+' if pe.is_64bit else ''} executable (GUI) ({arch})"
+        if content[:4] == b"\x7fELF":
+            return "ELF executable"
+        if content[:2] in (b"\xff\xfe", b"\xfe\xff", b"\xef\xbb\xbf"):
+            return "Text (Unicode BOM)"
+        return ""
+
+    @staticmethod
+    def _check_signature(path: Path, pe: "PEAnalysis | None") -> dict[str, Any]:
+        """Return {valid: True/False/None, subject: str} for the file's signature.
+
+        - True  → signtool verified OK
+        - False → signature present but invalid, or signtool said no
+        - None  → no signature data detected (unknown / no signtool)
+        """
+        import shutil
+        import subprocess as _sp
+
+        has_cert = pe.has_signature if pe else False
+
+        # Locate signtool.exe
+        _signtool: str | None = shutil.which("signtool")
+        if not _signtool:
+            _candidates = [
+                r"C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe",
+                r"C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe",
+                r"C:\Program Files\Windows Kits\10\bin\x64\signtool.exe",
+            ]
+            for _c in _candidates:
+                if Path(_c).exists():
+                    _signtool = _c
+                    break
+
+        if _signtool:
+            try:
+                _r = _sp.run(
+                    [_signtool, "verify", "/pa", "/v", str(path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if _r.returncode == 0:
+                    subject = ""
+                    for _line in (_r.stdout + _r.stderr).splitlines():
+                        if "Subject:" in _line or "Issued to:" in _line:
+                            subject = _line.split(":", 1)[-1].strip()
+                            break
+                    return {"valid": True, "subject": subject}
+                # signature present but failed verification
+                if has_cert:
+                    return {"valid": False, "subject": ""}
+                return {"valid": None, "subject": ""}
+            except Exception:
+                pass
+
+        # No signtool — report honestly
+        if has_cert:
+            return {"valid": None, "subject": "unknown (signtool unavailable)"}
+        return {"valid": None, "subject": ""}
 
     def _get_mime_type(self, path: Path) -> str:
         """Get MIME type of file."""
@@ -468,6 +567,7 @@ class StaticScanner:
             # Compile time
             try:
                 import datetime
+
                 timestamp = pe.FILE_HEADER.TimeDateStamp
                 compile_time = datetime.datetime.fromtimestamp(timestamp)
                 analysis.compile_time = compile_time.isoformat()
@@ -477,17 +577,21 @@ class StaticScanner:
             # Sections analysis
             analysis.sections_count = len(pe.sections)
             for section in pe.sections:
-                section_name = section.Name.rstrip(b"\x00").decode("utf-8", errors="replace")
+                section_name = section.Name.rstrip(b"\x00").decode(
+                    "utf-8", errors="replace"
+                )
                 section_data = section.get_data()
                 entropy = self._calculate_entropy(section_data)
 
                 # High entropy detection
                 if entropy > self.HIGH_ENTROPY_THRESHOLD:
-                    analysis.high_entropy_sections.append({
-                        "name": section_name,
-                        "entropy": entropy,
-                        "size": len(section_data),
-                    })
+                    analysis.high_entropy_sections.append(
+                        {
+                            "name": section_name,
+                            "entropy": entropy,
+                            "size": len(section_data),
+                        }
+                    )
 
                 # RWX section detection (read, write, execute)
                 characteristics = section.Characteristics
@@ -505,12 +609,16 @@ class StaticScanner:
 
                             if func_name in SUSPICIOUS_IMPORTS:
                                 desc, severity = SUSPICIOUS_IMPORTS[func_name]
-                                analysis.suspicious_imports.append({
-                                    "function": func_name,
-                                    "dll": entry.dll.decode("utf-8", errors="replace"),
-                                    "description": desc,
-                                    "severity": severity,
-                                })
+                                analysis.suspicious_imports.append(
+                                    {
+                                        "function": func_name,
+                                        "dll": entry.dll.decode(
+                                            "utf-8", errors="replace"
+                                        ),
+                                        "description": desc,
+                                        "severity": severity,
+                                    }
+                                )
 
             # Exports count
             if hasattr(pe, "DIRECTORY_ENTRY_EXPORT"):
@@ -518,7 +626,11 @@ class StaticScanner:
 
             # Packer detection (basic)
             for section in pe.sections:
-                section_name = section.Name.rstrip(b"\x00").decode("utf-8", errors="replace").lower()
+                section_name = (
+                    section.Name.rstrip(b"\x00")
+                    .decode("utf-8", errors="replace")
+                    .lower()
+                )
                 if "upx" in section_name:
                     analysis.packer_detected = "UPX"
                 elif "aspack" in section_name:
@@ -551,39 +663,47 @@ class StaticScanner:
 
         # Suspicious imports
         for imp in pe.suspicious_imports:
-            result.findings.append(Finding(
-                title=f"Suspicious Import: {imp['function']}",
-                detail=f"{imp['description']} (from {imp['dll']})",
-                severity=imp["severity"],
-                category="pe_imports"
-            ))
+            result.findings.append(
+                Finding(
+                    title=f"Suspicious Import: {imp['function']}",
+                    detail=f"{imp['description']} (from {imp['dll']})",
+                    severity=imp["severity"],
+                    category="pe_imports",
+                )
+            )
 
         # High entropy sections
         for section in pe.high_entropy_sections:
-            result.findings.append(Finding(
-                title=f"High Entropy Section: {section['name']}",
-                detail=f"Entropy {section['entropy']:.2f} (may indicate packed/encrypted code)",
-                severity="medium",
-                category="pe_structure"
-            ))
+            result.findings.append(
+                Finding(
+                    title=f"High Entropy Section: {section['name']}",
+                    detail=f"Entropy {section['entropy']:.2f} (may indicate packed/encrypted code)",
+                    severity="medium",
+                    category="pe_structure",
+                )
+            )
 
         # RWX sections
         for section in pe.rwx_sections:
-            result.findings.append(Finding(
-                title=f"RWX Section: {section}",
-                detail="Section with Read/Write/Execute permissions (potential code injection)",
-                severity="high",
-                category="pe_structure"
-            ))
+            result.findings.append(
+                Finding(
+                    title=f"RWX Section: {section}",
+                    detail="Section with Read/Write/Execute permissions (potential code injection)",
+                    severity="high",
+                    category="pe_structure",
+                )
+            )
 
         # Packer detection
         if pe.packer_detected:
-            result.findings.append(Finding(
-                title=f"Packer Detected: {pe.packer_detected}",
-                detail="File appears to be packed (may hide malicious code)",
-                severity="medium",
-                category="pe_structure"
-            ))
+            result.findings.append(
+                Finding(
+                    title=f"Packer Detected: {pe.packer_detected}",
+                    detail="File appears to be packed (may hide malicious code)",
+                    severity="medium",
+                    category="pe_structure",
+                )
+            )
 
     def _analyze_script(self, result: ScanResult, content: bytes) -> None:
         """Analyze script file for suspicious patterns."""
@@ -597,33 +717,151 @@ class StaticScanner:
         # PowerShell specific
         if result.extension == ".ps1":
             if "-encodedcommand" in text_lower or "-enc " in text_lower:
-                result.findings.append(Finding(
-                    title="Encoded PowerShell Command",
-                    detail="Script uses encoded command execution",
-                    severity="high",
-                    category="script"
-                ))
+                result.findings.append(
+                    Finding(
+                        title="Encoded PowerShell Command",
+                        detail="Script uses encoded command execution",
+                        severity="high",
+                        category="script",
+                    )
+                )
 
             if "invoke-expression" in text_lower or "iex " in text_lower:
-                result.findings.append(Finding(
-                    title="Dynamic Code Execution",
-                    detail="Script uses Invoke-Expression (IEX)",
-                    severity="high",
-                    category="script"
-                ))
+                result.findings.append(
+                    Finding(
+                        title="Dynamic Code Execution",
+                        detail="Script uses Invoke-Expression (IEX)",
+                        severity="high",
+                        category="script",
+                    )
+                )
 
         # Check for obfuscation
         char_pattern = text.count("[char]") + text.count("char(")
         if char_pattern > 10:
-            result.findings.append(Finding(
-                title="Character Obfuscation",
-                detail=f"Script contains {char_pattern} char encoding instances",
-                severity="medium",
-                category="obfuscation"
-            ))
+            result.findings.append(
+                Finding(
+                    title="Character Obfuscation",
+                    detail=f"Script contains {char_pattern} char encoding instances",
+                    severity="medium",
+                    category="obfuscation",
+                )
+            )
+
+    # ── IOC extraction helpers ────────────────────────────────────────────────
+    # Extensions that are binary artifacts, not DNS labels
+    _IOC_SKIP_EXTS: frozenset[str] = frozenset(
+        {
+            "dll",
+            "exe",
+            "sys",
+            "pdb",
+            "mui",
+            "log",
+            "txt",
+            "xml",
+            "dat",
+            "ini",
+            "cfg",
+            "bin",
+            "tmp",
+            "cat",
+            "inf",
+            "drv",
+            "ocx",
+            "cpl",
+            "scr",
+            "bat",
+            "cmd",
+            "msi",
+            "cab",
+            "zip",
+            "7z",
+            "rar",
+            "gz",
+            "bz2",
+            "lzma",
+            "db",
+            "lnk",
+            "ttf",
+            "otf",
+            "cur",
+            "ani",
+            "ico",
+            "png",
+            "jpg",
+            "bmp",
+            "gif",
+            "svg",
+            "etl",
+            "evtx",
+            "mof",
+            "reg",
+            "wim",
+            "iso",
+            "vhd",
+            "vmdk",
+            "manifest",
+        }
+    )
+
+    @staticmethod
+    def _valid_ioc_ip(ip: str) -> bool:
+        """Return True iff *ip* is a plausible external/malicious address."""
+        try:
+            parts = [int(x) for x in ip.split(".")]
+        except ValueError:
+            return False
+        if len(parts) != 4:
+            return False
+        a, b, c, d = parts
+        if any(p > 255 for p in (a, b, c, d)):
+            return False
+        # Loopback, unspecified, broadcast, multicast, reserved
+        if a in (0, 127) or a >= 224:
+            return False
+        # Private ranges
+        if a == 10:
+            return False
+        if a == 172 and 16 <= b <= 31:
+            return False
+        if a == 192 and b == 168:
+            return False
+        if a == 169 and b == 254:  # link-local
+            return False
+        # x.0.0.0 — network address or version number fragment
+        if b == 0 and c == 0 and d == 0:
+            return False
+        return True
+
+    @classmethod
+    def _valid_ioc_domain(cls, domain: str) -> bool:
+        """Return True iff *domain* looks like a real hostname, not a PE artefact."""
+        # Must have at least one dot
+        if "." not in domain:
+            return False
+        parts = domain.lower().split(".")
+        tld = parts[-1]
+        labels = parts[:-1]
+        # TLD: 2-24 alpha chars only
+        if not (2 <= len(tld) <= 24 and tld.isalpha()):
+            return False
+        # Skip if TLD is a binary artifact extension
+        if tld in cls._IOC_SKIP_EXTS:
+            return False
+        # Every label: must be at least 3 chars and not purely numeric
+        for lbl in labels:
+            if len(lbl) < 3:
+                return False
+            if lbl.isdigit():
+                return False
+        # Minimum total hostname length (e.g. 'a.io' = 4, too short)
+        if sum(len(l) for l in parts) < 5:
+            return False
+        return True
 
     def _extract_iocs(self, content: bytes) -> IOCExtraction:
-        """Extract Indicators of Compromise from content."""
+        """Extract Indicators of Compromise from content (strict validators)."""
         iocs = IOCExtraction()
 
         try:
@@ -631,33 +869,40 @@ class StaticScanner:
         except Exception:
             text = str(content)
 
-        # URL extraction
-        url_pattern = r'https?://[^\s<>"\'{}|\\^`\[\]]+[^\s<>"\'{}|\\^`\[\].,;:!?\)]'
-        iocs.urls = list(set(re.findall(url_pattern, text, re.IGNORECASE)))[:20]
+        # URL extraction — anchored to scheme to avoid false positives
+        url_pattern = r'https?://[^\s<>"\'{}|\\^`\[\]]{4,}[^\s<>"\'{}|\\^`\[\].,;:!?\)]'
+        _raw_urls = re.findall(url_pattern, text, re.IGNORECASE)
+        iocs.urls = list(dict.fromkeys(_raw_urls))[:20]
 
-        # IP extraction
+        # IP extraction — strict octets 0-255 then post-filter
         ip_pattern = r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
-        potential_ips = list(set(re.findall(ip_pattern, text)))
-        # Filter out common non-IOC IPs
-        iocs.ips = [ip for ip in potential_ips if not ip.startswith(("0.", "127.", "255."))][:20]
+        iocs.ips = [
+            ip
+            for ip in dict.fromkeys(re.findall(ip_pattern, text))
+            if self._valid_ioc_ip(ip)
+        ][:20]
 
-        # Domain extraction (basic)
-        domain_pattern = r"\b[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}\b"
-        potential_domains = list(set(re.findall(domain_pattern, text)))
-        # Filter common extensions
-        iocs.domains = [d for d in potential_domains if not d.endswith((".dll", ".exe", ".sys"))][:20]
+        # Domain extraction — require 4-char+ labels to eliminate single-char artefacts
+        domain_pattern = r"\b[a-zA-Z0-9][a-zA-Z0-9\-]{2,}\.[a-zA-Z]{2,24}\b"
+        iocs.domains = [
+            d
+            for d in dict.fromkeys(re.findall(domain_pattern, text))
+            if self._valid_ioc_domain(d)
+        ][:30]
 
         # Registry key patterns
         reg_pattern = r"HKLM?\\[A-Za-z0-9\\]+|HKCU?\\[A-Za-z0-9\\]+"
-        iocs.registry_keys = list(set(re.findall(reg_pattern, text, re.IGNORECASE)))[:10]
+        iocs.registry_keys = list(
+            dict.fromkeys(re.findall(reg_pattern, text, re.IGNORECASE))
+        )[:10]
 
         # File paths (Windows)
         path_pattern = r'[A-Z]:\\[^\s<>"\'|*?]+\.[a-zA-Z]{2,4}'
-        iocs.file_paths = list(set(re.findall(path_pattern, text)))[:10]
+        iocs.file_paths = list(dict.fromkeys(re.findall(path_pattern, text)))[:10]
 
         # Email addresses
-        email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-        iocs.emails = list(set(re.findall(email_pattern, text)))[:10]
+        email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+        iocs.emails = list(dict.fromkeys(re.findall(email_pattern, text)))[:10]
 
         return iocs
 
@@ -708,7 +953,9 @@ class StaticScanner:
             parts.append(f"High severity findings: {len(high)}")
 
         if result.clamav.get("infected"):
-            parts.append(f"ClamAV detection: {result.clamav.get('signature', 'Unknown')}")
+            parts.append(
+                f"ClamAV detection: {result.clamav.get('signature', 'Unknown')}"
+            )
 
         if result.pe_analysis and result.pe_analysis.packer_detected:
             parts.append(f"Packer: {result.pe_analysis.packer_detected}")
@@ -727,7 +974,7 @@ class StaticScanner:
             verdict="Unknown",
             score=0,
             summary=f"Error: {error}",
-            errors=[error]
+            errors=[error],
         )
 
 

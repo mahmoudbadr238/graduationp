@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ _SUBPROCESS_FLAGS = 0x08000000 if _IS_WINDOWS else 0  # CREATE_NO_WINDOW
 @dataclass
 class ClamAVResult:
     """Result from ClamAV scan."""
+
     available: bool
     scanned: bool
     infected: bool
@@ -33,7 +34,7 @@ class ClamAVResult:
 class ClamAVAdapter:
     """
     Adapter for ClamAV command-line scanner.
-    
+
     Features:
     - Auto-detects clamscan in PATH
     - Runs scans in worker-friendly way
@@ -89,11 +90,11 @@ class ClamAVAdapter:
     def scan_file(self, file_path: str, timeout: int = 120) -> ClamAVResult:
         """
         Scan a file with ClamAV.
-        
+
         Args:
             file_path: Path to file to scan
             timeout: Timeout in seconds
-            
+
         Returns:
             ClamAVResult with scan results
         """
@@ -104,17 +105,12 @@ class ClamAVAdapter:
                 infected=False,
                 signature_name=None,
                 raw_output="",
-                error="ClamAV not installed"
+                error="ClamAV not installed",
             )
 
         try:
             # Run clamscan with no-summary for cleaner output
-            cmd = [
-                self._clamscan_path,
-                "--no-summary",
-                "--infected",
-                file_path
-            ]
+            cmd = [self._clamscan_path, "--no-summary", "--infected", file_path]
 
             result = subprocess.run(
                 cmd,
@@ -148,7 +144,7 @@ class ClamAVAdapter:
                 infected=infected,
                 signature_name=signature_name,
                 raw_output=output,
-                error=stderr if result.returncode == 2 else None
+                error=stderr if result.returncode == 2 else None,
             )
 
         except subprocess.TimeoutExpired:
@@ -159,7 +155,7 @@ class ClamAVAdapter:
                 infected=False,
                 signature_name=None,
                 raw_output="",
-                error="Scan timed out"
+                error="Scan timed out",
             )
         except Exception as e:
             logger.error(f"ClamAV scan error: {e}")
@@ -169,7 +165,7 @@ class ClamAVAdapter:
                 infected=False,
                 signature_name=None,
                 raw_output="",
-                error=str(e)
+                error=str(e),
             )
 
     def get_version(self) -> str | None:

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Sandbox Controller - VMware Workstation Dynamic Analysis (Windows-only).
 
 Orchestrates sandbox execution for behavioral analysis using VMware Workstation.
@@ -19,7 +19,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -104,6 +103,7 @@ class SandboxController:
         Returns:
             SandboxResult with behavioral analysis data.
         """
+
         def _step(n: int, msg: str) -> None:
             logger.info("[Sandbox step %d/7] %s", n, msg)
             if callable(progress_cb):
@@ -123,7 +123,9 @@ class SandboxController:
             )
 
         # Step 2 - Check VMware availability
-        _step(2, "VMware detected" if self._config.host_ready else "VMware NOT configured")
+        _step(
+            2, "VMware detected" if self._config.host_ready else "VMware NOT configured"
+        )
         if not self._config.host_ready:
             return SandboxResult(
                 success=False,

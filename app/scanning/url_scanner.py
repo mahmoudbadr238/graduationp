@@ -23,7 +23,6 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
@@ -31,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Try importing optional dependencies
 try:
     import requests
+
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
@@ -39,27 +39,86 @@ except ImportError:
 
 # Suspicious TLD list (commonly abused)
 SUSPICIOUS_TLDS = {
-    ".tk", ".ml", ".ga", ".cf", ".gq",  # Free TLDs often abused
-    ".xyz", ".top", ".work", ".date", ".loan", ".win", ".stream",
-    ".download", ".racing", ".review", ".click", ".link", ".bid",
-    ".trade", ".webcam", ".party", ".cricket", ".science", ".accountant",
-    ".zip", ".mov",  # File extension TLDs (phishing confusion)
+    ".tk",
+    ".ml",
+    ".ga",
+    ".cf",
+    ".gq",  # Free TLDs often abused
+    ".xyz",
+    ".top",
+    ".work",
+    ".date",
+    ".loan",
+    ".win",
+    ".stream",
+    ".download",
+    ".racing",
+    ".review",
+    ".click",
+    ".link",
+    ".bid",
+    ".trade",
+    ".webcam",
+    ".party",
+    ".cricket",
+    ".science",
+    ".accountant",
+    ".zip",
+    ".mov",  # File extension TLDs (phishing confusion)
 }
 
 # Suspicious path keywords
 SUSPICIOUS_PATH_KEYWORDS = [
-    "login", "signin", "verify", "confirm", "secure", "update",
-    "account", "banking", "password", "credential", "wallet",
-    "paypal", "apple", "microsoft", "google", "amazon", "facebook",
-    "instagram", "netflix", "dropbox", "onedrive", "icloud",
-    ".exe", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".scr",
-    ".zip", ".rar", ".7z", ".tar",
+    "login",
+    "signin",
+    "verify",
+    "confirm",
+    "secure",
+    "update",
+    "account",
+    "banking",
+    "password",
+    "credential",
+    "wallet",
+    "paypal",
+    "apple",
+    "microsoft",
+    "google",
+    "amazon",
+    "facebook",
+    "instagram",
+    "netflix",
+    "dropbox",
+    "onedrive",
+    "icloud",
+    ".exe",
+    ".msi",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".vbs",
+    ".js",
+    ".scr",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".tar",
 ]
 
 # Suspicious query parameters
 SUSPICIOUS_QUERY_PARAMS = [
-    "redirect", "url", "goto", "return", "redir", "next", "dest",
-    "destination", "target", "link", "out", "away",
+    "redirect",
+    "url",
+    "goto",
+    "return",
+    "redir",
+    "next",
+    "dest",
+    "destination",
+    "target",
+    "link",
+    "out",
+    "away",
 ]
 
 # Private IP ranges
@@ -78,6 +137,7 @@ PRIVATE_RANGES = [
 @dataclass
 class Evidence:
     """Single evidence item from URL analysis."""
+
     title: str
     severity: str  # "critical", "high", "medium", "low", "info"
     detail: str
@@ -95,6 +155,7 @@ class Evidence:
 @dataclass
 class UrlScanResult:
     """Complete URL scan result."""
+
     # Input/Output URLs
     input_url: str
     normalized_url: str
@@ -152,9 +213,21 @@ class UrlScanResult:
                 "server": self.server,
             },
             "signals": self.signals,
-            "evidence": [e.to_dict() if hasattr(e, "to_dict") else e for e in self.evidence],
+            "evidence": [
+                e.to_dict() if hasattr(e, "to_dict") else e for e in self.evidence
+            ],
             "iocs": self.iocs,
-            "yara_matches": self.yara_matches,
+            "yara_matches": [
+                {
+                    "rule_name": getattr(m, 'rule_name', str(m)),
+                    "description": getattr(m, 'description', ""),
+                    "severity": getattr(m, 'severity', "high"),
+                    "category": getattr(m, 'category', ""),
+                    "matched_strings": list(getattr(m, 'matched_strings', []) or []),
+                    "tags": list(getattr(m, 'tags', []) or []),
+                } if hasattr(m, 'rule_name') else (m if isinstance(m, dict) else {"rule_name": str(m)})
+                for m in self.yara_matches
+            ],
             "sandbox_used": self.sandbox_used,
             "sandbox_result": self.sandbox_result,
             "score": self.score,
@@ -171,7 +244,7 @@ class UrlScanResult:
 class UrlScanner:
     """
     Multi-layer URL scanner with static analysis and optional sandbox detonation.
-    
+
     Features:
     - URL normalization and validation
     - Safe HTTP fetch with redirect tracking
@@ -208,24 +281,25 @@ class UrlScanner:
         """Initialize shared requests session with connection pooling."""
         if UrlScanner._session is None and REQUESTS_AVAILABLE:
             import threading
+
             UrlScanner._session_lock = threading.Lock()
             UrlScanner._session = requests.Session()
             # Configure connection pooling
             adapter = requests.adapters.HTTPAdapter(
-                pool_connections=10,
-                pool_maxsize=10,
-                max_retries=1
+                pool_connections=10, pool_maxsize=10, max_retries=1
             )
             UrlScanner._session.mount("http://", adapter)
             UrlScanner._session.mount("https://", adapter)
             # Set default headers
-            UrlScanner._session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-            })
+            UrlScanner._session.headers.update(
+                {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Accept-Encoding": "gzip, deflate",
+                    "Connection": "keep-alive",
+                }
+            )
 
     def _get_cache_key(self, url: str, use_sandbox: bool = False) -> str:
         """Generate cache key from URL and options."""
@@ -260,6 +334,7 @@ class UrlScanner:
         """Load YARA rules for web content scanning."""
         try:
             from .yara_engine import get_yara_engine
+
             self._yara_engine = get_yara_engine()
         except Exception as e:
             logger.debug(f"YARA not available for URL scanning: {e}")
@@ -273,13 +348,13 @@ class UrlScanner:
     ) -> UrlScanResult:
         """
         Perform static URL analysis (no sandbox).
-        
+
         Args:
             url: URL to scan
             block_private_ips: Reject localhost/private IPs
             block_downloads: Flag download content-types as suspicious
             use_cache: Use cached results if available
-        
+
         Returns:
             UrlScanResult with all analysis data
         """
@@ -341,15 +416,20 @@ class UrlScanner:
                     if self._yara_engine:
                         result.yara_matches = self._run_yara(content)
                         for match in result.yara_matches:
-                            result.evidence.append(Evidence(
-                                title=f"YARA Rule Match: {match.get('rule', 'unknown')}",
-                                severity="high",
-                                detail=match.get("description", "Matched malicious content pattern"),
-                                category="content"
-                            ))
+                            # YaraMatch is a dataclass — use attribute access, not .get()
+                            _rule_name = getattr(match, 'rule_name', None) or str(match)
+                            _severity = getattr(match, 'severity', None) or 'high'
+                            _detail = getattr(match, 'description', None) or 'Matched malicious content pattern'
+                            result.evidence.append(
+                                Evidence(
+                                    title=f"YARA Rule Match: {_rule_name}",
+                                    severity=_severity,
+                                    detail=_detail,
+                                    category="content",
+                                )
+                            )
             else:
                 result.errors.append("requests library not available for HTTP fetching")
-
 
         except Exception as e:
             logger.error(f"URL scan error: {e}")
@@ -378,13 +458,13 @@ class UrlScanner:
     ) -> UrlScanResult:
         """
         Perform URL analysis with sandbox detonation via WebView2.
-        
+
         Args:
             url: URL to scan
             block_private_ips: Reject localhost/private IPs
             block_downloads: Block download attempts in sandbox
             timeout_seconds: Sandbox execution timeout
-        
+
         Returns:
             UrlScanResult with static + sandbox analysis
         """
@@ -397,9 +477,7 @@ class UrlScanner:
         # Then run sandbox detonation
         try:
             sandbox_result = self._run_sandbox_detonation(
-                result.normalized_url,
-                block_downloads,
-                timeout_seconds
+                result.normalized_url, block_downloads, timeout_seconds
             )
             result.sandbox_used = True
             result.sandbox_result = sandbox_result
@@ -411,23 +489,27 @@ class UrlScanner:
             # Update final URL if sandbox found JS redirects
             if sandbox_result.get("final_url"):
                 if sandbox_result["final_url"] != result.final_url:
-                    result.evidence.append(Evidence(
-                        title="JavaScript Redirect Detected",
-                        severity="medium",
-                        detail=f"Page redirected via JavaScript to: {sandbox_result['final_url']}",
-                        category="behavior"
-                    ))
+                    result.evidence.append(
+                        Evidence(
+                            title="JavaScript Redirect Detected",
+                            severity="medium",
+                            detail=f"Page redirected via JavaScript to: {sandbox_result['final_url']}",
+                            category="behavior",
+                        )
+                    )
                     result.final_url = sandbox_result["final_url"]
 
         except Exception as e:
             logger.warning(f"Sandbox detonation failed: {e}")
             result.errors.append(f"Sandbox detonation unavailable: {e}")
-            result.evidence.append(Evidence(
-                title="Sandbox Error",
-                severity="info",
-                detail=f"Sandbox detonation did not complete: {e}",
-                category="behavior"
-            ))
+            result.evidence.append(
+                Evidence(
+                    title="Sandbox Error",
+                    severity="info",
+                    detail=f"Sandbox detonation did not complete: {e}",
+                    category="behavior",
+                )
+            )
 
         # Rebuild signals and recalculate verdict with sandbox evidence
         result.signals = self._build_signals(result)
@@ -454,8 +536,12 @@ class UrlScanner:
         explanations = []
 
         for ev in result.evidence:
-            sev = getattr(ev, "severity", ev.get("severity") if isinstance(ev, dict) else "info")
-            title = getattr(ev, "title", ev.get("title") if isinstance(ev, dict) else "")
+            sev = getattr(
+                ev, "severity", ev.get("severity") if isinstance(ev, dict) else "info"
+            )
+            title = getattr(
+                ev, "title", ev.get("title") if isinstance(ev, dict) else ""
+            )
             pts = SEVERITY_WEIGHTS.get(sev, 0)
             if pts > 0:
                 score += pts
@@ -496,19 +582,20 @@ class UrlScanner:
         result.verdict = verdict
         result.verdict_label = label
         result.summary = (
-            f"{label} (score: {score}/100). "
-            f"{len(result.evidence)} indicators analyzed."
+            f"{label} (score: {score}/100). {len(result.evidence)} indicators analyzed."
         )
-        result.explanation = "\n".join(explanations) if explanations else "No suspicious indicators found."
+        result.explanation = (
+            "\n".join(explanations)
+            if explanations
+            else "No suspicious indicators found."
+        )
 
     def _normalize_and_validate(
-        self,
-        url: str,
-        block_private_ips: bool
+        self, url: str, block_private_ips: bool
     ) -> tuple[str, bool, list]:
         """
         Normalize and validate URL.
-        
+
         Returns:
             (normalized_url, is_valid, evidence_list)
         """
@@ -519,22 +606,26 @@ class UrlScanner:
 
         # Reject empty
         if not url:
-            evidence.append(Evidence(
-                title="Empty URL",
-                severity="critical",
-                detail="No URL provided",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Empty URL",
+                    severity="critical",
+                    detail="No URL provided",
+                    category="structure",
+                )
+            )
             return "", False, evidence
 
         # Reject control characters
         if any(ord(c) < 32 for c in url):
-            evidence.append(Evidence(
-                title="Control Characters in URL",
-                severity="critical",
-                detail="URL contains invalid control characters",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Control Characters in URL",
+                    severity="critical",
+                    detail="URL contains invalid control characters",
+                    category="structure",
+                )
+            )
             return url, False, evidence
 
         # Add scheme if missing
@@ -545,32 +636,38 @@ class UrlScanner:
         try:
             parsed = urlparse(url)
         except Exception as e:
-            evidence.append(Evidence(
-                title="Invalid URL Format",
-                severity="critical",
-                detail=f"Could not parse URL: {e}",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Invalid URL Format",
+                    severity="critical",
+                    detail=f"Could not parse URL: {e}",
+                    category="structure",
+                )
+            )
             return url, False, evidence
 
         # Must have scheme and netloc
         if not parsed.scheme or not parsed.netloc:
-            evidence.append(Evidence(
-                title="Malformed URL",
-                severity="critical",
-                detail="URL missing scheme or hostname",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Malformed URL",
+                    severity="critical",
+                    detail="URL missing scheme or hostname",
+                    category="structure",
+                )
+            )
             return url, False, evidence
 
         # Only allow http/https
         if parsed.scheme not in ("http", "https"):
-            evidence.append(Evidence(
-                title="Non-HTTP Scheme",
-                severity="high",
-                detail=f"Blocked scheme: {parsed.scheme}",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Non-HTTP Scheme",
+                    severity="high",
+                    detail=f"Blocked scheme: {parsed.scheme}",
+                    category="structure",
+                )
+            )
             return url, False, evidence
 
         # Extract hostname
@@ -578,35 +675,39 @@ class UrlScanner:
 
         # Check for punycode (IDN homograph attack)
         if hostname.startswith("xn--") or "xn--" in hostname:
-            evidence.append(Evidence(
-                title="Punycode/IDN Domain",
-                severity="high",
-                detail=f"Domain uses punycode encoding which can hide homograph attacks: {hostname}",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Punycode/IDN Domain",
+                    severity="high",
+                    detail=f"Domain uses punycode encoding which can hide homograph attacks: {hostname}",
+                    category="structure",
+                )
+            )
 
         # Check for IP literal
-        is_ip = False
         try:
             ip = ipaddress.ip_address(hostname)
-            is_ip = True
-            evidence.append(Evidence(
-                title="IP Address URL",
-                severity="medium",
-                detail=f"URL uses IP address instead of domain: {hostname}",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="IP Address URL",
+                    severity="medium",
+                    detail=f"URL uses IP address instead of domain: {hostname}",
+                    category="structure",
+                )
+            )
 
             # Check private/localhost
             if block_private_ips:
                 for private_range in PRIVATE_RANGES:
                     if ip in private_range:
-                        evidence.append(Evidence(
-                            title="Private/Localhost IP Blocked",
-                            severity="critical",
-                            detail=f"Blocked private/localhost IP: {hostname}",
-                            category="structure"
-                        ))
+                        evidence.append(
+                            Evidence(
+                                title="Private/Localhost IP Blocked",
+                                severity="critical",
+                                detail=f"Blocked private/localhost IP: {hostname}",
+                                category="structure",
+                            )
+                        )
                         return url, False, evidence
         except ValueError:
             pass
@@ -614,23 +715,27 @@ class UrlScanner:
         # Check for localhost names
         if block_private_ips:
             if hostname.lower() in ("localhost", "localhost.localdomain"):
-                evidence.append(Evidence(
-                    title="Localhost Blocked",
-                    severity="critical",
-                    detail="Blocked localhost hostname",
-                    category="structure"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="Localhost Blocked",
+                        severity="critical",
+                        detail="Blocked localhost hostname",
+                        category="structure",
+                    )
+                )
                 return url, False, evidence
 
         # Normalize URL
-        normalized = urlunparse((
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            parsed.path or "/",
-            parsed.params,
-            parsed.query,
-            ""  # Remove fragment
-        ))
+        normalized = urlunparse(
+            (
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                parsed.path or "/",
+                parsed.params,
+                parsed.query,
+                "",  # Remove fragment
+            )
+        )
 
         return normalized, True, evidence
 
@@ -645,12 +750,14 @@ class UrlScanner:
         # Check suspicious TLD
         for tld in SUSPICIOUS_TLDS:
             if hostname.endswith(tld):
-                evidence.append(Evidence(
-                    title="Suspicious TLD",
-                    severity="medium",
-                    detail=f"Domain uses commonly abused TLD: {tld}",
-                    category="structure"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="Suspicious TLD",
+                        severity="medium",
+                        detail=f"Domain uses commonly abused TLD: {tld}",
+                        category="structure",
+                    )
+                )
                 break
 
         # Check path for suspicious keywords
@@ -661,62 +768,74 @@ class UrlScanner:
                 found_keywords.append(keyword)
 
         if found_keywords:
-            evidence.append(Evidence(
-                title="Suspicious Path Keywords",
-                severity="medium" if len(found_keywords) <= 2 else "high",
-                detail=f"Path contains suspicious keywords: {', '.join(found_keywords[:5])}",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Suspicious Path Keywords",
+                    severity="medium" if len(found_keywords) <= 2 else "high",
+                    detail=f"Path contains suspicious keywords: {', '.join(found_keywords[:5])}",
+                    category="structure",
+                )
+            )
 
         # Check for suspicious query params
         if query:
             params = parse_qs(query)
-            suspicious_params = [p for p in params.keys() if p.lower() in SUSPICIOUS_QUERY_PARAMS]
+            suspicious_params = [
+                p for p in params.keys() if p.lower() in SUSPICIOUS_QUERY_PARAMS
+            ]
             if suspicious_params:
-                evidence.append(Evidence(
-                    title="Redirect Parameters",
-                    severity="low",
-                    detail=f"URL contains redirect-like parameters: {', '.join(suspicious_params)}",
-                    category="structure"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="Redirect Parameters",
+                        severity="low",
+                        detail=f"URL contains redirect-like parameters: {', '.join(suspicious_params)}",
+                        category="structure",
+                    )
+                )
 
         # Check for excessive subdomain depth
         subdomain_count = hostname.count(".")
         if subdomain_count >= 4:
-            evidence.append(Evidence(
-                title="Excessive Subdomains",
-                severity="low",
-                detail=f"Domain has {subdomain_count} levels which may be used to hide the real domain",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Excessive Subdomains",
+                    severity="low",
+                    detail=f"Domain has {subdomain_count} levels which may be used to hide the real domain",
+                    category="structure",
+                )
+            )
 
         # Check for very long URL
         if len(url) > 500:
-            evidence.append(Evidence(
-                title="Unusually Long URL",
-                severity="low",
-                detail=f"URL is {len(url)} characters which may indicate obfuscation",
-                category="structure"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Unusually Long URL",
+                    severity="low",
+                    detail=f"URL is {len(url)} characters which may indicate obfuscation",
+                    category="structure",
+                )
+            )
 
         # Check for encoded characters
         if "%" in url:
             # Count encoded chars
             encoded_count = url.count("%")
             if encoded_count > 10:
-                evidence.append(Evidence(
-                    title="Heavy URL Encoding",
-                    severity="low",
-                    detail=f"URL contains {encoded_count} encoded characters which may hide content",
-                    category="structure"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="Heavy URL Encoding",
+                        severity="low",
+                        detail=f"URL contains {encoded_count} encoded characters which may hide content",
+                        category="structure",
+                    )
+                )
 
         return evidence
 
     def _safe_fetch(self, url: str, block_downloads: bool) -> dict:
         """
         Safely fetch URL with redirect tracking.
-        
+
         Returns dict with: final_url, redirects, status, content_type, content, evidence
         """
         result = {
@@ -748,7 +867,7 @@ class UrlScanner:
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Accept": "text/html,application/xhtml+xml,*/*",
                     "Accept-Language": "en-US,en;q=0.9",
-                }
+                },
             )
 
             result["status"] = response.status_code
@@ -759,55 +878,72 @@ class UrlScanner:
             # Track redirects
             if response.history:
                 for r in response.history:
-                    result["redirects"].append({
-                        "url": r.url,
-                        "status": r.status_code,
-                    })
+                    result["redirects"].append(
+                        {
+                            "url": r.url,
+                            "status": r.status_code,
+                        }
+                    )
 
                 if len(response.history) >= 3:
-                    result["evidence"].append(Evidence(
-                        title="Multiple Redirects",
-                        severity="medium" if len(response.history) < 5 else "high",
-                        detail=f"URL redirected {len(response.history)} times before reaching final destination",
-                        category="behavior"
-                    ))
+                    result["evidence"].append(
+                        Evidence(
+                            title="Multiple Redirects",
+                            severity="medium" if len(response.history) < 5 else "high",
+                            detail=f"URL redirected {len(response.history)} times before reaching final destination",
+                            category="behavior",
+                        )
+                    )
 
             # Check content type
             content_type = result["content_type"].lower()
 
             # Block download content types
             download_types = [
-                "application/octet-stream", "application/x-msdownload",
-                "application/x-msdos-program", "application/exe",
-                "application/x-exe", "application/zip", "application/x-zip",
-                "application/x-rar", "application/x-7z-compressed",
+                "application/octet-stream",
+                "application/x-msdownload",
+                "application/x-msdos-program",
+                "application/exe",
+                "application/x-exe",
+                "application/zip",
+                "application/x-zip",
+                "application/x-rar",
+                "application/x-7z-compressed",
             ]
 
             is_download = any(dt in content_type for dt in download_types)
             if is_download:
-                result["evidence"].append(Evidence(
-                    title="Download Content Type",
-                    severity="high",
-                    detail=f"Server returned download content-type: {result['content_type']}",
-                    category="content"
-                ))
+                result["evidence"].append(
+                    Evidence(
+                        title="Download Content Type",
+                        severity="high",
+                        detail=f"Server returned download content-type: {result['content_type']}",
+                        category="content",
+                    )
+                )
                 if block_downloads:
                     response.close()
                     return result
 
             # Only download text content
-            if "text/" in content_type or "html" in content_type or "javascript" in content_type:
+            if (
+                "text/" in content_type
+                or "html" in content_type
+                or "javascript" in content_type
+            ):
                 # Read with size limit
                 content = b""
                 for chunk in response.iter_content(chunk_size=8192):
                     content += chunk
                     if len(content) > self.MAX_CONTENT_SIZE:
-                        result["evidence"].append(Evidence(
-                            title="Large Content",
-                            severity="info",
-                            detail=f"Content exceeded {self.MAX_CONTENT_SIZE // 1024}KB limit, truncated",
-                            category="content"
-                        ))
+                        result["evidence"].append(
+                            Evidence(
+                                title="Large Content",
+                                severity="info",
+                                detail=f"Content exceeded {self.MAX_CONTENT_SIZE // 1024}KB limit, truncated",
+                                category="content",
+                            )
+                        )
                         break
 
                 result["content_size"] = len(content)
@@ -818,50 +954,62 @@ class UrlScanner:
                 except Exception:
                     result["content"] = content.decode("latin-1", errors="replace")
             else:
-                result["evidence"].append(Evidence(
-                    title="Non-Text Content",
-                    severity="info",
-                    detail=f"Content-type is not text/html: {result['content_type']}",
-                    category="content"
-                ))
+                result["evidence"].append(
+                    Evidence(
+                        title="Non-Text Content",
+                        severity="info",
+                        detail=f"Content-type is not text/html: {result['content_type']}",
+                        category="content",
+                    )
+                )
 
             response.close()
 
         except requests.exceptions.TooManyRedirects:
-            result["evidence"].append(Evidence(
-                title="Excessive Redirects",
-                severity="high",
-                detail=f"URL exceeded maximum of {self.MAX_REDIRECTS} redirects",
-                category="behavior"
-            ))
+            result["evidence"].append(
+                Evidence(
+                    title="Excessive Redirects",
+                    severity="high",
+                    detail=f"URL exceeded maximum of {self.MAX_REDIRECTS} redirects",
+                    category="behavior",
+                )
+            )
         except requests.exceptions.Timeout:
-            result["evidence"].append(Evidence(
-                title="Connection Timeout",
-                severity="medium",
-                detail="Server did not respond within timeout period",
-                category="behavior"
-            ))
+            result["evidence"].append(
+                Evidence(
+                    title="Connection Timeout",
+                    severity="medium",
+                    detail="Server did not respond within timeout period",
+                    category="behavior",
+                )
+            )
         except requests.exceptions.SSLError as e:
-            result["evidence"].append(Evidence(
-                title="SSL/TLS Error",
-                severity="high",
-                detail=f"SSL certificate error: {str(e)[:100]}",
-                category="security"
-            ))
+            result["evidence"].append(
+                Evidence(
+                    title="SSL/TLS Error",
+                    severity="high",
+                    detail=f"SSL certificate error: {str(e)[:100]}",
+                    category="security",
+                )
+            )
         except requests.exceptions.ConnectionError as e:
-            result["evidence"].append(Evidence(
-                title="Connection Failed",
-                severity="info",
-                detail=f"Could not connect to server: {str(e)[:100]}",
-                category="behavior"
-            ))
+            result["evidence"].append(
+                Evidence(
+                    title="Connection Failed",
+                    severity="info",
+                    detail=f"Could not connect to server: {str(e)[:100]}",
+                    category="behavior",
+                )
+            )
         except Exception as e:
-            result["evidence"].append(Evidence(
-                title="Fetch Error",
-                severity="info",
-                detail=f"Error fetching URL: {str(e)[:100]}",
-                category="behavior"
-            ))
+            result["evidence"].append(
+                Evidence(
+                    title="Fetch Error",
+                    severity="info",
+                    detail=f"Error fetching URL: {str(e)[:100]}",
+                    category="behavior",
+                )
+            )
 
         return result
 
@@ -875,65 +1023,92 @@ class UrlScanner:
         content_lower = content.lower()
 
         # Check for title
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", content_lower, re.IGNORECASE | re.DOTALL)
+        title_match = re.search(
+            r"<title[^>]*>(.*?)</title>", content_lower, re.IGNORECASE | re.DOTALL
+        )
         if title_match:
             title = title_match.group(1).strip()[:100]
             # Check for brand names in title (potential phishing)
-            brands = ["paypal", "apple", "microsoft", "google", "amazon", "facebook",
-                     "netflix", "bank", "secure", "verify", "update"]
+            brands = [
+                "paypal",
+                "apple",
+                "microsoft",
+                "google",
+                "amazon",
+                "facebook",
+                "netflix",
+                "bank",
+                "secure",
+                "verify",
+                "update",
+            ]
             for brand in brands:
                 if brand in title:
-                    evidence.append(Evidence(
-                        title="Brand Name in Title",
-                        severity="medium",
-                        detail=f"Page title contains '{brand}': {title}",
-                        category="content"
-                    ))
+                    evidence.append(
+                        Evidence(
+                            title="Brand Name in Title",
+                            severity="medium",
+                            detail=f"Page title contains '{brand}': {title}",
+                            category="content",
+                        )
+                    )
                     break
 
         # Check for password fields
         password_fields = len(re.findall(r'type\s*=\s*["\']?password', content_lower))
         if password_fields > 0:
-            evidence.append(Evidence(
-                title="Password Input Field",
-                severity="medium",
-                detail=f"Page contains {password_fields} password input field(s)",
-                category="content"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Password Input Field",
+                    severity="medium",
+                    detail=f"Page contains {password_fields} password input field(s)",
+                    category="content",
+                )
+            )
 
         # Check for suspicious form actions
-        form_actions = re.findall(r'<form[^>]*action\s*=\s*["\']([^"\']+)', content_lower)
+        form_actions = re.findall(
+            r'<form[^>]*action\s*=\s*["\']([^"\']+)', content_lower
+        )
         for action in form_actions:
             if action.startswith("http") and urlparse(url).hostname not in action:
-                evidence.append(Evidence(
-                    title="External Form Action",
-                    severity="high",
-                    detail=f"Form submits data to external domain: {action[:100]}",
-                    category="content"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="External Form Action",
+                        severity="high",
+                        detail=f"Form submits data to external domain: {action[:100]}",
+                        category="content",
+                    )
+                )
 
         # Check for suspicious iframes
-        iframes = re.findall(r'<iframe[^>]*src\s*=\s*["\']([^"\']+)', content, re.IGNORECASE)
+        iframes = re.findall(
+            r'<iframe[^>]*src\s*=\s*["\']([^"\']+)', content, re.IGNORECASE
+        )
         for iframe in iframes:
             if iframe.startswith("http"):
                 iframe_domain = urlparse(iframe).hostname
                 if iframe_domain and iframe_domain != urlparse(url).hostname:
-                    evidence.append(Evidence(
-                        title="External IFrame",
-                        severity="medium",
-                        detail=f"Page embeds external iframe: {iframe[:100]}",
-                        category="content"
-                    ))
+                    evidence.append(
+                        Evidence(
+                            title="External IFrame",
+                            severity="medium",
+                            detail=f"Page embeds external iframe: {iframe[:100]}",
+                            category="content",
+                        )
+                    )
 
         # Check for data URIs (potential embedded malware)
         data_uris = len(re.findall(r"data:[^;]+;base64,", content_lower))
         if data_uris > 5:
-            evidence.append(Evidence(
-                title="Multiple Data URIs",
-                severity="medium",
-                detail=f"Page contains {data_uris} base64 data URIs which may hide content",
-                category="content"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Multiple Data URIs",
+                    severity="medium",
+                    detail=f"Page contains {data_uris} base64 data URIs which may hide content",
+                    category="content",
+                )
+            )
 
         # Check for obfuscated JavaScript
         obfuscation_signals = [
@@ -951,12 +1126,14 @@ class UrlScanner:
                 found_obfuscation.append(name)
 
         if found_obfuscation:
-            evidence.append(Evidence(
-                title="JavaScript Obfuscation Signals",
-                severity="medium",
-                detail=f"Page uses potential obfuscation: {', '.join(found_obfuscation)}",
-                category="content"
-            ))
+            evidence.append(
+                Evidence(
+                    title="JavaScript Obfuscation Signals",
+                    severity="medium",
+                    detail=f"Page uses potential obfuscation: {', '.join(found_obfuscation)}",
+                    category="content",
+                )
+            )
 
         # Check for cryptocurrency wallet addresses
         crypto_patterns = [
@@ -967,12 +1144,14 @@ class UrlScanner:
 
         for pattern, crypto_type in crypto_patterns:
             if re.search(pattern, content):
-                evidence.append(Evidence(
-                    title=f"{crypto_type} Address Found",
-                    severity="medium",
-                    detail=f"Page contains what appears to be a {crypto_type} wallet address",
-                    category="content"
-                ))
+                evidence.append(
+                    Evidence(
+                        title=f"{crypto_type} Address Found",
+                        severity="medium",
+                        detail=f"Page contains what appears to be a {crypto_type} wallet address",
+                        category="content",
+                    )
+                )
 
         return evidence
 
@@ -1001,7 +1180,9 @@ class UrlScanner:
                 pass
 
         # Also extract from href/src attributes
-        attr_domains = re.findall(r'(?:href|src)\s*=\s*["\']https?://([^/\s"\']+)', content, re.IGNORECASE)
+        attr_domains = re.findall(
+            r'(?:href|src)\s*=\s*["\']https?://([^/\s"\']+)', content, re.IGNORECASE
+        )
         for d in attr_domains:
             if d and d != base_domain:
                 domains.add(d.lower())
@@ -1030,7 +1211,9 @@ class UrlScanner:
 
         try:
             # Create temp file for YARA scanning
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".html", delete=False, encoding="utf-8"
+            ) as f:
                 f.write(content)
                 temp_path = f.name
 
@@ -1044,22 +1227,26 @@ class UrlScanner:
             return []
 
     def _run_sandbox_detonation(
-        self,
-        url: str,
-        block_downloads: bool,
-        timeout_seconds: int
+        self, url: str, block_downloads: bool, timeout_seconds: int
     ) -> dict:
         """
         Run URL in sandbox via WebView2 detonator.
-        
+
         Returns dict with sandbox execution results.
         """
         # Check if WebView2 detonator exists
-        detonator_path = Path(__file__).parent.parent.parent / "tools" / "url_detonator" / "webview2_detonator.py"
+        detonator_path = (
+            Path(__file__).parent.parent.parent
+            / "tools"
+            / "url_detonator"
+            / "webview2_detonator.py"
+        )
 
         if not detonator_path.exists():
             # Try alternative location
-            detonator_path = Path(__file__).parent.parent.parent / "tools" / "webview2_detonator.py"
+            detonator_path = (
+                Path(__file__).parent.parent.parent / "tools" / "webview2_detonator.py"
+            )
 
         if not detonator_path.exists():
             raise FileNotFoundError("WebView2 detonator script not found")
@@ -1075,19 +1262,25 @@ class UrlScanner:
         try:
             # Run detonator in sandbox
             from .integrated_sandbox import get_integrated_sandbox
+
             sandbox = get_integrated_sandbox()
 
             avail = sandbox.availability()
             if not avail.get("available"):
-                raise RuntimeError(f"Sandbox not available: {avail.get('reason', 'unknown')}")
+                raise RuntimeError(
+                    f"Sandbox not available: {avail.get('reason', 'unknown')}"
+                )
 
             # Build command
             cmd = [
                 sys.executable,
                 str(detonator_path),
-                "--url", url,
-                "--output", result_file,
-                "--timeout", str(timeout_seconds),
+                "--url",
+                url,
+                "--output",
+                result_file,
+                "--timeout",
+                str(timeout_seconds),
             ]
             if block_downloads:
                 cmd.append("--block-downloads")
@@ -1098,7 +1291,7 @@ class UrlScanner:
                 capture_output=True,
                 timeout=timeout_seconds + 10,
                 text=True,
-                cwd=str(detonator_path.parent)
+                cwd=str(detonator_path.parent),
             )
 
             # Read and validate output payload
@@ -1117,6 +1310,7 @@ class UrlScanner:
                 }
 
             import json
+
             try:
                 with open(output_path, encoding="utf-8") as f:
                     parsed = json.load(f)
@@ -1175,54 +1369,64 @@ class UrlScanner:
 
         if not sandbox_result.get("success"):
             error = sandbox_result.get("error", "Unknown error")
-            evidence.append(Evidence(
-                title="Sandbox Error",
-                severity="info",
-                detail=f"Sandbox detonation did not complete: {error[:200]}",
-                category="behavior"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Sandbox Error",
+                    severity="info",
+                    detail=f"Sandbox detonation did not complete: {error[:200]}",
+                    category="behavior",
+                )
+            )
             return evidence
 
         # Check for download attempts
         downloads = sandbox_result.get("download_attempts", [])
         if downloads:
             for dl in downloads[:5]:
-                evidence.append(Evidence(
-                    title="Download Attempt",
-                    severity="high",
-                    detail=f"Page attempted to download: {dl.get('url', 'unknown')[:100]}",
-                    category="behavior"
-                ))
+                evidence.append(
+                    Evidence(
+                        title="Download Attempt",
+                        severity="high",
+                        detail=f"Page attempted to download: {dl.get('url', 'unknown')[:100]}",
+                        category="behavior",
+                    )
+                )
 
         # Check for popups
         popups = sandbox_result.get("popups", [])
         if popups:
-            evidence.append(Evidence(
-                title="Popup Windows",
-                severity="medium",
-                detail=f"Page attempted to open {len(popups)} popup window(s)",
-                category="behavior"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Popup Windows",
+                    severity="medium",
+                    detail=f"Page attempted to open {len(popups)} popup window(s)",
+                    category="behavior",
+                )
+            )
 
         # Check for external navigations
         navigations = sandbox_result.get("navigations", [])
         if len(navigations) > 5:
-            evidence.append(Evidence(
-                title="Excessive Navigation",
-                severity="medium",
-                detail=f"Page triggered {len(navigations)} navigation events",
-                category="behavior"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Excessive Navigation",
+                    severity="medium",
+                    detail=f"Page triggered {len(navigations)} navigation events",
+                    category="behavior",
+                )
+            )
 
         # Check for script errors
         errors = sandbox_result.get("script_errors", [])
         if errors:
-            evidence.append(Evidence(
-                title="Script Errors",
-                severity="info",
-                detail=f"Page had {len(errors)} JavaScript error(s)",
-                category="content"
-            ))
+            evidence.append(
+                Evidence(
+                    title="Script Errors",
+                    severity="info",
+                    detail=f"Page had {len(errors)} JavaScript error(s)",
+                    category="content",
+                )
+            )
 
         return evidence
 
@@ -1232,11 +1436,34 @@ class UrlScanner:
             "has_redirects": len(result.redirects) > 0,
             "redirect_count": len(result.redirects),
             "is_https": result.normalized_url.startswith("https://"),
-            "is_ip_literal": bool(re.match(r"https?://\d+\.\d+\.\d+\.\d+", result.normalized_url)),
+            "is_ip_literal": bool(
+                re.match(r"https?://\d+\.\d+\.\d+\.\d+", result.normalized_url)
+            ),
             "evidence_count": len(result.evidence),
-            "critical_count": sum(1 for e in result.evidence if getattr(e, "severity", e.get("severity") if isinstance(e, dict) else "") == "critical"),
-            "high_count": sum(1 for e in result.evidence if getattr(e, "severity", e.get("severity") if isinstance(e, dict) else "") == "high"),
-            "medium_count": sum(1 for e in result.evidence if getattr(e, "severity", e.get("severity") if isinstance(e, dict) else "") == "medium"),
+            "critical_count": sum(
+                1
+                for e in result.evidence
+                if getattr(
+                    e, "severity", e.get("severity") if isinstance(e, dict) else ""
+                )
+                == "critical"
+            ),
+            "high_count": sum(
+                1
+                for e in result.evidence
+                if getattr(
+                    e, "severity", e.get("severity") if isinstance(e, dict) else ""
+                )
+                == "high"
+            ),
+            "medium_count": sum(
+                1
+                for e in result.evidence
+                if getattr(
+                    e, "severity", e.get("severity") if isinstance(e, dict) else ""
+                )
+                == "medium"
+            ),
             "yara_matches": len(result.yara_matches),
             "ioc_domains": len(result.iocs.get("domains", [])),
             "ioc_ips": len(result.iocs.get("ips", [])),

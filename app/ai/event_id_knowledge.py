@@ -12,17 +12,16 @@ as simple Python data structures for fast lookup.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class EventKnowledge:
     """Structured knowledge about a Windows event."""
 
-    title: str                  # Short summary (max ~60 chars)
-    severity: str               # "Safe", "Minor", "Warning", "Critical"
-    what_happened: str          # 1-2 sentences in plain language
-    what_you_can_do: str        # 1-3 bullet-style sentences
+    title: str  # Short summary (max ~60 chars)
+    severity: str  # "Safe", "Minor", "Warning", "Critical"
+    what_happened: str  # 1-2 sentences in plain language
+    what_you_can_do: str  # 1-3 bullet-style sentences
     tech_notes: str | None = None  # Optional technical detail
 
 
@@ -31,7 +30,6 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
     # =========================================================================
     # APPLICATION EVENTS
     # =========================================================================
-
     ("Application", 1000): EventKnowledge(
         title="Application error occurred",
         severity="Warning",
@@ -43,9 +41,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If the app is still working, no action needed. "
             "If it keeps crashing, try updating or reinstalling the app."
         ),
-        tech_notes="Windows Error Reporting: Application Error (Event ID 1000)."
+        tech_notes="Windows Error Reporting: Application Error (Event ID 1000).",
     ),
-
     ("Application", 1001): EventKnowledge(
         title="Error report sent to Microsoft",
         severity="Safe",
@@ -56,9 +53,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
         what_you_can_do=(
             "No action needed. This just confirms an error report was sent."
         ),
-        tech_notes="Windows Error Reporting follow-up event."
+        tech_notes="Windows Error Reporting follow-up event.",
     ),
-
     ("Application", 1002): EventKnowledge(
         title="Application stopped responding",
         severity="Warning",
@@ -70,17 +66,15 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If it happens rarely, you can ignore it. "
             "If it happens often with the same app, try updating or reinstalling that app."
         ),
-        tech_notes="Windows Error Reporting: Application Hang (Event ID 1002)."
+        tech_notes="Windows Error Reporting: Application Hang (Event ID 1002).",
     ),
-
     ("Application", 1005): EventKnowledge(
         title="Application restart required",
         severity="Minor",
         what_happened="An application needs to be restarted to complete an operation.",
         what_you_can_do="Restart the application when convenient.",
-        tech_notes="Windows Error Reporting: Restart required."
+        tech_notes="Windows Error Reporting: Restart required.",
     ),
-
     ("Application", 1008): EventKnowledge(
         title="Application crash dump saved",
         severity="Minor",
@@ -88,12 +82,9 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "An application crashed and Windows saved diagnostic information. "
             "This helps developers fix the problem."
         ),
-        what_you_can_do=(
-            "If the app keeps crashing, try updating or reinstalling it."
-        ),
-        tech_notes="Windows Error Reporting: Crash dump created."
+        what_you_can_do=("If the app keeps crashing, try updating or reinstalling it."),
+        tech_notes="Windows Error Reporting: Crash dump created.",
     ),
-
     ("Application", 1026): EventKnowledge(
         title=".NET application error",
         severity="Warning",
@@ -105,117 +96,101 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If the app still works, no action needed. "
             "If it keeps failing, try updating the app or reinstalling .NET."
         ),
-        tech_notes=".NET Runtime error event."
+        tech_notes=".NET Runtime error event.",
     ),
-
     ("Application", 1033): EventKnowledge(
         title="Application installed successfully",
         severity="Safe",
         what_happened="A program was installed on your computer.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Installation success."
+        tech_notes="MsiInstaller: Installation success.",
     ),
-
     ("Application", 1034): EventKnowledge(
         title="Application removed successfully",
         severity="Safe",
         what_happened="A program was uninstalled from your computer.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Removal success."
+        tech_notes="MsiInstaller: Removal success.",
     ),
-
     ("Application", 1040): EventKnowledge(
         title="Application install/update started",
         severity="Safe",
         what_happened="Windows Installer started installing or updating a program.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Install started."
+        tech_notes="MsiInstaller: Install started.",
     ),
-
     ("Application", 1042): EventKnowledge(
         title="Application install/update finished",
         severity="Safe",
         what_happened="Windows Installer finished its work.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Install ended."
+        tech_notes="MsiInstaller: Install ended.",
     ),
-
     ("Application", 11707): EventKnowledge(
         title="Software installation successful",
         severity="Safe",
         what_happened="A program was installed successfully on your computer.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Product install success."
+        tech_notes="MsiInstaller: Product install success.",
     ),
-
     ("Application", 11708): EventKnowledge(
         title="Software installation failed",
         severity="Warning",
         what_happened="A program installation failed. It may not work properly.",
         what_you_can_do="Try running the installer again as Administrator.",
-        tech_notes="MsiInstaller: Product install failure."
+        tech_notes="MsiInstaller: Product install failure.",
     ),
-
     ("Application", 11724): EventKnowledge(
         title="Software removed successfully",
         severity="Safe",
         what_happened="A program was completely removed from your computer.",
         what_you_can_do="No action needed.",
-        tech_notes="MsiInstaller: Product removal success."
+        tech_notes="MsiInstaller: Product removal success.",
     ),
-
     # =========================================================================
     # ESENT (Database Engine) - very common
     # =========================================================================
-
     ("Application", 102): EventKnowledge(
         title="Database instance started",
         severity="Safe",
         what_happened="A Windows database component started. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="ESENT: Instance started."
+        tech_notes="ESENT: Instance started.",
     ),
-
     ("Application", 103): EventKnowledge(
         title="Database instance stopped",
         severity="Safe",
         what_happened="A Windows database component stopped. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="ESENT: Instance stopped."
+        tech_notes="ESENT: Instance stopped.",
     ),
-
     ("Application", 326): EventKnowledge(
         title="Database attached",
         severity="Safe",
         what_happened="A Windows database was opened. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="ESENT: Database attached."
+        tech_notes="ESENT: Database attached.",
     ),
-
     ("Application", 327): EventKnowledge(
         title="Database detached",
         severity="Safe",
         what_happened="A Windows database was closed. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="ESENT: Database detached."
+        tech_notes="ESENT: Database detached.",
     ),
-
     # =========================================================================
     # VSS (Volume Shadow Copy) - backups
     # =========================================================================
-
     ("Application", 8224): EventKnowledge(
         title="Backup in progress",
         severity="Safe",
         what_happened="Windows is creating a backup or restore point.",
         what_you_can_do="No action needed. Let it complete.",
-        tech_notes="VSS: Writer in use."
+        tech_notes="VSS: Writer in use.",
     ),
-
     # =========================================================================
     # SYSTEM EVENTS - Startup/Shutdown
     # =========================================================================
-
     ("*", 6005): EventKnowledge(
         title="Windows started",
         severity="Safe",
@@ -224,9 +199,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is completely normal."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Event log service startup marker."
+        tech_notes="Event log service startup marker.",
     ),
-
     ("*", 6006): EventKnowledge(
         title="Windows shut down normally",
         severity="Safe",
@@ -235,9 +209,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This means your computer was turned off or restarted normally."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Event log service shutdown marker."
+        tech_notes="Event log service shutdown marker.",
     ),
-
     ("*", 6008): EventKnowledge(
         title="Unexpected shutdown detected",
         severity="Warning",
@@ -249,9 +222,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If you lost power or forced a shutdown, no worries. "
             "If this happens often without explanation, have your computer checked."
         ),
-        tech_notes="Unexpected shutdown event (dirty shutdown)."
+        tech_notes="Unexpected shutdown event (dirty shutdown).",
     ),
-
     ("*", 6009): EventKnowledge(
         title="Windows version information",
         severity="Safe",
@@ -260,9 +232,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is just a reference log entry."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Windows version logged at boot time."
+        tech_notes="Windows version logged at boot time.",
     ),
-
     ("System", 1074): EventKnowledge(
         title="System restart or shutdown initiated",
         severity="Safe",
@@ -271,9 +242,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal when you restart Windows or install updates."
         ),
         what_you_can_do="No action needed unless it was unexpected.",
-        tech_notes="User-initiated restart/shutdown event."
+        tech_notes="User-initiated restart/shutdown event.",
     ),
-
     ("System", 1076): EventKnowledge(
         title="Unexpected shutdown reason recorded",
         severity="Minor",
@@ -282,13 +252,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Someone may have filled out the Shutdown Event Tracker."
         ),
         what_you_can_do="No action needed. This is informational.",
-        tech_notes="Shutdown Event Tracker reason."
+        tech_notes="Shutdown Event Tracker reason.",
     ),
-
     # =========================================================================
     # SYSTEM EVENTS - Services
     # =========================================================================
-
     ("System", 7000): EventKnowledge(
         title="A service failed to start",
         severity="Warning",
@@ -301,9 +269,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If something isn't working, try restarting your computer. "
             "Check Windows Update for fixes."
         ),
-        tech_notes="Service Control Manager: Service start failure."
+        tech_notes="Service Control Manager: Service start failure.",
     ),
-
     ("System", 7001): EventKnowledge(
         title="A service depends on another that failed",
         severity="Warning",
@@ -315,9 +282,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Look for another error about the original service that failed. "
             "Restarting your computer often fixes this."
         ),
-        tech_notes="Service Control Manager: Dependency failure."
+        tech_notes="Service Control Manager: Dependency failure.",
     ),
-
     ("System", 7034): EventKnowledge(
         title="A service stopped unexpectedly",
         severity="Warning",
@@ -329,9 +295,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If the service restarted and things work fine, no worries. "
             "If you notice problems, restart your computer."
         ),
-        tech_notes="Service Control Manager: Unexpected service termination."
+        tech_notes="Service Control Manager: Unexpected service termination.",
     ),
-
     ("System", 7036): EventKnowledge(
         title="Service status changed",
         severity="Safe",
@@ -340,9 +305,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal and happens all the time."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Service Control Manager: Service state change."
+        tech_notes="Service Control Manager: Service state change.",
     ),
-
     ("System", 7040): EventKnowledge(
         title="Service startup type changed",
         severity="Safe",
@@ -351,13 +315,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This could be from an update or a settings change."
         ),
         what_you_can_do="No action needed unless you didn't make this change.",
-        tech_notes="Service Control Manager: Start type modification."
+        tech_notes="Service Control Manager: Start type modification.",
     ),
-
     # =========================================================================
     # SYSTEM EVENTS - DCOM / Permissions
     # =========================================================================
-
     ("System", 10016): EventKnowledge(
         title="DCOM permissions issue",
         severity="Minor",
@@ -369,13 +331,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If everything is working fine, you can safely ignore this. "
             "These are often caused by Windows itself and are harmless."
         ),
-        tech_notes="DistributedCOM permission error; very common on consumer Windows."
+        tech_notes="DistributedCOM permission error; very common on consumer Windows.",
     ),
-
     # =========================================================================
     # SYSTEM EVENTS - Time
     # =========================================================================
-
     ("System", 1): EventKnowledge(
         title="System time changed",
         severity="Safe",
@@ -384,9 +344,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This often happens when Windows syncs with an internet time server."
         ),
         what_you_can_do="No action needed. This is normal.",
-        tech_notes="Kernel-General: System time change."
+        tech_notes="Kernel-General: System time change.",
     ),
-
     ("*", 37): EventKnowledge(
         title="Time synchronized",
         severity="Safe",
@@ -395,13 +354,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This keeps your clock accurate."
         ),
         what_you_can_do="No action needed. This is a good thing!",
-        tech_notes="Windows Time service sync event."
+        tech_notes="Windows Time service sync event.",
     ),
-
     # =========================================================================
     # SECURITY EVENTS - Logon/Logoff
     # =========================================================================
-
     ("Security", 4624): EventKnowledge(
         title="User logged in successfully",
         severity="Safe",
@@ -410,9 +367,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This happens every time you sign in."
         ),
         what_you_can_do="No action needed if it was you.",
-        tech_notes="Successful logon event."
+        tech_notes="Successful logon event.",
     ),
-
     ("Security", 4625): EventKnowledge(
         title="Failed login attempt",
         severity="Warning",
@@ -424,17 +380,15 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If you mistyped your password, no worries. "
             "If you see many failed attempts you didn't make, change your password."
         ),
-        tech_notes="Failed logon event."
+        tech_notes="Failed logon event.",
     ),
-
     ("Security", 4634): EventKnowledge(
         title="User logged off",
         severity="Safe",
         what_happened="Someone logged out of your computer. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Logoff event."
+        tech_notes="Logoff event.",
     ),
-
     ("Security", 4648): EventKnowledge(
         title="Login with explicit credentials",
         severity="Safe",
@@ -443,9 +397,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is common for network drives or scheduled tasks."
         ),
         what_you_can_do="No action needed if you recognize the activity.",
-        tech_notes="Explicit credential logon."
+        tech_notes="Explicit credential logon.",
     ),
-
     ("Security", 4672): EventKnowledge(
         title="Special privileges assigned",
         severity="Safe",
@@ -454,33 +407,28 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal when you use admin features."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Special privileges assigned to new logon."
+        tech_notes="Special privileges assigned to new logon.",
     ),
-
     # =========================================================================
     # SECURITY EVENTS - Process
     # =========================================================================
-
     ("Security", 4688): EventKnowledge(
         title="New program started",
         severity="Safe",
         what_happened="A program was launched on your computer. This happens constantly.",
         what_you_can_do="No action needed. This is normal activity logging.",
-        tech_notes="Process creation audit event."
+        tech_notes="Process creation audit event.",
     ),
-
     ("Security", 4689): EventKnowledge(
         title="Program closed",
         severity="Safe",
         what_happened="A program finished running and closed. This is completely normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Process exit audit event."
+        tech_notes="Process exit audit event.",
     ),
-
     # =========================================================================
     # SECURITY EVENTS - Firewall
     # =========================================================================
-
     ("Security", 5152): EventKnowledge(
         title="Network connection blocked",
         severity="Safe",
@@ -491,9 +439,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
         what_you_can_do=(
             "No action needed. If an app isn't working, you may need to allow it through the firewall."
         ),
-        tech_notes="Windows Filtering Platform packet drop."
+        tech_notes="Windows Filtering Platform packet drop.",
     ),
-
     ("Security", 5156): EventKnowledge(
         title="Network connection allowed",
         severity="Safe",
@@ -502,13 +449,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal network activity."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Windows Filtering Platform connection permit."
+        tech_notes="Windows Filtering Platform connection permit.",
     ),
-
     # =========================================================================
     # WINDOWS DEFENDER / SECURITY CENTER
     # =========================================================================
-
     ("*", 1116): EventKnowledge(
         title="Windows Defender detected something",
         severity="Warning",
@@ -520,9 +465,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Open Windows Security to see what was found. "
             "Usually Defender handles it automatically."
         ),
-        tech_notes="Microsoft Defender Antivirus detection event."
+        tech_notes="Microsoft Defender Antivirus detection event.",
     ),
-
     ("*", 1117): EventKnowledge(
         title="Windows Defender took action",
         severity="Safe",
@@ -531,20 +475,17 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "It may have quarantined, removed, or blocked something suspicious."
         ),
         what_you_can_do=(
-            "Open Windows Security to see details. "
-            "The threat has likely been handled."
+            "Open Windows Security to see details. The threat has likely been handled."
         ),
-        tech_notes="Microsoft Defender Antivirus action event."
+        tech_notes="Microsoft Defender Antivirus action event.",
     ),
-
     ("*", 1150): EventKnowledge(
         title="Windows Defender service started",
         severity="Safe",
         what_happened="Windows Defender started up. Your computer is being protected.",
         what_you_can_do="No action needed. This is good!",
-        tech_notes="Microsoft Defender Antivirus service start."
+        tech_notes="Microsoft Defender Antivirus service start.",
     ),
-
     ("*", 2000): EventKnowledge(
         title="Windows Defender definitions updated",
         severity="Safe",
@@ -553,9 +494,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This helps it detect the latest threats."
         ),
         what_you_can_do="No action needed. Updates are good!",
-        tech_notes="Microsoft Defender Antivirus signature update."
+        tech_notes="Microsoft Defender Antivirus signature update.",
     ),
-
     ("*", 2001): EventKnowledge(
         title="Windows Defender update failed",
         severity="Warning",
@@ -567,21 +507,18 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Try running Windows Update. "
             "Open Windows Security and click 'Check for updates'."
         ),
-        tech_notes="Microsoft Defender Antivirus signature update failure."
+        tech_notes="Microsoft Defender Antivirus signature update failure.",
     ),
-
     # =========================================================================
     # WINDOWS UPDATE
     # =========================================================================
-
     ("*", 19): EventKnowledge(
         title="Windows Update installed successfully",
         severity="Safe",
         what_happened="A Windows update was installed. Your system is up to date!",
         what_you_can_do="No action needed. You may need to restart if prompted.",
-        tech_notes="Windows Update Agent: Installation success."
+        tech_notes="Windows Update Agent: Installation success.",
     ),
-
     ("*", 20): EventKnowledge(
         title="Windows Update installation failed",
         severity="Warning",
@@ -594,21 +531,18 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Make sure you have enough disk space. "
             "Restart and try again."
         ),
-        tech_notes="Windows Update Agent: Installation failure."
+        tech_notes="Windows Update Agent: Installation failure.",
     ),
-
     ("*", 43): EventKnowledge(
         title="Windows Update download started",
         severity="Safe",
         what_happened="Windows is downloading updates. This is normal.",
         what_you_can_do="No action needed. Updates will install when ready.",
-        tech_notes="Windows Update Agent: Download started."
+        tech_notes="Windows Update Agent: Download started.",
     ),
-
     # =========================================================================
     # DISK / STORAGE
     # =========================================================================
-
     ("*", 7): EventKnowledge(
         title="Disk error detected",
         severity="Critical",
@@ -621,9 +555,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Run the built-in disk check tool: Right-click the drive, Properties, Tools, Check. "
             "Consider getting the drive checked by a professional."
         ),
-        tech_notes="Disk: Block error or bad sector."
+        tech_notes="Disk: Block error or bad sector.",
     ),
-
     ("*", 11): EventKnowledge(
         title="Disk controller error",
         severity="Warning",
@@ -635,9 +568,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If it happens once, probably fine. "
             "If it keeps happening, check your disk cables and consider backing up your data."
         ),
-        tech_notes="Disk: Controller error."
+        tech_notes="Disk: Controller error.",
     ),
-
     ("*", 51): EventKnowledge(
         title="Disk write error",
         severity="Warning",
@@ -649,13 +581,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If it happens rarely, probably fine. "
             "If frequent, back up your data and check the disk."
         ),
-        tech_notes="Disk: Paging write failure."
+        tech_notes="Disk: Paging write failure.",
     ),
-
     # =========================================================================
     # POWER
     # =========================================================================
-
     ("*", 41): EventKnowledge(
         title="System rebooted without clean shutdown",
         severity="Warning",
@@ -667,29 +597,25 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If you had a power outage or held the power button, that explains it. "
             "If it happens randomly, your computer may need to be checked."
         ),
-        tech_notes="Kernel-Power: Bugcheck or unexpected reboot."
+        tech_notes="Kernel-Power: Bugcheck or unexpected reboot.",
     ),
-
     ("*", 42): EventKnowledge(
         title="System entering sleep mode",
         severity="Safe",
         what_happened="Your computer is going to sleep. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Kernel-Power: Sleep transition."
+        tech_notes="Kernel-Power: Sleep transition.",
     ),
-
     ("*", 107): EventKnowledge(
         title="System resumed from sleep",
         severity="Safe",
         what_happened="Your computer woke up from sleep mode. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Kernel-Power: Resume from sleep."
+        tech_notes="Kernel-Power: Resume from sleep.",
     ),
-
     # =========================================================================
     # DNS / NAME RESOLUTION
     # =========================================================================
-
     ("*", 1014): EventKnowledge(
         title="DNS lookup timed out",
         severity="Minor",
@@ -701,13 +627,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If your internet is working, ignore this. "
             "If browsing is slow, try restarting your router."
         ),
-        tech_notes="DNS Client: Name resolution timeout."
+        tech_notes="DNS Client: Name resolution timeout.",
     ),
-
     # =========================================================================
     # DCOM / COM+ ERRORS
     # =========================================================================
-
     ("*", 10010): EventKnowledge(
         title="Program didn't respond in time",
         severity="Minor",
@@ -719,9 +643,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If everything is working, ignore this. "
             "These messages are common and usually harmless."
         ),
-        tech_notes="DCOM: Server did not register within timeout."
+        tech_notes="DCOM: Server did not register within timeout.",
     ),
-
     ("*", 10317): EventKnowledge(
         title="DCOM activation issue",
         severity="Minor",
@@ -730,13 +653,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Windows usually handles this automatically."
         ),
         what_you_can_do="No action needed. This is typically harmless.",
-        tech_notes="DCOM: Activation failure (usually cosmetic)."
+        tech_notes="DCOM: Activation failure (usually cosmetic).",
     ),
-
     # =========================================================================
     # MICROSOFT OFFICE / APPLICATIONS
     # =========================================================================
-
     ("*", 16384): EventKnowledge(
         title="Application started or status update",
         severity="Safe",
@@ -745,24 +666,20 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal operational logging."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Application informational event."
+        tech_notes="Application informational event.",
     ),
-
     ("*", 16394): EventKnowledge(
         title="Application status logged",
         severity="Safe",
         what_happened=(
-            "An application recorded a routine status update. "
-            "This is normal behavior."
+            "An application recorded a routine status update. This is normal behavior."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Application status event."
+        tech_notes="Application status event.",
     ),
-
     # =========================================================================
     # WINDOWS PERFORMANCE / WMI
     # =========================================================================
-
     ("*", 1801): EventKnowledge(
         title="Performance data collection",
         severity="Safe",
@@ -771,9 +688,8 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This helps Windows run efficiently."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="WMI/Performance counter event."
+        tech_notes="WMI/Performance counter event.",
     ),
-
     ("*", 5858): EventKnowledge(
         title="WMI activity recorded",
         severity="Safe",
@@ -782,29 +698,25 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal system monitoring activity."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="WMI-Activity event."
+        tech_notes="WMI-Activity event.",
     ),
-
     ("*", 5857): EventKnowledge(
         title="WMI provider loaded",
         severity="Safe",
         what_happened="A Windows management component was loaded. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="WMI-Activity: Provider loaded."
+        tech_notes="WMI-Activity: Provider loaded.",
     ),
-
     # =========================================================================
     # TASK SCHEDULER
     # =========================================================================
-
     ("*", 100): EventKnowledge(
         title="Scheduled task started",
         severity="Safe",
         what_happened="A scheduled task started running. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Task started."
+        tech_notes="Task Scheduler: Task started.",
     ),
-
     ("*", 101): EventKnowledge(
         title="Scheduled task failed to start",
         severity="Warning",
@@ -816,73 +728,63 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If you notice something not running, check Task Scheduler. "
             "Usually Windows handles this automatically."
         ),
-        tech_notes="Task Scheduler: Task start failure."
+        tech_notes="Task Scheduler: Task start failure.",
     ),
-
     ("*", 102): EventKnowledge(
         title="Scheduled task completed",
         severity="Safe",
         what_happened="A scheduled task finished running. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Task completed."
+        tech_notes="Task Scheduler: Task completed.",
     ),
-
     ("*", 110): EventKnowledge(
         title="Scheduled task triggered",
         severity="Safe",
         what_happened="A scheduled task was triggered to run. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Task triggered."
+        tech_notes="Task Scheduler: Task triggered.",
     ),
-
     ("*", 129): EventKnowledge(
         title="Scheduled task process created",
         severity="Safe",
         what_happened="The Task Scheduler started a process for a task. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Process created."
+        tech_notes="Task Scheduler: Process created.",
     ),
-
     ("*", 200): EventKnowledge(
         title="Scheduled task action started",
         severity="Safe",
         what_happened="A scheduled task action began executing. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Action started."
+        tech_notes="Task Scheduler: Action started.",
     ),
-
     ("*", 201): EventKnowledge(
         title="Scheduled task action completed",
         severity="Safe",
         what_happened="A scheduled task action finished. Normal operation.",
         what_you_can_do="No action needed.",
-        tech_notes="Task Scheduler: Action completed."
+        tech_notes="Task Scheduler: Action completed.",
     ),
-
     # =========================================================================
     # PRINT / SPOOLER
     # =========================================================================
-
     ("*", 307): EventKnowledge(
         title="Document printed",
         severity="Safe",
         what_happened="A document was sent to a printer. Normal printing activity.",
         what_you_can_do="No action needed.",
-        tech_notes="Print Spooler: Document printed."
+        tech_notes="Print Spooler: Document printed.",
     ),
-
     ("*", 805): EventKnowledge(
         title="Printer added or removed",
         severity="Safe",
         what_happened="A printer was added or removed from your system.",
         what_you_can_do="No action needed if you made this change.",
-        tech_notes="Print Spooler: Printer change."
+        tech_notes="Print Spooler: Printer change.",
     ),
-
     # =========================================================================
     # BITS (Background Intelligent Transfer Service)
     # =========================================================================
-
     ("*", 3): EventKnowledge(
         title="Background download started",
         severity="Safe",
@@ -891,29 +793,25 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is often Windows Update or app updates."
         ),
         what_you_can_do="No action needed. Downloads help keep your system updated.",
-        tech_notes="BITS: Transfer job started."
+        tech_notes="BITS: Transfer job started.",
     ),
-
     ("*", 4): EventKnowledge(
         title="Background download completed",
         severity="Safe",
         what_happened="A background download finished successfully.",
         what_you_can_do="No action needed.",
-        tech_notes="BITS: Transfer job completed."
+        tech_notes="BITS: Transfer job completed.",
     ),
-
     ("*", 5): EventKnowledge(
         title="Background download cancelled",
         severity="Safe",
         what_happened="A background download was cancelled.",
         what_you_can_do="No action needed.",
-        tech_notes="BITS: Transfer job cancelled."
+        tech_notes="BITS: Transfer job cancelled.",
     ),
-
     # =========================================================================
     # USER PROFILE
     # =========================================================================
-
     ("*", 1530): EventKnowledge(
         title="User profile loaded slowly",
         severity="Minor",
@@ -922,24 +820,20 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This can happen if you have many programs starting up."
         ),
         what_you_can_do=(
-            "Consider removing some startup programs. "
-            "Check Task Manager > Startup tab."
+            "Consider removing some startup programs. Check Task Manager > Startup tab."
         ),
-        tech_notes="User Profile Service: Slow profile load."
+        tech_notes="User Profile Service: Slow profile load.",
     ),
-
     ("*", 1531): EventKnowledge(
         title="User profile backup created",
         severity="Safe",
         what_happened="Windows created a backup of your user profile. This is protective.",
         what_you_can_do="No action needed.",
-        tech_notes="User Profile Service: Profile backup."
+        tech_notes="User Profile Service: Profile backup.",
     ),
-
     # =========================================================================
     # CERTIFICATE / CRYPTO
     # =========================================================================
-
     ("*", 4107): EventKnowledge(
         title="Certificate error",
         severity="Warning",
@@ -951,21 +845,18 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "If websites work fine, ignore this. "
             "If you see certificate warnings in browsers, check your system date/time."
         ),
-        tech_notes="CAPI2: Certificate validation issue."
+        tech_notes="CAPI2: Certificate validation issue.",
     ),
-
     ("CAPI2", 11): EventKnowledge(
         title="Certificate auto-update",
         severity="Safe",
         what_happened="Windows updated its certificate store. This keeps you secure.",
         what_you_can_do="No action needed.",
-        tech_notes="CAPI2: Certificate update."
+        tech_notes="CAPI2: Certificate update.",
     ),
-
     # =========================================================================
     # GROUP POLICY
     # =========================================================================
-
     ("*", 1500): EventKnowledge(
         title="Group Policy applied",
         severity="Safe",
@@ -974,29 +865,25 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal on work computers or domain-joined PCs."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Group Policy: Policy applied."
+        tech_notes="Group Policy: Policy applied.",
     ),
-
     ("*", 1501): EventKnowledge(
         title="Group Policy applied successfully",
         severity="Safe",
         what_happened="Computer policy was applied successfully.",
         what_you_can_do="No action needed.",
-        tech_notes="Group Policy: Computer policy success."
+        tech_notes="Group Policy: Computer policy success.",
     ),
-
     ("*", 1502): EventKnowledge(
         title="User Group Policy applied",
         severity="Safe",
         what_happened="User policy settings were applied successfully.",
         what_you_can_do="No action needed.",
-        tech_notes="Group Policy: User policy success."
+        tech_notes="Group Policy: User policy success.",
     ),
-
     # =========================================================================
     # SEARCH INDEXER
     # =========================================================================
-
     ("*", 3028): EventKnowledge(
         title="Search indexing activity",
         severity="Safe",
@@ -1005,45 +892,39 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal background activity."
         ),
         what_you_can_do="No action needed.",
-        tech_notes="Windows Search: Indexing activity."
+        tech_notes="Windows Search: Indexing activity.",
     ),
-
     ("*", 3036): EventKnowledge(
         title="Search index optimization",
         severity="Safe",
         what_happened="Windows is optimizing its search index for better performance.",
         what_you_can_do="No action needed.",
-        tech_notes="Windows Search: Index optimization."
+        tech_notes="Windows Search: Index optimization.",
     ),
-
     # =========================================================================
     # NETWORK
     # =========================================================================
-
     ("*", 4000): EventKnowledge(
         title="Network adapter connected",
         severity="Safe",
         what_happened="A network adapter connected to a network. This is normal.",
         what_you_can_do="No action needed.",
-        tech_notes="WLAN/LAN connect event."
+        tech_notes="WLAN/LAN connect event.",
     ),
-
     ("*", 4001): EventKnowledge(
         title="Network adapter disconnected",
         severity="Safe",
         what_happened="A network adapter disconnected from a network. This is normal.",
         what_you_can_do="No action needed if you unplugged or moved away from Wi-Fi.",
-        tech_notes="WLAN/LAN disconnect event."
+        tech_notes="WLAN/LAN disconnect event.",
     ),
-
     ("*", 10000): EventKnowledge(
         title="Network connection successful",
         severity="Safe",
         what_happened="Your computer connected to a network. Internet should be working!",
         what_you_can_do="No action needed.",
-        tech_notes="WLAN connection event."
+        tech_notes="WLAN connection event.",
     ),
-
     ("*", 10001): EventKnowledge(
         title="Network connection failed",
         severity="Warning",
@@ -1053,13 +934,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "Make sure you're in range. "
             "Try restarting your router."
         ),
-        tech_notes="WLAN connection failure."
+        tech_notes="WLAN connection failure.",
     ),
-
     # =========================================================================
     # USER ACCOUNT CONTROL (UAC)
     # =========================================================================
-
     ("*", 4673): EventKnowledge(
         title="Privileged service called",
         severity="Safe",
@@ -1068,15 +947,14 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
             "This is normal for many administrative tools."
         ),
         what_you_can_do="No action needed unless you see suspicious activity.",
-        tech_notes="Audit: Privileged service called."
+        tech_notes="Audit: Privileged service called.",
     ),
-
     ("*", 4670): EventKnowledge(
         title="Object permissions changed",
         severity="Safe",
         what_happened="Permissions on a file or folder were changed. This is often normal.",
         what_you_can_do="No action needed if you made the change.",
-        tech_notes="Audit: Object permissions modified."
+        tech_notes="Audit: Object permissions modified.",
     ),
 }
 
@@ -1084,11 +962,11 @@ EVENT_KB: dict[tuple[str, int], EventKnowledge] = {
 def lookup_event_knowledge(source: str, event_id: int) -> EventKnowledge | None:
     """
     Look up knowledge for a specific event.
-    
+
     Args:
         source: Event source (e.g., "System", "Application", "Security")
         event_id: The Windows Event ID
-        
+
     Returns:
         EventKnowledge if found, None otherwise.
         First checks for exact (source, event_id) match,
@@ -1110,7 +988,7 @@ def lookup_event_knowledge(source: str, event_id: int) -> EventKnowledge | None:
 def get_friendly_title(source: str, event_id: int, fallback: str = "") -> str:
     """
     Get a friendly title for an event, or return fallback if not in KB.
-    
+
     This is useful for the event list display.
     """
     kb = lookup_event_knowledge(source, event_id)

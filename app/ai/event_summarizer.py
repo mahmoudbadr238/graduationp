@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from PySide6.QtCore import QObject
 
@@ -30,7 +30,7 @@ MAX_TECH_NOTES_LENGTH = 250
 class EventSummary:
     """
     A human-friendly summary of a Windows event.
-    
+
     Fields:
         table_summary: Short 1-2 sentence summary for the event list (accurate, not oversimplified)
         title: Full but clear title representing the event meaning
@@ -41,6 +41,7 @@ class EventSummary:
         event_id: Original event ID
         source: Original event source
     """
+
     table_summary: str
     title: str
     severity_label: str  # "Safe", "Minor", "Warning", "Critical"
@@ -81,11 +82,11 @@ class EventSummary:
 class EventSummarizer(QObject):
     """
     Generates simple English summaries for Windows events using rule-based logic.
-    
+
     This class provides:
     1. Short summaries for the event table (friendly_message)
     2. Detailed explanations for the side panel
-    
+
     All processing is 100% local and deterministic - no AI/network calls.
     """
 
@@ -111,7 +112,7 @@ class EventSummarizer(QObject):
     def compute_signature(self, event: dict) -> str:
         """
         Compute a signature for an event based on source, event_id, and message hash.
-        
+
         This allows us to cache explanations for events with the same signature.
         """
         source = str(event.get("source", event.get("provider", "")))
@@ -124,10 +125,10 @@ class EventSummarizer(QObject):
     def summarize(self, event: dict) -> EventSummary:
         """
         Generate a human-friendly summary for a Windows event.
-        
+
         Args:
             event: dict containing event_id, level, source, timestamp, message
-            
+
         Returns:
             EventSummary with all fields populated
         """
@@ -166,7 +167,7 @@ class EventSummarizer(QObject):
     ) -> EventSummary:
         """
         Create a smart summary based on event level and content.
-        
+
         Uses rule-based logic to provide accurate, helpful summaries
         without requiring LLM generation (faster and more reliable).
         """
@@ -178,28 +179,36 @@ class EventSummarizer(QObject):
             severity_label = "Critical"
             table_summary = self._generate_table_summary_critical(source_short, message)
             title = self._generate_title("Critical", source, message)
-            what_happened = self._generate_what_happened_critical(source, message, event_id)
+            what_happened = self._generate_what_happened_critical(
+                source, message, event_id
+            )
             what_you_can_do = self._generate_what_you_can_do_critical(source, message)
             tech_notes = self._generate_tech_notes(event_id, source, level, message)
         elif level == "ERROR":
             severity_label = "Warning"
             table_summary = self._generate_table_summary_error(source_short, message)
             title = self._generate_title("Error", source, message)
-            what_happened = self._generate_what_happened_error(source, message, event_id)
+            what_happened = self._generate_what_happened_error(
+                source, message, event_id
+            )
             what_you_can_do = self._generate_what_you_can_do_error(source, message)
             tech_notes = self._generate_tech_notes(event_id, source, level, message)
         elif level == "WARNING":
             severity_label = "Minor"
             table_summary = self._generate_table_summary_warning(source_short, message)
             title = self._generate_title("Warning", source, message)
-            what_happened = self._generate_what_happened_warning(source, message, event_id)
+            what_happened = self._generate_what_happened_warning(
+                source, message, event_id
+            )
             what_you_can_do = self._generate_what_you_can_do_warning(source, message)
             tech_notes = self._generate_tech_notes(event_id, source, level, message)
         elif level == "SUCCESS":
             severity_label = "Safe"
             table_summary = self._generate_table_summary_success(source_short, message)
             title = self._generate_title("Success", source, message)
-            what_happened = self._generate_what_happened_success(source, message, event_id)
+            what_happened = self._generate_what_happened_success(
+                source, message, event_id
+            )
             what_you_can_do = "No action is needed. This event confirms that an operation completed successfully."
             tech_notes = self._generate_tech_notes(event_id, source, level, message)
         else:  # INFO, INFORMATION, or unknown
@@ -259,7 +268,9 @@ class EventSummarizer(QObject):
 
         if "update" in msg_lower:
             return f"{source} has an update available or is updating"
-        if "low" in msg_lower and ("disk" in msg_lower or "memory" in msg_lower or "space" in msg_lower):
+        if "low" in msg_lower and (
+            "disk" in msg_lower or "memory" in msg_lower or "space" in msg_lower
+        ):
             return "Your computer is running low on disk space or memory"
         if "slow" in msg_lower or "performance" in msg_lower:
             return "Something is running slower than expected"
@@ -357,7 +368,9 @@ class EventSummarizer(QObject):
         }
         return level_titles.get(level, f"Event from {source_short}")
 
-    def _generate_tech_notes(self, event_id: int, source: str, level: str, message: str) -> str:
+    def _generate_tech_notes(
+        self, event_id: int, source: str, level: str, message: str
+    ) -> str:
         """Generate technical notes summarizing raw event data for advanced users."""
         notes_parts = []
 
@@ -371,13 +384,16 @@ class EventSummarizer(QObject):
         if "error code" in msg_lower or "0x" in message:
             # Try to find error codes
             import re
+
             hex_codes = re.findall(r"0x[0-9A-Fa-f]+", message)
             if hex_codes:
                 notes_parts.append(f"Error codes: {', '.join(hex_codes[:3])}")
 
         return " | ".join(notes_parts)
 
-    def _generate_what_happened_critical(self, source: str, message: str, event_id: int) -> str:
+    def _generate_what_happened_critical(
+        self, source: str, message: str, event_id: int
+    ) -> str:
         """Generate a detailed explanation for critical events."""
         msg_lower = message.lower()
 
@@ -413,7 +429,9 @@ class EventSummarizer(QObject):
             "investigating if you notice any unusual behavior."
         )
 
-    def _generate_what_happened_error(self, source: str, message: str, event_id: int) -> str:
+    def _generate_what_happened_error(
+        self, source: str, message: str, event_id: int
+    ) -> str:
         """Generate a detailed explanation for error events."""
         msg_lower = message.lower()
 
@@ -448,7 +466,9 @@ class EventSummarizer(QObject):
             "affected. If this error occurs repeatedly, it may indicate an underlying issue worth investigating."
         )
 
-    def _generate_what_happened_warning(self, source: str, message: str, event_id: int) -> str:
+    def _generate_what_happened_warning(
+        self, source: str, message: str, event_id: int
+    ) -> str:
         """Generate a detailed explanation for warning events."""
         msg_lower = message.lower()
 
@@ -475,7 +495,9 @@ class EventSummarizer(QObject):
             "normally, but monitoring this type of event can help prevent future issues."
         )
 
-    def _generate_what_happened_success(self, source: str, message: str, event_id: int) -> str:
+    def _generate_what_happened_success(
+        self, source: str, message: str, event_id: int
+    ) -> str:
         """Generate a detailed explanation for success events."""
         msg_lower = message.lower()
 
@@ -492,7 +514,9 @@ class EventSummarizer(QObject):
             "Success events are useful for tracking when important operations finish correctly."
         )
 
-    def _generate_what_happened_info(self, source: str, message: str, event_id: int) -> str:
+    def _generate_what_happened_info(
+        self, source: str, message: str, event_id: int
+    ) -> str:
         """Generate a detailed explanation for info events."""
         msg_lower = message.lower()
 
@@ -605,7 +629,7 @@ _event_summarizer: EventSummarizer | None = None
 
 def get_event_summarizer(engine: Any = None) -> EventSummarizer:
     """Get the singleton EventSummarizer instance.
-    
+
     Args:
         engine: Deprecated, ignored. Kept for backwards compatibility.
     """

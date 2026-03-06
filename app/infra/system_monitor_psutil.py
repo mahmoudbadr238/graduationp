@@ -3,6 +3,7 @@
 import builtins
 import contextlib
 import logging
+import platform
 import subprocess  # nosec B404 - subprocess required for Windows security checks (PowerShell, netsh, manage-bde)
 from typing import Any
 
@@ -21,14 +22,14 @@ except ImportError:
     HAS_NVIDIA = False
 
 try:
-    import GPUtil
+    import GPUtil  # noqa: F401
 
     HAS_GPUTIL = True
 except ImportError:
     HAS_GPUTIL = False
 
 try:
-    import wmi
+    import wmi  # noqa: F401
 
     HAS_WMI = True
 except ImportError:
@@ -257,11 +258,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                         if self._wmi_cache
                         else wmi.WMI(namespace=r"root\cimv2")
                     )
-                    for (
-                        counter
-                    ) in (
-                        perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine()
-                    ):
+                    for counter in perf_wmi.Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine():
                         name = counter.Name
                         if "phys_" in name and "_eng_" in name:
                             try:
@@ -748,7 +745,7 @@ class PsutilSystemMonitor(ISystemMonitor):
 
     def _get_security_info_cached(self) -> dict[str, Any]:
         """Get security info with 30-second caching to avoid expensive subprocess calls.
-        
+
         Returns placeholder on first call and loads in background thread.
         """
         import threading

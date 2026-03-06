@@ -6,7 +6,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 DEFAULT_VMRUN = r"C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe"
 DEFAULT_VMX = r"D:\vm\windows10\Windows 10 x64.vmx"
 DEFAULT_SNAPSHOT = "Clean Base"
@@ -57,6 +56,9 @@ class SandboxConfig:
     host_results_dir: Path
     frame_keep_count: int = 12
     capture_interval_ms: int = 500
+    capture_enabled: bool = (
+        True  # set SANDBOX_CAPTURE=0 to disable screenshots entirely
+    )
     report_poll_seconds: int = 90
 
     @property
@@ -100,6 +102,8 @@ def load_sandbox_config() -> SandboxConfig:
         host_results_dir=host_results_dir,
         frame_keep_count=max(2, _env_int("SANDBOX_FRAME_KEEP", 12)),
         capture_interval_ms=max(400, _env_int("SANDBOX_CAPTURE_INTERVAL_MS", 500)),
+        capture_enabled=os.environ.get("SANDBOX_CAPTURE", "1").strip()
+        not in ("0", "false", "no"),
         report_poll_seconds=max(15, _env_int("SANDBOX_REPORT_POLL_SECONDS", 90)),
     )
     config.ensure_directories()

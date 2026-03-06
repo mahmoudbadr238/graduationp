@@ -13,6 +13,7 @@ _crash_path = _APP_DIR / "crash_traceback.txt"
 _crash_file = open(_crash_path, "w")  # noqa: SIM115
 faulthandler.enable(file=_crash_file)
 
+
 # Also catch Python-level unhandled exceptions
 _original_excepthook = sys.excepthook
 def _crash_excepthook(exc_type, exc_value, exc_tb):

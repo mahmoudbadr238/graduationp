@@ -20,7 +20,7 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ if IS_WINDOWS:
 def get_child_pids(parent_pid: int, max_depth: int = 10) -> set[int]:
     """
     Get all child process PIDs for a given parent PID.
-    
+
     Uses Windows Toolhelp32 API to enumerate process tree.
     Returns set of all descendant PIDs including the parent.
     """
@@ -149,10 +149,10 @@ def get_child_pids(parent_pid: int, max_depth: int = 10) -> set[int]:
 def get_pids_by_exe_name(exe_name: str) -> set[int]:
     """
     Get all PIDs for processes with the given executable name.
-    
+
     Args:
         exe_name: Executable name (e.g., "game.exe") - case insensitive
-        
+
     Returns:
         Set of PIDs matching the executable name
     """
@@ -175,7 +175,9 @@ def get_pids_by_exe_name(exe_name: str) -> set[int]:
             if kernel32.Process32First(snapshot, ctypes.byref(pe32)):
                 while True:
                     try:
-                        proc_exe = pe32.szExeFile.decode("utf-8", errors="ignore").lower()
+                        proc_exe = pe32.szExeFile.decode(
+                            "utf-8", errors="ignore"
+                        ).lower()
                         proc_stem = Path(proc_exe).stem
                         if (
                             proc_exe == exe_name_lower
@@ -215,7 +217,9 @@ def get_pid_to_exe_map() -> dict[int, str]:
             if kernel32.Process32First(snapshot, ctypes.byref(pe32)):
                 while True:
                     try:
-                        proc_exe = pe32.szExeFile.decode("utf-8", errors="ignore").lower()
+                        proc_exe = pe32.szExeFile.decode(
+                            "utf-8", errors="ignore"
+                        ).lower()
                         result[int(pe32.th32ProcessID)] = proc_exe
                     except Exception:
                         pass
@@ -241,7 +245,7 @@ def is_noise_window_title(title: str) -> bool:
 def get_all_visible_windows() -> dict[int, tuple[int, str]]:
     """
     Get all currently visible windows.
-    
+
     Returns:
         Dict mapping hwnd -> (pid, title)
     """
@@ -293,6 +297,7 @@ def get_all_visible_windows() -> dict[int, tuple[int, str]]:
 @dataclass
 class CapturedFrame:
     """A single captured frame from the sandbox window."""
+
     timestamp: str
     frame_number: int
     width: int
@@ -304,14 +309,14 @@ class CapturedFrame:
 class WindowCaptureService:
     """
     Captures frames from a sandboxed process window.
-    
+
     Features:
     - Finds main window by PID with retry logic
     - Captures at configurable FPS (5-10 recommended)
     - Stores frames to disk for session recording
     - Thread-safe frame delivery via callback
     - Friendly messages for console-only processes
-    
+
     Usage:
         capture = WindowCaptureService(
             target_pid=1234,
@@ -327,8 +332,10 @@ class WindowCaptureService:
 
     # Class constants for retry behavior
     WINDOW_SEARCH_TIMEOUT = 30.0  # Max seconds to search for a window
-    WINDOW_RETRY_INTERVAL = 0.5   # Seconds between window searches
-    CONSOLE_WAIT_TIME = 10.0      # After this time, assume console-only (increased for slow apps)
+    WINDOW_RETRY_INTERVAL = 0.5  # Seconds between window searches
+    CONSOLE_WAIT_TIME = (
+        10.0  # After this time, assume console-only (increased for slow apps)
+    )
 
     def __init__(
         self,
@@ -346,7 +353,7 @@ class WindowCaptureService:
     ):
         """
         Initialize the capture service.
-        
+
         Args:
             target_pid: PID of the sandboxed process
             fps: Frames per second to capture (default 8)
@@ -368,7 +375,9 @@ class WindowCaptureService:
         self.status_callback = status_callback
         self.save_frames = save_frames
         self.max_frames = max_frames
-        self.exe_name = exe_name.lower() if exe_name else None  # Store lowercase for comparison
+        self.exe_name = (
+            exe_name.lower() if exe_name else None
+        )  # Store lowercase for comparison
 
         # State
         self._running = False
@@ -381,11 +390,17 @@ class WindowCaptureService:
         self._frames_folder: Path | None = None
         self._window_search_start: float | None = None
         self._console_mode_reported = False
-        self._baseline_windows: set[int] = set()  # Windows that existed before sandbox started
+        self._baseline_windows: set[int] = (
+            set()
+        )  # Windows that existed before sandbox started
 
         # Callbacks (can also be set as attributes after construction)
-        self.on_frame: Callable[[int, bytes, int, int], None] | None = None  # Legacy callback format
-        self.on_window_found: Callable[[bool], None] | None = None  # Legacy callback format
+        self.on_frame: Callable[[int, bytes, int, int], None] | None = (
+            None  # Legacy callback format
+        )
+        self.on_window_found: Callable[[bool], None] | None = (
+            None  # Legacy callback format
+        )
 
         # Stats
         self.capture_stats = {
@@ -400,7 +415,9 @@ class WindowCaptureService:
 
         # Take snapshot of existing windows (baseline)
         self._baseline_windows = set(get_all_visible_windows().keys())
-        logger.debug(f"Baseline windows: {len(self._baseline_windows)} windows exist before sandbox")
+        logger.debug(
+            f"Baseline windows: {len(self._baseline_windows)} windows exist before sandbox"
+        )
 
         # Create frames folder if saving
         if self.save_frames and self.session_folder:
@@ -410,7 +427,7 @@ class WindowCaptureService:
     def start(self) -> bool:
         """
         Start capturing frames in background thread.
-        
+
         Returns:
             bool: True if started successfully
         """
@@ -489,7 +506,7 @@ class WindowCaptureService:
     def _capture_loop(self) -> None:
         """
         Main capture loop running in background thread.
-        
+
         - Retries finding window for up to WINDOW_SEARCH_TIMEOUT seconds
         - Reports console-only mode after CONSOLE_WAIT_TIME seconds
         - Captures frames at configured FPS
@@ -524,8 +541,14 @@ class WindowCaptureService:
                             window_was_found = True
                             self._console_mode_reported = False
 
-                            logger.info(f"Found window for PID {self.target_pid}: {self._window_title}")
-                            self._emit_status(f"Capturing: {self._window_title[:35]}..." if len(self._window_title) > 35 else f"Capturing: {self._window_title}")
+                            logger.info(
+                                f"Found window for PID {self.target_pid}: {self._window_title}"
+                            )
+                            self._emit_status(
+                                f"Capturing: {self._window_title[:35]}..."
+                                if len(self._window_title) > 35
+                                else f"Capturing: {self._window_title}"
+                            )
                             self._emit_window_found(True, self._window_title)
 
                         elif (
@@ -536,8 +559,12 @@ class WindowCaptureService:
                             # No window found after waiting - likely console-only process
                             self._console_mode_reported = True
                             self.capture_stats["is_console_only"] = True
-                            logger.info(f"No visible window for PID {self.target_pid} after {search_elapsed:.1f}s - console/background process")
-                            self._emit_status("No visible app window (console/background process)")
+                            logger.info(
+                                f"No visible window for PID {self.target_pid} after {search_elapsed:.1f}s - console/background process"
+                            )
+                            self._emit_status(
+                                "No visible app window (console/background process)"
+                            )
                             self._emit_window_found(False, "")
 
                 # Capture frame if we have a valid window
@@ -554,7 +581,11 @@ class WindowCaptureService:
                         self._emit_frame(frame)
 
                         # Save to disk
-                        if self.save_frames and self._frames_folder and self._frame_count <= self.max_frames:
+                        if (
+                            self.save_frames
+                            and self._frames_folder
+                            and self._frame_count <= self.max_frames
+                        ):
                             self._save_frame(frame)
 
                 # Wait for next frame
@@ -570,7 +601,7 @@ class WindowCaptureService:
     def _find_window_for_pid(self, pid: int) -> int | None:
         """
         Find the main visible window for a process or any of its child processes.
-        
+
         This handles apps that spawn child processes to create their main window
         (common with launchers, games, installers, etc.)
         """
@@ -627,13 +658,17 @@ class WindowCaptureService:
         user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
 
         if found_hwnd and found_pid != pid:
-            logger.info(f"Found window in child process PID {found_pid} (parent: {pid})")
+            logger.info(
+                f"Found window in child process PID {found_pid} (parent: {pid})"
+            )
 
         # If no window found and we have an exe_name, search by exe name as fallback
         if not found_hwnd and self.exe_name:
             exe_pids = get_pids_by_exe_name(self.exe_name)
             if exe_pids:
-                logger.debug(f"Fallback: searching for windows by exe name '{self.exe_name}': {exe_pids}")
+                logger.debug(
+                    f"Fallback: searching for windows by exe name '{self.exe_name}': {exe_pids}"
+                )
 
                 # Reset search state
                 found_hwnd = None
@@ -676,13 +711,18 @@ class WindowCaptureService:
                 user32.EnumWindows(WNDENUMPROC(enum_callback_exe), 0)
 
                 if found_hwnd:
-                    logger.info(f"Found window by exe name '{self.exe_name}' (PID {found_pid})")
+                    logger.info(
+                        f"Found window by exe name '{self.exe_name}' (PID {found_pid})"
+                    )
 
         # Final fallback: find any NEW window that appeared after sandbox started
         if not found_hwnd and self._baseline_windows:
             current_windows = get_all_visible_windows()
-            new_windows = {hwnd: info for hwnd, info in current_windows.items()
-                          if hwnd not in self._baseline_windows}
+            new_windows = {
+                hwnd: info
+                for hwnd, info in current_windows.items()
+                if hwnd not in self._baseline_windows
+            }
 
             if new_windows:
                 pid_to_exe = get_pid_to_exe_map()
@@ -803,8 +843,13 @@ class WindowCaptureService:
             buffer = ctypes.create_string_buffer(buffer_size)
 
             gdi32.GetDIBits(
-                hdc_mem, hbm, 0, height,
-                buffer, ctypes.byref(bmi), 0  # DIB_RGB_COLORS
+                hdc_mem,
+                hbm,
+                0,
+                height,
+                buffer,
+                ctypes.byref(bmi),
+                0,  # DIB_RGB_COLORS
             )
 
             # Cleanup
@@ -837,7 +882,9 @@ class WindowCaptureService:
                 from PIL import Image
 
                 # Create image from BGRA data
-                img = Image.frombytes("RGBA", (frame.width, frame.height), frame.data, "raw", "BGRA")
+                img = Image.frombytes(
+                    "RGBA", (frame.width, frame.height), frame.data, "raw", "BGRA"
+                )
                 img = img.convert("RGB")
 
                 # Save with compression
@@ -856,9 +903,9 @@ class WindowCaptureService:
     def generate_video(self, output_path: Path | None = None) -> Path | None:
         """
         Generate a video from saved frames.
-        
+
         Requires OpenCV (cv2) to be installed.
-        
+
         Returns:
             Path to the generated video, or None if failed
         """
@@ -920,7 +967,7 @@ def create_window_capture_service(
     target_pid: int,
     session_folder: Path | None = None,
     frame_callback: Callable[[bytes, int, int], None] | None = None,
-    **kwargs
+    **kwargs,
 ) -> WindowCaptureService:
     """Create a new window capture service."""
     global _capture_service
@@ -932,7 +979,7 @@ def create_window_capture_service(
         target_pid=target_pid,
         session_folder=session_folder,
         frame_callback=frame_callback,
-        **kwargs
+        **kwargs,
     )
 
     return _capture_service

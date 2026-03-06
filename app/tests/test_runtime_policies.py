@@ -1,8 +1,5 @@
 """Runtime policy tests for scan backend and sandbox safeguards."""
 
-import os
-from pathlib import Path
-
 from app.scanning.integrated_sandbox import IntegratedSandbox
 from app.scanning.static_scanner import StaticScanner
 from app.scanning.window_capture import is_noise_window_title

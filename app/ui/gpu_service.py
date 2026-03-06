@@ -290,7 +290,9 @@ class GPUServiceBridge(QObject):
                         # Debug: Log received metrics for AMD GPUs
                         for g in gpus:
                             if g.get("vendor") == "AMD":
-                                logger.debug(f"AMD GPU received: {g.get('name')}, usage={g.get('usage')}, mem={g.get('memUsedMB')}/{g.get('memTotalMB')}MB, driver={g.get('driverVersion')}")
+                                logger.debug(
+                                    f"AMD GPU received: {g.get('name')}, usage={g.get('usage')}, mem={g.get('memUsedMB')}/{g.get('memTotalMB')}MB, driver={g.get('driverVersion')}"
+                                )
 
                         new_count = len(gpus)
                         if new_count != self._gpu_count:

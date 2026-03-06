@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
+import threading
+import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .config import SandboxConfig
+
+logger = logging.getLogger(__name__)
 
 
 class VmrunError(RuntimeError):
@@ -31,8 +36,7 @@ class VmrunClient:
         vmx_path = Path(self._config.vmx_path)
         if not vmx_path.exists():
             raise VmrunError(
-                "Sandbox VMX file was not found. "
-                f"Expected: {self._config.vmx_path}"
+                f"Sandbox VMX file was not found. Expected: {self._config.vmx_path}"
             )
 
     def ensure_guest_credentials(self) -> None:
@@ -65,6 +69,10 @@ class VmrunClient:
             )
         cmd.extend(args)
 
+        # Redact credentials for safe logging
+        _log_cmd = [c if c not in (self._config.guest_pass,) else "***" for c in cmd]
+        logger.debug("vmrun: %s", " ".join(_log_cmd))
+
         try:
             result = subprocess.run(
                 cmd,
@@ -79,7 +87,9 @@ class VmrunClient:
                 f"Expected: {self._config.vmrun_path}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
-            raise VmrunError(f"vmrun timed out after {timeout}s while running: {args[0]}") from exc
+            raise VmrunError(
+                f"vmrun timed out after {timeout}s while running: {args[0]}"
+            ) from exc
 
         if result.returncode != 0:
             stderr = (result.stderr or result.stdout or "").strip()
@@ -90,6 +100,7 @@ class VmrunClient:
                     f"{message} Check SANDBOX_GUEST_USER / SANDBOX_GUEST_PASS "
                     "and confirm VMware Tools is installed in the guest."
                 )
+            logger.debug("vmrun failed (rc=%d): %s", result.returncode, message)
             raise VmrunError(message)
         return result
 
@@ -192,8 +203,109 @@ class VmrunClient:
             args.extend(list(program_args))
         self._run(args, guest_auth=True, timeout=timeout)
 
-    def capture_screen(self, output_path: str | Path, *, timeout: int = 30) -> None:
-        """Capture a VM screenshot to a PNG file."""
+    def check_tools_state(self, *, timeout: int = 10) -> str:
+        """Return the raw VMware Tools state string (e.g. 'running', 'installed',
+        'not running').  Raises VmrunError if vmrun itself fails."""
+        try:
+            result = self._run(
+                ["checkToolsState", self._config.vmx_path],
+                timeout=timeout,
+            )
+            return (result.stdout or "").strip().lower()
+        except VmrunError:
+            raise
+
+    def wait_for_tools(
+        self,
+        *,
+        timeout: int = 180,
+        poll_interval: int = 3,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
+        """Block until VMware Tools is RUNNING inside the guest, or raise VmrunError.
+
+        Strategy (tried in order, first success wins):
+          1. ``vmrun checkToolsState <vmx>``  – native, lightweight.
+          2. ``vmrun runProgramInGuest … cmd /c exit 0``  – probe fallback.
+
+        The *cancel_event* is polled between attempts so the caller can abort.
+        """
+        deadline = time.monotonic() + timeout
+        attempt = 0
+        last_error = ""
+
+        # Decide strategy once: probe checkToolsState; if it returns an
+        # unrecognised error we fall back to the runProgramInGuest probe.
+        use_check_tools = True
+
+        while time.monotonic() < deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                raise VmrunError("Run cancelled by user.")
+
+            attempt += 1
+            remaining = int(deadline - time.monotonic())
+
+            if use_check_tools:
+                try:
+                    state = self.check_tools_state(timeout=min(10, remaining))
+                    logger.debug(
+                        "wait_for_tools attempt %d: checkToolsState=%r", attempt, state
+                    )
+                    if state == "running":
+                        logger.info("VMware Tools ready after %d attempt(s).", attempt)
+                        return
+                    # 'installed' means Tools exists but isn't fully started yet;
+                    # any other value means not ready.
+                    last_error = f"Tools state: {state!r}"
+                except VmrunError as exc:
+                    msg = str(exc).lower()
+                    # checkToolsState not supported on this vmrun build → switch strategy
+                    if "unknown command" in msg or "invalid" in msg:
+                        logger.debug(
+                            "checkToolsState unsupported, switching to probe strategy."
+                        )
+                        use_check_tools = False
+                    else:
+                        last_error = str(exc)
+                        logger.debug(
+                            "wait_for_tools attempt %d failed: %s", attempt, exc
+                        )
+
+            if not use_check_tools:
+                # Probe: run a harmless cmd in the guest; success means Tools is alive.
+                try:
+                    self.run_program_in_guest(
+                        "cmd.exe",
+                        ["/c", "exit", "0"],
+                        wait=True,
+                        timeout=min(15, remaining),
+                    )
+                    logger.info(
+                        "VMware Tools ready (probe) after %d attempt(s).", attempt
+                    )
+                    return
+                except VmrunError as exc:
+                    last_error = str(exc)
+                    logger.debug(
+                        "wait_for_tools probe attempt %d failed: %s", attempt, exc
+                    )
+
+            # Sleep in 1-second slices so cancel_event is responsive.
+            slept = 0
+            while slept < poll_interval and time.monotonic() < deadline:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise VmrunError("Run cancelled by user.")
+                time.sleep(1)
+                slept += 1
+
+        raise VmrunError(
+            f"VMware Tools did not become ready within {timeout}s. "
+            "Install VMware Tools inside the guest (VM → Install VMware Tools) "
+            f"and ensure they start on boot.  Last status: {last_error or 'unknown'}"
+        )
+
+    def capture_screen(self, output_path: str | Path, *, timeout: int = 5) -> None:
+        """Capture a VM screenshot to a PNG file (best-effort, short timeout)."""
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         self._run(

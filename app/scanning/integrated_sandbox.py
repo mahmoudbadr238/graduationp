@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class SandboxResult:
 class IntegratedSandbox:
     """
     Integrated local sandbox that runs samples in a restricted environment.
-    
+
     This sandbox is bundled with Sentinel and works immediately after installation.
     No external tools (VirtualBox, firejail, etc.) are required.
     """
@@ -123,23 +123,26 @@ class IntegratedSandbox:
         """Check Windows Job Object sandbox availability."""
         try:
             import ctypes
+
             kernel32 = ctypes.windll.kernel32
             job = kernel32.CreateJobObjectW(None, None)
             if job:
                 kernel32.CloseHandle(job)
                 self._windows_job_available = True
                 self._available = True
-                self._availability_reason = "Windows sandbox available (Job Object + restricted execution)"
+                self._availability_reason = (
+                    "Windows sandbox available (Job Object + restricted execution)"
+                )
             else:
                 self._windows_job_available = False
                 self._available = False
-                self._availability_reason = "Job Object creation failed — sandbox unavailable"
+                self._availability_reason = (
+                    "Job Object creation failed — sandbox unavailable"
+                )
             logger.info("Integrated sandbox: JobObject=%s", self._windows_job_available)
         except Exception as exc:
             self._available = False
             self._availability_reason = f"Windows sandbox check failed: {exc}"
-
-
 
     def availability(self) -> dict[str, Any]:
         """
@@ -241,23 +244,29 @@ class IntegratedSandbox:
         timeout: int = 60,
         block_network: bool = True,
         event_callback: callable = None,
-        cancel_check: callable = None
+        cancel_check: callable = None,
     ) -> SandboxResult:
         """
         Run a file in the sandbox environment.
-        
+
         Args:
             file_path: Path to the file to execute
             timeout: Maximum execution time in seconds (default 60)
             block_network: Whether to block network access (default True)
             event_callback: Optional callback for live events: fn(event_type, data)
             cancel_check: Optional callable returning True if cancelled
-        
+
         Returns:
             SandboxResult with execution details and findings
         """
-        self._event_callback = event_callback if event_callback is not None else (lambda *args, **kwargs: None)
-        self._cancel_check = cancel_check if cancel_check is not None else (lambda: False)
+        self._event_callback = (
+            event_callback
+            if event_callback is not None
+            else (lambda *args, **kwargs: None)
+        )
+        self._cancel_check = (
+            cancel_check if cancel_check is not None else (lambda: False)
+        )
         result = SandboxResult()
         result.start_time = datetime.now().isoformat()
         result.network_blocked = block_network
@@ -367,7 +376,9 @@ class IntegratedSandbox:
         from ctypes import wintypes
 
         result.sandbox_method = (
-            "windows_job_restricted_inplace" if inplace_compat else "windows_job_restricted"
+            "windows_job_restricted_inplace"
+            if inplace_compat
+            else "windows_job_restricted"
         )
 
         stdout_path = workspace / "stdout.txt"
@@ -413,16 +424,15 @@ class IntegratedSandbox:
 
             # JOB_OBJECT_LIMIT flags
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-            JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x0100
-            JOB_OBJECT_LIMIT_JOB_MEMORY = 0x0200
             JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x0008
 
             limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
             limits.BasicLimitInformation.LimitFlags = (
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
-                JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
             )
-            limits.BasicLimitInformation.ActiveProcessLimit = 10  # Limit child processes
+            limits.BasicLimitInformation.ActiveProcessLimit = (
+                10  # Limit child processes
+            )
             limits.ProcessMemoryLimit = 256 * 1024 * 1024  # 256 MB per process
             limits.JobMemoryLimit = 512 * 1024 * 1024  # 512 MB total
 
@@ -431,12 +441,13 @@ class IntegratedSandbox:
                 job,
                 JobObjectExtendedLimitInformation,
                 ctypes.byref(limits),
-                ctypes.sizeof(limits)
+                ctypes.sizeof(limits),
             )
 
             # Optionally cap CPU usage to reduce host impact during detonation.
             cpu_cap_percent = self._sandbox_cpu_cap_percent()
             if cpu_cap_percent > 0:
+
                 class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(ctypes.Structure):
                     _fields_ = [
                         ("ControlFlags", wintypes.DWORD),
@@ -449,7 +460,8 @@ class IntegratedSandbox:
 
                 cpu_limit = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION()
                 cpu_limit.ControlFlags = (
-                    JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP
+                    JOB_OBJECT_CPU_RATE_CONTROL_ENABLE
+                    | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP
                 )
                 cpu_limit.CpuRate = int(cpu_cap_percent * 100)
 
@@ -472,14 +484,22 @@ class IntegratedSandbox:
                 firewall_rule_name = f"SentinelSandbox_{workspace.name}"
                 try:
                     # Add outbound block rule for this specific executable
-                    subprocess.run([
-                        "netsh", "advfirewall", "firewall", "add", "rule",
-                        f"name={firewall_rule_name}",
-                        "dir=out",
-                        "action=block",
-                        f"program={sample_path}",
-                        "enable=yes"
-                    ], capture_output=True, timeout=10)
+                    subprocess.run(
+                        [
+                            "netsh",
+                            "advfirewall",
+                            "firewall",
+                            "add",
+                            "rule",
+                            f"name={firewall_rule_name}",
+                            "dir=out",
+                            "action=block",
+                            f"program={sample_path}",
+                            "enable=yes",
+                        ],
+                        capture_output=True,
+                        timeout=10,
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to add firewall rule: {e}")
                     firewall_rule_name = None
@@ -492,7 +512,13 @@ class IntegratedSandbox:
             elif ext in [".bat", ".cmd"]:
                 cmd = ["cmd.exe", "/c", str(sample_path)]
             elif ext in [".ps1"]:
-                cmd = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(sample_path)]
+                cmd = [
+                    "powershell.exe",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(sample_path),
+                ]
             elif ext in [".vbs", ".vbe"] or ext in [".js", ".jse"]:
                 cmd = ["cscript.exe", "//nologo", str(sample_path)]
             elif ext in [".py"]:
@@ -507,7 +533,6 @@ class IntegratedSandbox:
             # Create process with CREATE_SUSPENDED flag
             CREATE_SUSPENDED = 0x00000004
             CREATE_NO_WINDOW = 0x08000000
-            CREATE_BREAKAWAY_FROM_JOB = 0x01000000
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
 
             # Validate flags are integers
@@ -522,7 +547,10 @@ class IntegratedSandbox:
             launch_cwd = execution_cwd or workspace
 
             try:
-                with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
+                with (
+                    open(stdout_path, "w") as stdout_file,
+                    open(stderr_path, "w") as stderr_file,
+                ):
                     process = subprocess.Popen(
                         cmd,
                         stdout=stdout_file,
@@ -532,17 +560,24 @@ class IntegratedSandbox:
                     )
             except OSError:
                 # If suspended creation fails, try without
-                with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
+                with (
+                    open(stdout_path, "w") as stdout_file,
+                    open(stderr_path, "w") as stderr_file,
+                ):
                     process = subprocess.Popen(
                         cmd,
                         stdout=stdout_file,
                         stderr=stderr_file,
                         cwd=str(launch_cwd),
-                        creationflags=CREATE_NO_WINDOW if isinstance(CREATE_NO_WINDOW, int) else 0,
+                        creationflags=CREATE_NO_WINDOW
+                        if isinstance(CREATE_NO_WINDOW, int)
+                        else 0,
                     )
 
             # Assign process to job object
-            process_handle = kernel32.OpenProcess(0x1F0FFF, False, process.pid)  # PROCESS_ALL_ACCESS
+            process_handle = kernel32.OpenProcess(
+                0x1F0FFF, False, process.pid
+            )  # PROCESS_ALL_ACCESS
             if process_handle:
                 kernel32.AssignProcessToJobObject(job, process_handle)
                 kernel32.CloseHandle(process_handle)
@@ -554,19 +589,24 @@ class IntegratedSandbox:
                 pass
 
             # Record spawned process
-            result.processes_spawned.append({
-                "pid": process.pid,
-                "name": sample_path.name,
-                "start_time": datetime.now().isoformat(),
-            })
+            result.processes_spawned.append(
+                {
+                    "pid": process.pid,
+                    "name": sample_path.name,
+                    "start_time": datetime.now().isoformat(),
+                }
+            )
 
             # Emit process start event
-            self._emit_event("process_start", {
-                "pid": process.pid,
-                "name": sample_path.name,
-                "path": str(sample_path),
-                "timestamp": datetime.now().isoformat()
-            })
+            self._emit_event(
+                "process_start",
+                {
+                    "pid": process.pid,
+                    "name": sample_path.name,
+                    "path": str(sample_path),
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
 
             # Wait for completion or timeout using polling (non-blocking)
             # This allows the UI to remain responsive and supports live events
@@ -586,7 +626,9 @@ class IntegratedSandbox:
                         process.wait(timeout=5)
                     except Exception:
                         pass
-                    self._emit_event("session_cancelled", {"timestamp": datetime.now().isoformat()})
+                    self._emit_event(
+                        "session_cancelled", {"timestamp": datetime.now().isoformat()}
+                    )
                     break
 
                 retcode = process.poll()
@@ -594,11 +636,14 @@ class IntegratedSandbox:
                     # Process finished
                     result.exit_code = retcode
                     result.success = True
-                    self._emit_event("process_exit", {
-                        "pid": process.pid,
-                        "exit_code": retcode,
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    self._emit_event(
+                        "process_exit",
+                        {
+                            "pid": process.pid,
+                            "exit_code": retcode,
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                    )
                     break
 
                 # Periodically check for new files (file activity detection)
@@ -608,11 +653,14 @@ class IntegratedSandbox:
                     for new_file in new_files:
                         if Path(new_file).name.lower() in INTERNAL_SANDBOX_ARTIFACTS:
                             continue
-                        self._emit_event("file_create", {
-                            "path": str(workspace / new_file),
-                            "name": new_file,
-                            "timestamp": datetime.now().isoformat()
-                        })
+                        self._emit_event(
+                            "file_create",
+                            {
+                                "path": str(workspace / new_file),
+                                "name": new_file,
+                                "timestamp": datetime.now().isoformat(),
+                            },
+                        )
                         result.created_files.append(new_file)
                     known_files = current_files
                     last_file_check = elapsed
@@ -652,10 +700,18 @@ class IntegratedSandbox:
 
             if firewall_rule_name:
                 try:
-                    subprocess.run([
-                        "netsh", "advfirewall", "firewall", "delete", "rule",
-                        f"name={firewall_rule_name}"
-                    ], capture_output=True, timeout=10)
+                    subprocess.run(
+                        [
+                            "netsh",
+                            "advfirewall",
+                            "firewall",
+                            "delete",
+                            "rule",
+                            f"name={firewall_rule_name}",
+                        ],
+                        capture_output=True,
+                        timeout=10,
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to remove firewall rule: {e}")
 
@@ -664,12 +720,18 @@ class IntegratedSandbox:
         summary_parts = []
 
         if result.timed_out:
-            summary_parts.append(f"Execution timed out after {result.duration_seconds:.1f} seconds.")
+            summary_parts.append(
+                f"Execution timed out after {result.duration_seconds:.1f} seconds."
+            )
         else:
-            summary_parts.append(f"Execution completed in {result.duration_seconds:.1f} seconds with exit code {result.exit_code}.")
+            summary_parts.append(
+                f"Execution completed in {result.duration_seconds:.1f} seconds with exit code {result.exit_code}."
+            )
 
         if result.created_files:
-            summary_parts.append(f"Created {len(result.created_files)} new files in sandbox.")
+            summary_parts.append(
+                f"Created {len(result.created_files)} new files in sandbox."
+            )
 
         if len(result.processes_spawned) > 1:
             summary_parts.append(f"Spawned {len(result.processes_spawned)} processes.")
@@ -687,7 +749,11 @@ class IntegratedSandbox:
             if lines and lines[0]:
                 summary_parts.append(f"Errors: {lines[0][:100]}...")
 
-        return " ".join(summary_parts) if summary_parts else "No notable behavior observed."
+        return (
+            " ".join(summary_parts)
+            if summary_parts
+            else "No notable behavior observed."
+        )
 
     def _analyze_behavior(self, result: SandboxResult) -> list[dict]:
         """Analyze sandbox behavior and generate findings."""
@@ -695,68 +761,98 @@ class IntegratedSandbox:
 
         # Timeout is suspicious for certain file types
         if result.timed_out:
-            findings.append({
-                "type": "medium",
-                "category": "execution",
-                "message": "Process did not terminate within timeout period",
-                "details": "This may indicate infinite loops, waiting for network, or intentional stalling.",
-            })
+            findings.append(
+                {
+                    "type": "medium",
+                    "category": "execution",
+                    "message": "Process did not terminate within timeout period",
+                    "details": "This may indicate infinite loops, waiting for network, or intentional stalling.",
+                }
+            )
 
         # Many child processes
         if len(result.processes_spawned) > 3:
-            findings.append({
-                "type": "medium",
-                "category": "processes",
-                "message": f"Spawned multiple child processes ({len(result.processes_spawned)})",
-                "details": "Multi-process behavior may indicate dropper or loader functionality.",
-            })
+            findings.append(
+                {
+                    "type": "medium",
+                    "category": "processes",
+                    "message": f"Spawned multiple child processes ({len(result.processes_spawned)})",
+                    "details": "Multi-process behavior may indicate dropper or loader functionality.",
+                }
+            )
 
         # File creation
         if result.created_files:
-            suspicious_extensions = [".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".js"]
-            suspicious_files = [f for f in result.created_files if any(f.lower().endswith(ext) for ext in suspicious_extensions)]
+            suspicious_extensions = [
+                ".exe",
+                ".dll",
+                ".bat",
+                ".cmd",
+                ".ps1",
+                ".vbs",
+                ".js",
+            ]
+            suspicious_files = [
+                f
+                for f in result.created_files
+                if any(f.lower().endswith(ext) for ext in suspicious_extensions)
+            ]
 
             if suspicious_files:
-                findings.append({
-                    "type": "high",
-                    "category": "file_creation",
-                    "message": "Created executable/script files during execution",
-                    "details": suspicious_files[:5],
-                })
+                findings.append(
+                    {
+                        "type": "high",
+                        "category": "file_creation",
+                        "message": "Created executable/script files during execution",
+                        "details": suspicious_files[:5],
+                    }
+                )
             elif len(result.created_files) > 5:
-                findings.append({
-                    "type": "low",
-                    "category": "file_creation",
-                    "message": f"Created {len(result.created_files)} files during execution",
-                    "details": result.created_files[:5],
-                })
+                findings.append(
+                    {
+                        "type": "low",
+                        "category": "file_creation",
+                        "message": f"Created {len(result.created_files)} files during execution",
+                        "details": result.created_files[:5],
+                    }
+                )
 
         # Check stderr for common errors that might indicate blocked malicious behavior
         if result.stderr:
             stderr_lower = result.stderr.lower()
             if "access denied" in stderr_lower or "permission denied" in stderr_lower:
-                findings.append({
-                    "type": "medium",
-                    "category": "access",
-                    "message": "Process attempted restricted operations",
-                    "details": "Sandbox blocked potentially malicious access attempts.",
-                })
-            if "network" in stderr_lower or "connection" in stderr_lower or "socket" in stderr_lower:
-                findings.append({
-                    "type": "medium",
-                    "category": "network",
-                    "message": "Process attempted network operations",
-                    "details": "Network activity was blocked by sandbox.",
-                })
+                findings.append(
+                    {
+                        "type": "medium",
+                        "category": "access",
+                        "message": "Process attempted restricted operations",
+                        "details": "Sandbox blocked potentially malicious access attempts.",
+                    }
+                )
+            if (
+                "network" in stderr_lower
+                or "connection" in stderr_lower
+                or "socket" in stderr_lower
+            ):
+                findings.append(
+                    {
+                        "type": "medium",
+                        "category": "network",
+                        "message": "Process attempted network operations",
+                        "details": "Network activity was blocked by sandbox.",
+                    }
+                )
 
         # Non-zero exit code
         if result.exit_code is not None and result.exit_code != 0:
-            findings.append({
-                "type": "info",
-                "category": "execution",
-                "message": f"Process exited with non-zero code: {result.exit_code}",
-                "details": "This may be normal or indicate an error/crash.",
-            })
+            findings.append(
+                {
+                    "type": "info",
+                    "category": "execution",
+                    "message": f"Process exited with non-zero code: {result.exit_code}",
+                    "details": "This may be normal or indicate an error/crash.",
+                }
+            )
 
         return findings
 

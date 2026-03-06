@@ -18,7 +18,7 @@ CRITICAL PRIVACY RULES:
 
 Usage:
     from app.intel import get_virustotal_client, ThreatVerdict
-    
+
     client = get_virustotal_client()
     result = await client.check_file_hash(sha256_hash)
     print(result.verdict)  # CLEAN, SUSPICIOUS, MALICIOUS, UNKNOWN

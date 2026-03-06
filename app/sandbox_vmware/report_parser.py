@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 
 def load_report(report_path: str | Path) -> dict[str, Any]:
@@ -21,9 +22,7 @@ def _count_items(payload: Mapping[str, Any], *keys: str) -> int:
     total = 0
     for key in keys:
         value = payload.get(key)
-        if isinstance(value, list):
-            total += len(value)
-        elif isinstance(value, dict):
+        if isinstance(value, list) or isinstance(value, dict):
             total += len(value)
         elif value:
             total += 1
@@ -40,18 +39,44 @@ def score_report(report_json: Mapping[str, Any]) -> dict[str, Any]:
             "highlights": ["Invalid report payload."],
         }
 
-    if isinstance(report_json.get("verdict"), str) and isinstance(report_json.get("score"), (int, float)):
+    if isinstance(report_json.get("verdict"), str) and isinstance(
+        report_json.get("score"), (int, float)
+    ):
         score = max(0, min(100, int(report_json["score"])))
     else:
         score = 0
-        score += min(25, _count_items(report_json, "alerts", "detections", "findings") * 8)
-        score += min(20, _count_items(report_json, "processes", "spawned_processes") * 4)
-        score += min(20, _count_items(report_json, "files_created", "dropped_files") * 3)
-        score += min(15, _count_items(report_json, "registry_modified", "persistence") * 5)
-        score += min(15, _count_items(report_json, "network_connections", "dns_queries", "http_requests") * 4)
+        score += min(
+            25, _count_items(report_json, "alerts", "detections", "findings") * 8
+        )
+        score += min(
+            20, _count_items(report_json, "processes", "spawned_processes") * 4
+        )
+        score += min(
+            20, _count_items(report_json, "files_created", "dropped_files") * 3
+        )
+        score += min(
+            15, _count_items(report_json, "registry_modified", "persistence") * 5
+        )
+        score += min(
+            15,
+            _count_items(
+                report_json, "network_connections", "dns_queries", "http_requests"
+            )
+            * 4,
+        )
         score += min(10, _count_items(report_json, "errors", "crashes") * 4)
 
-    if _count_items(report_json, "alerts", "detections", "findings", "processes", "spawned_processes") == 0:
+    if (
+        _count_items(
+            report_json,
+            "alerts",
+            "detections",
+            "findings",
+            "processes",
+            "spawned_processes",
+        )
+        == 0
+    ):
         verdict = "Inconclusive"
     elif score >= 70:
         verdict = "Malicious"
@@ -66,7 +91,9 @@ def score_report(report_json: Mapping[str, Any]) -> dict[str, Any]:
     alert_count = _count_items(report_json, "alerts", "detections", "findings")
     process_count = _count_items(report_json, "processes", "spawned_processes")
     file_count = _count_items(report_json, "files_created", "dropped_files")
-    network_count = _count_items(report_json, "network_connections", "dns_queries", "http_requests")
+    network_count = _count_items(
+        report_json, "network_connections", "dns_queries", "http_requests"
+    )
 
     if alert_count:
         highlights.append(f"{alert_count} alert/finding entries reported.")
@@ -89,10 +116,14 @@ def score_report(report_json: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_llm_prompt(report_json: Mapping[str, Any], automation_steps: list[str]) -> str:
+def build_llm_prompt(
+    report_json: Mapping[str, Any], automation_steps: list[str]
+) -> str:
     """Build a local-only prompt string for later LLM use."""
     pretty_report = json.dumps(dict(report_json), indent=2, sort_keys=True, default=str)
-    pretty_steps = "\n".join(f"- {step}" for step in automation_steps) or "- No steps recorded."
+    pretty_steps = (
+        "\n".join(f"- {step}" for step in automation_steps) or "- No steps recorded."
+    )
     return (
         "You are reviewing a local VMware sandbox detonation report for Sentinel.\n"
         "Summarize the behavior, identify risky indicators, and explain why the final verdict makes sense.\n\n"

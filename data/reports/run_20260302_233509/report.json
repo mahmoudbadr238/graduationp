@@ -1,0 +1,136 @@
+{
+  "schema_version": "2.0",
+  "job": {
+    "id": "run_20260302_233509",
+    "started_at": "2026-03-02T23:35:09.724431",
+    "finished_at": "2026-03-02T23:36:14.814026",
+    "duration_sec": 0.0,
+    "mode": "sandbox"
+  },
+  "file": {
+    "path": "C:\\Users\\mahmo\\Downloads\\rufus-4.13.exe",
+    "name": "rufus-4.13.exe",
+    "size_bytes": 1946984,
+    "extension": ".exe",
+    "file_type": "",
+    "sha256": "a314db019d608e3d9b2eda797ba5bbe4dfc91bcd621decd144a580080eb13b1b",
+    "sha1": "",
+    "md5": "",
+    "signed": false,
+    "publisher": ""
+  },
+  "static": {
+    "entropy": 0.0,
+    "top_strings": [],
+    "pe_analyzed": true,
+    "suspicious_imports": [
+      {
+        "function": "LoadLibraryA",
+        "dll": "KERNEL32.DLL",
+        "description": "DLL loading",
+        "severity": "low"
+      },
+      {
+        "function": "GetProcAddress",
+        "dll": "KERNEL32.DLL",
+        "description": "Function resolution",
+        "severity": "low"
+      },
+      {
+        "function": "VirtualProtect",
+        "dll": "KERNEL32.DLL",
+        "description": "Memory protection change",
+        "severity": "high"
+      }
+    ],
+    "yara_matches": [
+      {
+        "title": "YARA: PE_Packed_Executable",
+        "detail": "Detects packed or encrypted executables",
+        "severity": "medium",
+        "category": "obfuscation",
+        "matched_strings": [
+          "MZ",
+          "UPX",
+          "UPX",
+          "UPX"
+        ]
+      }
+    ],
+    "engines": []
+  },
+  "sandbox": {
+    "mode": "run",
+    "executed": false,
+    "processes_started": [],
+    "files_created": [],
+    "files_modified": [],
+    "registry_modified": [],
+    "network_attempts": [],
+    "dns_queries": [],
+    "alerts": [],
+    "errors": [],
+    "highlights": []
+  },
+  "iocs": {
+    "ips": [
+      "6.0.0.0"
+    ],
+    "domains": [
+      "KERNEL32.DLL",
+      "Zq.zC",
+      "QU.ZP",
+      "X.pF",
+      "O.Fh",
+      "www.digicert",
+      "eO.XE",
+      "crl3.digicert",
+      "4.Ps",
+      "ocsp.comodoca",
+      "v.Vxc",
+      "Cm.Po",
+      "W.Jk",
+      "t.NA",
+      "A.fC",
+      "ocsp.digicert",
+      "a.Ub",
+      "r.xi",
+      "K.pe",
+      "q.Bwk"
+    ],
+    "urls": [
+      "http://cacerts.digicert.com/DigiCertTrustedG4TimeStampingRSA4096SHA2562025CA1.crt0_\u0006\u0003U",
+      "http://crl.comodoca.com/AAACertificateServices.crl04\u0006\b+\u0006\u0001\u0005\u0005\u0007\u0001\u0001\u0004(0&0$\u0006\b+\u0006\u0001\u0005\u0005\u00070\u0001\ufffd\u0018http://ocsp.comodoca.com0",
+      "http://schemas.microsoft.com/SMI/2019/WindowsSettings",
+      "http://crl3.digicert.com/DigiCertTrustedRootG4.crl0",
+      "http://schemas.microsoft.com/SMI/2016/WindowsSettings",
+      "http://crt.sectigo.com/SectigoPublicCodeSigningRootR46.p7c0#\u0006\b+\u0006\u0001\u0005\u0005\u00070\u0001\ufffd\u0017http://ocsp.sectigo.com0",
+      "http://crl.sectigo.com/SectigoPublicCodeSigningCAEVR36.crl0",
+      "http://crl3.digicert.com/DigiCertTrustedG4TimeStampingRSA4096SHA2562025CA1.crl0",
+      "http://ocsp.digicert.com0",
+      "http://crt.sectigo.com/SectigoPublicCodeSigningCAEVR36.crt0#\u0006\b+\u0006\u0001\u0005\u0005\u00070\u0001\ufffd\u0017http://ocsp.sectigo.com0$\u0006\u0003U",
+      "http://ocsp.digicert.com0A\u0006\b+\u0006\u0001\u0005\u0005\u00070\u0002\ufffd5http://cacerts.digicert.com/DigiCertTrustedRootG4.crt0C\u0006\u0003U",
+      "http://crl.sectigo.com/SectigoPublicCodeSigningRootR46.crl0",
+      "http://schemas.microsoft.com/SMI/2005/WindowsSettings",
+      "https://sectigo.com/CPS0\u0007\u0006\u0005g\ufffd",
+      "http://ocsp.digicert.com0C\u0006\b+\u0006\u0001\u0005\u0005\u00070\u0002\ufffd7http://cacerts.digicert.com/DigiCertAssuredIDRootCA.crt0E\u0006\u0003U",
+      "http://crl3.digicert.com/DigiCertAssuredIDRootCA.crl0\u0011\u0006\u0003U"
+    ],
+    "file_paths": [],
+    "registry_keys": [],
+    "hashes": []
+  },
+  "verdict": {
+    "risk": "Medium",
+    "score": 30,
+    "confidence": 30,
+    "label": "Suspicious",
+    "reasons": [
+      "IOCs: 37 indicator(s) extracted from host file.",
+      "YARA: 1 rule(s) matched on host static scan.",
+      "Report contains little behavioral data."
+    ]
+  },
+  "recommendations": [],
+  "ai_explanation": null
+}

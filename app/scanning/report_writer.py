@@ -9,7 +9,6 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ from .url_checker import URLCheckResult
 class ReportWriter:
     """
     Generates human-readable TXT reports for scans.
-    
+
     Features:
     - Automatic report directory creation
     - Structured report format
@@ -33,7 +32,7 @@ class ReportWriter:
     def __init__(self, reports_dir: Path | None = None):
         """
         Initialize the report writer.
-        
+
         Args:
             reports_dir: Optional path to reports directory.
                         Defaults to ~/Sentinel/scan_reports/
@@ -58,10 +57,10 @@ class ReportWriter:
     def write_file_report(self, result: ScanResult) -> Path:
         """
         Write a file scan report.
-        
+
         Args:
             result: ScanResult from static scanner
-            
+
         Returns:
             Path to the generated report file
         """
@@ -129,12 +128,16 @@ class ReportWriter:
             if pe.packer_detected:
                 f.write(f"Packer:         {pe.packer_detected}\n")
             if pe.has_signature:
-                f.write(f"Signed:         {'Yes' if pe.is_signed else 'Signature present'}\n")
+                f.write(
+                    f"Signed:         {'Yes' if pe.is_signed else 'Signature present'}\n"
+                )
 
             if pe.suspicious_imports:
                 f.write(f"\nSuspicious Imports ({len(pe.suspicious_imports)}):\n")
                 for imp in pe.suspicious_imports:
-                    f.write(f"  [{imp['severity'].upper()}] {imp['function']} - {imp['description']}\n")
+                    f.write(
+                        f"  [{imp['severity'].upper()}] {imp['function']} - {imp['description']}\n"
+                    )
 
             if pe.high_entropy_sections:
                 f.write("\nHigh Entropy Sections:\n")
@@ -158,8 +161,12 @@ class ReportWriter:
             medium = [f for f in result.findings if f.severity == "medium"]
             low = [f for f in result.findings if f.severity == "low"]
 
-            for severity, findings in [("CRITICAL", critical), ("HIGH", high),
-                                       ("MEDIUM", medium), ("LOW", low)]:
+            for severity, findings in [
+                ("CRITICAL", critical),
+                ("HIGH", high),
+                ("MEDIUM", medium),
+                ("LOW", low),
+            ]:
                 if findings:
                     f.write(f"\n[{severity}]\n")
                     for finding in findings:
@@ -174,7 +181,9 @@ class ReportWriter:
             f.write(f"YARA MATCHES ({len(result.yara_matches)})\n")
             f.write("-" * 70 + "\n")
             for match in result.yara_matches:
-                f.write(f"  [{match.get('severity', 'medium').upper()}] {match['title']}\n")
+                f.write(
+                    f"  [{match.get('severity', 'medium').upper()}] {match['title']}\n"
+                )
                 f.write(f"    {match['detail']}\n")
                 if match.get("matched_strings"):
                     f.write(f"    Matched: {', '.join(match['matched_strings'][:3])}\n")
@@ -197,8 +206,14 @@ class ReportWriter:
 
         # IOCs
         iocs = result.iocs
-        has_iocs = (iocs.urls or iocs.ips or iocs.domains or
-                   iocs.file_paths or iocs.registry_keys or iocs.emails)
+        has_iocs = (
+            iocs.urls
+            or iocs.ips
+            or iocs.domains
+            or iocs.file_paths
+            or iocs.registry_keys
+            or iocs.emails
+        )
 
         if has_iocs:
             f.write("-" * 70 + "\n")
@@ -263,7 +278,9 @@ class ReportWriter:
                     f.write(f"  {reg}\n")
 
             if sandbox.get("network_connections"):
-                f.write(f"\nNetwork Connections ({len(sandbox['network_connections'])}):\n")
+                f.write(
+                    f"\nNetwork Connections ({len(sandbox['network_connections'])}):\n"
+                )
                 for conn in sandbox["network_connections"][:10]:
                     f.write(f"  {conn}\n")
 
@@ -286,10 +303,10 @@ class ReportWriter:
     def write_url_report(self, result: URLCheckResult) -> Path:
         """
         Write a URL check report.
-        
+
         Args:
             result: URLCheckResult from URL checker
-            
+
         Returns:
             Path to the generated report file
         """
@@ -359,7 +376,9 @@ class ReportWriter:
             for reason in result.reasons:
                 severity = reason.get("severity", "info").upper()
                 score = reason.get("score", 0)
-                score_str = f"+{score}" if score > 0 else str(score) if score < 0 else ""
+                score_str = (
+                    f"+{score}" if score > 0 else str(score) if score < 0 else ""
+                )
 
                 f.write(f"\n[{severity}] {reason['title']}")
                 if score_str:
@@ -404,13 +423,13 @@ def write_combined_scan_report(
 ) -> Path:
     """
     Write a comprehensive scan report combining static and sandbox analysis.
-    
+
     Args:
         file_path: Path to the scanned file
         static_result: Output from StaticScanner.scan_file()
         sandbox_result: Output from IntegratedSandbox.run_file().to_dict()
         scoring_result: Output from ThreatScorer.score()
-    
+
     Returns:
         Path to the generated report file
     """
@@ -460,7 +479,9 @@ def write_combined_scan_report(
             if static_result.get("file_size"):
                 size = static_result["file_size"]
                 if size >= 1024 * 1024:
-                    f.write(f"  Size:       {size / 1024 / 1024:.2f} MB ({size:,} bytes)\n")
+                    f.write(
+                        f"  Size:       {size / 1024 / 1024:.2f} MB ({size:,} bytes)\n"
+                    )
                 elif size >= 1024:
                     f.write(f"  Size:       {size / 1024:.2f} KB ({size:,} bytes)\n")
                 else:
@@ -500,7 +521,9 @@ def write_combined_scan_report(
                         name = sec.get("name", "?")
                         entropy = sec.get("entropy", 0)
                         size = sec.get("size", 0)
-                        f.write(f"    {name:10} Size: {size:>10,}  Entropy: {entropy:.2f}\n")
+                        f.write(
+                            f"    {name:10} Size: {size:>10,}  Entropy: {entropy:.2f}\n"
+                        )
                     if len(sections) > 8:
                         f.write(f"    ... and {len(sections) - 8} more sections\n")
                     f.write("\n")
@@ -533,10 +556,15 @@ def write_combined_scan_report(
 
             # IOCs
             iocs = static_result.get("iocs", {})
-            has_iocs = any([
-                iocs.get("urls"), iocs.get("ips"), iocs.get("domains"),
-                iocs.get("registry_paths"), iocs.get("file_paths")
-            ])
+            has_iocs = any(
+                [
+                    iocs.get("urls"),
+                    iocs.get("ips"),
+                    iocs.get("domains"),
+                    iocs.get("registry_paths"),
+                    iocs.get("file_paths"),
+                ]
+            )
             if has_iocs:
                 f.write("  [Indicators of Compromise]\n")
 
@@ -566,7 +594,9 @@ def write_combined_scan_report(
                     for reg in iocs["registry_paths"][:5]:
                         f.write(f"      - {reg}\n")
                     if len(iocs["registry_paths"]) > 5:
-                        f.write(f"      ... and {len(iocs['registry_paths']) - 5} more\n")
+                        f.write(
+                            f"      ... and {len(iocs['registry_paths']) - 5} more\n"
+                        )
 
                 f.write("\n")
 
@@ -578,8 +608,12 @@ def write_combined_scan_report(
 
             if sandbox_result.get("success"):
                 f.write("  Status:         Completed\n")
-                f.write(f"  Platform:       {sandbox_result.get('platform', 'Unknown')}\n")
-                f.write(f"  Duration:       {sandbox_result.get('duration_seconds', 0):.2f} seconds\n")
+                f.write(
+                    f"  Platform:       {sandbox_result.get('platform', 'Unknown')}\n"
+                )
+                f.write(
+                    f"  Duration:       {sandbox_result.get('duration_seconds', 0):.2f} seconds\n"
+                )
                 f.write(f"  Exit Code:      {sandbox_result.get('exit_code', 'N/A')}\n")
 
                 if sandbox_result.get("timed_out"):
@@ -591,12 +625,18 @@ def write_combined_scan_report(
                 f.write("\n")
 
                 # Resource usage
-                if sandbox_result.get("peak_cpu_percent") or sandbox_result.get("peak_memory_mb"):
+                if sandbox_result.get("peak_cpu_percent") or sandbox_result.get(
+                    "peak_memory_mb"
+                ):
                     f.write("  [Resource Usage]\n")
                     if sandbox_result.get("peak_cpu_percent"):
-                        f.write(f"    Peak CPU:     {sandbox_result['peak_cpu_percent']:.1f}%\n")
+                        f.write(
+                            f"    Peak CPU:     {sandbox_result['peak_cpu_percent']:.1f}%\n"
+                        )
                     if sandbox_result.get("peak_memory_mb"):
-                        f.write(f"    Peak Memory:  {sandbox_result['peak_memory_mb']:.1f} MB\n")
+                        f.write(
+                            f"    Peak Memory:  {sandbox_result['peak_memory_mb']:.1f} MB\n"
+                        )
                     f.write("\n")
 
                 # File operations

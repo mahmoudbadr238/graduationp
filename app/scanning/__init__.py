@@ -27,6 +27,7 @@ def get_static_scanner():
     global _static_scanner
     if _static_scanner is None:
         from .static_scanner import StaticScanner
+
         _static_scanner = StaticScanner
     return _static_scanner
 
@@ -36,6 +37,7 @@ def get_url_checker():
     global _url_checker
     if _url_checker is None:
         from .url_checker import URLChecker
+
         _url_checker = URLChecker
     return _url_checker
 
@@ -45,6 +47,7 @@ def get_report_writer():
     global _report_writer
     if _report_writer is None:
         from .report_writer import ReportWriter
+
         _report_writer = ReportWriter
     return _report_writer
 
@@ -54,6 +57,7 @@ def get_yara_engine():
     global _yara_engine
     if _yara_engine is None:
         from .yara_engine import YaraEngine
+
         _yara_engine = YaraEngine
     return _yara_engine
 
@@ -63,6 +67,7 @@ def get_clamav_adapter():
     global _clamav_adapter
     if _clamav_adapter is None:
         from .clamav_adapter import ClamAVAdapter
+
         _clamav_adapter = ClamAVAdapter
     return _clamav_adapter
 
@@ -72,6 +77,7 @@ def get_sandbox_controller():
     global _sandbox_controller
     if _sandbox_controller is None:
         from .sandbox_controller import SandboxController
+
         _sandbox_controller = SandboxController
     return _sandbox_controller
 
@@ -84,11 +90,13 @@ def __getattr__(name):
         return get_static_scanner()
     if name == "ScanResult":
         from .static_scanner import ScanResult
+
         return ScanResult
     if name == "URLChecker":
         return get_url_checker()
     if name == "URLCheckResult":
         from .url_checker import URLCheckResult
+
         return URLCheckResult
     if name == "ReportWriter":
         return get_report_writer()

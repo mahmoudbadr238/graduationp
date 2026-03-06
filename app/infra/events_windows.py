@@ -29,13 +29,13 @@ else:
 def summarize_event_for_table(event) -> str:
     """
     Generate a short, human-readable summary for the event table.
-    
+
     This provides context even before opening the AI panel.
     Uses event level and source to create a meaningful one-liner.
-    
+
     Args:
         event: Event object or dict with 'level', 'source', and optionally 'message'
-        
+
     Returns:
         A short, user-friendly summary string
     """
@@ -87,21 +87,22 @@ def summarize_event_for_table(event) -> str:
 def build_friendly_message(source: str, event_id: int, raw_message: str) -> str:
     """
     Create a short, user-friendly summary for the event list.
-    
+
     This is non-AI and should be fast. Uses the knowledge base for known events,
     and intelligently rephrases unknown events based on message content.
-    
+
     Args:
         source: Event source (e.g., "System", "Application")
         event_id: Windows Event ID
         raw_message: Original event message text
-        
+
     Returns:
         A short, friendly message suitable for display in the event list.
     """
     # Import here to avoid circular imports
     try:
         from ..ai.event_id_knowledge import get_friendly_title
+
         friendly = get_friendly_title(source, event_id)
         if friendly:
             return friendly
@@ -115,7 +116,7 @@ def build_friendly_message(source: str, event_id: int, raw_message: str) -> str:
 def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str:
     """
     Intelligently rephrase an event message into simple, user-friendly language.
-    
+
     Uses keyword detection and pattern matching to generate human-readable summaries.
     """
     if not raw_message:
@@ -127,7 +128,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # SUCCESS / COMPLETION PATTERNS
     # =========================================================================
-    if any(w in text for w in ["successfully completed", "completed successfully", "success"]):
+    if any(
+        w in text
+        for w in ["successfully completed", "completed successfully", "success"]
+    ):
         if "install" in text:
             return "Software installed successfully"
         if "update" in text:
@@ -149,7 +153,9 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # FAILURE / ERROR PATTERNS
     # =========================================================================
-    if any(w in text for w in ["failed", "failure", "error", "cannot", "unable", "denied"]):
+    if any(
+        w in text for w in ["failed", "failure", "error", "cannot", "unable", "denied"]
+    ):
         if "install" in text:
             return "Software installation failed"
         if "update" in text:
@@ -173,7 +179,9 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # START / STOP PATTERNS
     # =========================================================================
-    if any(w in text for w in ["started", "starting", "began", "initiated", "launched"]):
+    if any(
+        w in text for w in ["started", "starting", "began", "initiated", "launched"]
+    ):
         if "service" in text:
             return "A Windows service started"
         if "driver" in text:
@@ -186,7 +194,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
             return "Scan started"
         return "An operation started"
 
-    if any(w in text for w in ["stopped", "stopping", "ended", "terminated", "exited", "closed"]):
+    if any(
+        w in text
+        for w in ["stopped", "stopping", "ended", "terminated", "exited", "closed"]
+    ):
         if "service" in text:
             return "A Windows service stopped"
         if "unexpected" in text or "crash" in text:
@@ -198,7 +209,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # NETWORK PATTERNS
     # =========================================================================
-    if any(w in text for w in ["network", "internet", "wifi", "wi-fi", "ethernet", "connection"]):
+    if any(
+        w in text
+        for w in ["network", "internet", "wifi", "wi-fi", "ethernet", "connection"]
+    ):
         if "connect" in text:
             return "Network connected"
         if "disconnect" in text:
@@ -210,7 +224,9 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # SECURITY PATTERNS
     # =========================================================================
-    if any(w in text for w in ["security", "audit", "policy", "credential", "password"]):
+    if any(
+        w in text for w in ["security", "audit", "policy", "credential", "password"]
+    ):
         if "logon" in text or "login" in text:
             return "User authentication logged"
         if "policy" in text:
@@ -241,7 +257,18 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # POWER / HARDWARE PATTERNS
     # =========================================================================
-    if any(w in text for w in ["power", "sleep", "hibernate", "wake", "shutdown", "restart", "reboot"]):
+    if any(
+        w in text
+        for w in [
+            "power",
+            "sleep",
+            "hibernate",
+            "wake",
+            "shutdown",
+            "restart",
+            "reboot",
+        ]
+    ):
         if "sleep" in text or "hibernate" in text:
             return "System entered low-power mode"
         if "wake" in text or "resume" in text:
@@ -266,7 +293,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # DISK / STORAGE PATTERNS
     # =========================================================================
-    if any(w in text for w in ["disk", "storage", "volume", "partition", "filesystem", "ntfs"]):
+    if any(
+        w in text
+        for w in ["disk", "storage", "volume", "partition", "filesystem", "ntfs"]
+    ):
         if "error" in text:
             return "Disk error detected"
         if "check" in text or "scan" in text:
@@ -300,7 +330,10 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     # =========================================================================
     # WINDOWS DEFENDER / ANTIVIRUS
     # =========================================================================
-    if any(w in text for w in ["defender", "antivirus", "malware", "threat", "virus", "scan"]):
+    if any(
+        w in text
+        for w in ["defender", "antivirus", "malware", "threat", "virus", "scan"]
+    ):
         if "detect" in text or "found" in text:
             return "Security threat detected"
         if "clean" in text or "remov" in text:
@@ -337,7 +370,11 @@ def _rephrase_event_message(source: str, event_id: int, raw_message: str) -> str
     if len(first_sentence) > 80:
         # Find a good breaking point
         words = first_sentence[:80].split()
-        first_sentence = " ".join(words[:-1]) + "..." if len(words) > 1 else first_sentence[:77] + "..."
+        first_sentence = (
+            " ".join(words[:-1]) + "..."
+            if len(words) > 1
+            else first_sentence[:77] + "..."
+        )
 
     # If we have something meaningful, return it slightly cleaned
     if first_sentence and len(first_sentence) > 5:
@@ -465,7 +502,9 @@ class WindowsEventReader(IEventReader):
                             raw_message = self._simplify_message(event, source)
 
                             # Build friendly message using knowledge base or heuristics
-                            friendly = build_friendly_message(source, event_id, raw_message)
+                            friendly = build_friendly_message(
+                                source, event_id, raw_message
+                            )
 
                             events.append(
                                 EventItem(

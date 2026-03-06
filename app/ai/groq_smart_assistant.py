@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class GroqSmartAssistant:
     """
     Smart Assistant powered by Groq Cloud AI.
-    
+
     Provides structured responses with:
     - Conversation memory
     - System context (events, defender, firewall)
@@ -33,10 +33,10 @@ class GroqSmartAssistant:
     def ask(self, question: str) -> str:
         """
         Ask a question and get a text response.
-        
+
         Args:
             question: User's question
-        
+
         Returns:
             Text answer
         """
@@ -46,10 +46,10 @@ class GroqSmartAssistant:
     def ask_structured(self, question: str) -> dict[str, Any]:
         """
         Ask a question and get a structured response.
-        
+
         Args:
             question: User's question
-        
+
         Returns:
             Dict with answer, confidence, sources, etc.
         """
@@ -57,7 +57,7 @@ class GroqSmartAssistant:
             # Add to conversation
             self._conversation.append({"role": "user", "content": question})
             if len(self._conversation) > self._max_history * 2:
-                self._conversation = self._conversation[-self._max_history * 2:]
+                self._conversation = self._conversation[-self._max_history * 2 :]
 
             # Build context
             context = self._build_context()
@@ -66,7 +66,9 @@ class GroqSmartAssistant:
             response = self._get_groq_response(question, context)
 
             # Add assistant response to history
-            self._conversation.append({"role": "assistant", "content": response.get("answer", "")})
+            self._conversation.append(
+                {"role": "assistant", "content": response.get("answer", "")}
+            )
 
             return response
 
@@ -78,7 +80,9 @@ class GroqSmartAssistant:
                 "source": "error",
             }
 
-    def _get_groq_response(self, question: str, context: dict[str, Any]) -> dict[str, Any]:
+    def _get_groq_response(
+        self, question: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         """Get response from Groq API."""
         from .providers.groq import get_groq_provider, is_groq_available
 
@@ -87,7 +91,7 @@ class GroqSmartAssistant:
         if not is_groq_available():
             return {
                 "answer": "AI is not available. Please set GROQ_API_KEY environment variable.\n\n"
-                          "Get your free API key at: https://console.groq.com/",
+                "Get your free API key at: https://console.groq.com/",
                 "confidence": "low",
                 "source": "error",
             }
@@ -104,7 +108,9 @@ class GroqSmartAssistant:
                 response = loop.run_until_complete(
                     groq.chat(
                         user_message=question,
-                        conversation_history=self._conversation[:-1],  # Exclude current question
+                        conversation_history=self._conversation[
+                            :-1
+                        ],  # Exclude current question
                         system_context=context,
                     )
                 )
@@ -115,7 +121,9 @@ class GroqSmartAssistant:
                 except Exception:
                     pass
 
-            logger.info(f"Groq response received: valid={response._is_valid}, source={response.source}")
+            logger.info(
+                f"Groq response received: valid={response._is_valid}, source={response.source}"
+            )
 
             if response._is_valid:
                 return {
@@ -218,12 +226,12 @@ def create_groq_smart_assistant(
 ) -> GroqSmartAssistant:
     """
     Create a Groq-powered smart assistant.
-    
+
     This is a drop-in replacement for create_online_smart_assistant.
-    
+
     Args:
         tool_callbacks: Dict of callback functions for data access
-    
+
     Returns:
         GroqSmartAssistant instance
     """

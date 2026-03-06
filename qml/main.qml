@@ -192,7 +192,7 @@ ApplicationWindow {
                 SidebarItem {
                     Layout.fillWidth: true
                     icon: "🔍"
-                    label: "Scan Tool"
+                    label: "File Scanner"
                     isActive: currentRoute === "scan-tool"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("scan-tool")
@@ -235,6 +235,15 @@ ApplicationWindow {
                     onClicked: loadRoute("resolution-report")
                 }
                 
+                SidebarItem {
+                    Layout.fillWidth: true
+                    icon: "🖥"
+                    label: "Sandbox Lab"
+                    isActive: currentRoute === "sandbox-lab"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("sandbox-lab")
+                }
+
                 SidebarItem {
                     Layout.fillWidth: true
                     icon: "⚙️"
@@ -356,7 +365,7 @@ ApplicationWindow {
                     visible: currentRoute === "nmap-result"
                 }
                 
-                ScanTool {
+                ScanCenter {
                     anchors.fill: parent
                     visible: currentRoute === "scan-tool"
                 }
@@ -364,6 +373,11 @@ ApplicationWindow {
                 DataLossPrevention {
                     anchors.fill: parent
                     visible: currentRoute === "dlp"
+                }
+
+                SandboxLabPage {
+                    anchors.fill: parent
+                    visible: currentRoute === "sandbox-lab"
                 }
                 
                 SecurityAssistant {

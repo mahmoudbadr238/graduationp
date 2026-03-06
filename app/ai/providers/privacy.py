@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RedactionStats:
     """Statistics about what was redacted."""
+
     usernames_redacted: int = 0
     ips_redacted: int = 0
     paths_redacted: int = 0
@@ -27,25 +28,25 @@ class RedactionStats:
     @property
     def total_redacted(self) -> int:
         return (
-            self.usernames_redacted +
-            self.ips_redacted +
-            self.paths_redacted +
-            self.emails_redacted +
-            self.domains_redacted
+            self.usernames_redacted
+            + self.ips_redacted
+            + self.paths_redacted
+            + self.emails_redacted
+            + self.domains_redacted
         )
 
 
 class RedactionEngine:
     """
     Redacts sensitive information from text before sending to online AI.
-    
+
     Patterns redacted:
     - Usernames (Windows format: DOMAIN\\user, user@domain)
     - IP addresses (IPv4 and IPv6)
     - File paths (Windows and Unix)
     - Email addresses
     - Internal domain names
-    
+
     Redaction uses consistent hashing so the same value
     always maps to the same placeholder (e.g., USER_A7F3).
     """
@@ -54,7 +55,7 @@ class RedactionEngine:
     WINDOWS_USER = re.compile(
         r"(?:(?:[A-Z][A-Z0-9\-]*\\)?[a-zA-Z][a-zA-Z0-9_\-\.]{2,30})"
         r"(?=\s|$|[,;:\)])",
-        re.IGNORECASE
+        re.IGNORECASE,
     )
 
     IPV4 = re.compile(
@@ -69,29 +70,39 @@ class RedactionEngine:
     )
 
     WINDOWS_PATH = re.compile(
-        r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*',
-        re.IGNORECASE
+        r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*', re.IGNORECASE
     )
 
-    UNIX_PATH = re.compile(
-        r"(?:/[a-zA-Z0-9_\-\.]+)+/?"
-    )
+    UNIX_PATH = re.compile(r"(?:/[a-zA-Z0-9_\-\.]+)+/?")
 
-    EMAIL = re.compile(
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-    )
+    EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 
     # Known safe system accounts (don't redact)
     SAFE_ACCOUNTS = {
-        "system", "local service", "network service",
-        "nt authority", "builtin", "everyone", "administrators",
-        "users", "guests", "authenticated users", "interactive",
+        "system",
+        "local service",
+        "network service",
+        "nt authority",
+        "builtin",
+        "everyone",
+        "administrators",
+        "users",
+        "guests",
+        "authenticated users",
+        "interactive",
     }
 
     # Known safe paths (don't redact)
     SAFE_PATHS = {
-        "c:\\windows", "c:\\program files", "c:\\program files (x86)",
-        "/usr", "/bin", "/sbin", "/etc", "/var", "/tmp",
+        "c:\\windows",
+        "c:\\program files",
+        "c:\\program files (x86)",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/etc",
+        "/var",
+        "/tmp",
     }
 
     def __init__(
@@ -136,10 +147,10 @@ class RedactionEngine:
     def redact(self, text: str) -> tuple[str, RedactionStats]:
         """
         Redact sensitive information from text.
-        
+
         Args:
             text: The text to redact
-        
+
         Returns:
             Tuple of (redacted_text, stats)
         """
@@ -213,13 +224,13 @@ def redact_sensitive(
 ) -> tuple[dict[str, Any], RedactionStats]:
     """
     Redact sensitive information from a data dict.
-    
+
     Recursively processes all string values.
-    
+
     Args:
         data: The data to redact
         redact_*: Which types to redact
-    
+
     Returns:
         Tuple of (redacted_data, stats)
     """

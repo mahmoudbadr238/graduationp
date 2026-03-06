@@ -11,7 +11,7 @@ import sys
 from collections.abc import Callable, Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..config.settings import get_settings
 from ..core.errors import ExternalToolMissing, IntegrationDisabled

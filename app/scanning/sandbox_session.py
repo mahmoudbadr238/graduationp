@@ -18,16 +18,17 @@ import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """Types of sandbox events."""
+
     PROCESS_START = "process_start"
     PROCESS_END = "process_end"
     FILE_CREATE = "file_create"
@@ -47,9 +48,10 @@ class EventType(str, Enum):
 class SandboxEvent:
     """
     A single event captured during sandbox execution.
-    
+
     Unified schema for all event types.
     """
+
     event_type: str  # EventType value
     timestamp: str  # ISO format
 
@@ -98,6 +100,7 @@ class SandboxEvent:
 @dataclass
 class SessionStats:
     """Live statistics for the sandbox session."""
+
     running_time_seconds: float = 0.0
     processes_spawned: int = 0
     files_touched: int = 0
@@ -114,7 +117,7 @@ class SessionStats:
 class SandboxSession:
     """
     Manages a single sandbox execution session.
-    
+
     Features:
     - Live event streaming via callbacks
     - Batched event delivery for UI performance
@@ -132,7 +135,7 @@ class SandboxSession:
     ):
         """
         Initialize a sandbox session.
-        
+
         Args:
             session_id: Unique session identifier (auto-generated if not provided)
             workspace: Directory for session files
@@ -140,7 +143,10 @@ class SandboxSession:
             stats_callback: Called with updated stats for UI
             batch_interval_ms: How often to flush events to callback (default 300ms)
         """
-        self.session_id = session_id or f"sandbox_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        self.session_id = (
+            session_id
+            or f"sandbox_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        )
         self.workspace = workspace or self._get_default_workspace()
         self.event_callback = event_callback
         self.stats_callback = stats_callback
@@ -180,7 +186,7 @@ class SandboxSession:
     def start(self, sample_path: str, sample_hash: str | None = None) -> None:
         """
         Start the session.
-        
+
         Args:
             sample_path: Path to the sample being analyzed
             sample_hash: SHA256 hash of the sample (optional)
@@ -224,7 +230,7 @@ class SandboxSession:
     def add_event(self, event: SandboxEvent) -> None:
         """
         Add an event to the session (thread-safe).
-        
+
         Args:
             event: The sandbox event to add
         """
@@ -250,19 +256,28 @@ class SandboxSession:
     def _update_stats(self, event: SandboxEvent) -> None:
         """Update session statistics based on event type."""
         if self.start_time:
-            self.stats.running_time_seconds = (datetime.now() - self.start_time).total_seconds()
+            self.stats.running_time_seconds = (
+                datetime.now() - self.start_time
+            ).total_seconds()
 
         event_type = event.event_type
 
         if event_type == EventType.PROCESS_START:
             self.stats.processes_spawned += 1
-        elif event_type in (EventType.FILE_CREATE, EventType.FILE_MODIFY, EventType.FILE_DELETE):
+        elif event_type in (
+            EventType.FILE_CREATE,
+            EventType.FILE_MODIFY,
+            EventType.FILE_DELETE,
+        ):
             self.stats.files_touched += 1
         elif event_type in (EventType.REGISTRY_CREATE, EventType.REGISTRY_MODIFY):
             self.stats.registry_changes += 1
         elif event_type in (EventType.NETWORK_CONNECT, EventType.NETWORK_BLOCKED):
             self.stats.network_attempts += 1
-        elif event_type in (EventType.SUSPICIOUS_BEHAVIOR, EventType.PERSISTENCE_ATTEMPT):
+        elif event_type in (
+            EventType.SUSPICIOUS_BEHAVIOR,
+            EventType.PERSISTENCE_ATTEMPT,
+        ):
             self.stats.suspicious_behaviors += 1
 
     def _batch_loop(self) -> None:
@@ -292,7 +307,9 @@ class SandboxSession:
                 try:
                     with self._lock:
                         if self.start_time:
-                            self.stats.running_time_seconds = (datetime.now() - self.start_time).total_seconds()
+                            self.stats.running_time_seconds = (
+                                datetime.now() - self.start_time
+                            ).total_seconds()
                     self.stats_callback(self.stats)
                 except Exception as e:
                     logger.warning(f"Stats callback error: {e}")
@@ -315,7 +332,7 @@ class SandboxSession:
     def stop(self, cancelled: bool = False) -> None:
         """
         Stop the session.
-        
+
         Args:
             cancelled: Whether the session was cancelled by user
         """
@@ -371,7 +388,9 @@ class SandboxSession:
             except Exception:
                 pass
 
-        logger.info(f"Sandbox session stopped: {self.session_id} (cancelled={cancelled})")
+        logger.info(
+            f"Sandbox session stopped: {self.session_id} (cancelled={cancelled})"
+        )
 
     def _write_summary(self) -> None:
         """Write session summary JSON file."""
@@ -416,7 +435,10 @@ class SandboxSession:
 
         with self._lock:
             for event in self.events:
-                if event.event_type in (EventType.SUSPICIOUS_BEHAVIOR, EventType.PERSISTENCE_ATTEMPT):
+                if event.event_type in (
+                    EventType.SUSPICIOUS_BEHAVIOR,
+                    EventType.PERSISTENCE_ATTEMPT,
+                ):
                     suspicious.append(event.to_dict())
 
         return suspicious
@@ -429,12 +451,18 @@ class SandboxSession:
         parts = []
 
         # Process activity
-        process_starts = [e for e in self.events if e.event_type == EventType.PROCESS_START]
+        process_starts = [
+            e for e in self.events if e.event_type == EventType.PROCESS_START
+        ]
         if process_starts:
             if len(process_starts) == 1:
-                parts.append(f"The sample launched as a single process (PID: {process_starts[0].pid}).")
+                parts.append(
+                    f"The sample launched as a single process (PID: {process_starts[0].pid})."
+                )
             else:
-                parts.append(f"The sample spawned {len(process_starts)} processes during execution.")
+                parts.append(
+                    f"The sample spawned {len(process_starts)} processes during execution."
+                )
 
         # File activity
         file_creates = [e for e in self.events if e.event_type == EventType.FILE_CREATE]
@@ -444,20 +472,33 @@ class SandboxSession:
             parts.append(f"It created or modified {total_files} file(s) on the system.")
 
         # Registry activity
-        reg_mods = [e for e in self.events if e.event_type in (EventType.REGISTRY_CREATE, EventType.REGISTRY_MODIFY)]
+        reg_mods = [
+            e
+            for e in self.events
+            if e.event_type in (EventType.REGISTRY_CREATE, EventType.REGISTRY_MODIFY)
+        ]
         if reg_mods:
             parts.append(f"Made {len(reg_mods)} registry modification(s).")
 
         # Network activity
-        net_events = [e for e in self.events if e.event_type == EventType.NETWORK_CONNECT]
-        blocked_events = [e for e in self.events if e.event_type == EventType.NETWORK_BLOCKED]
+        net_events = [
+            e for e in self.events if e.event_type == EventType.NETWORK_CONNECT
+        ]
+        blocked_events = [
+            e for e in self.events if e.event_type == EventType.NETWORK_BLOCKED
+        ]
         if net_events:
             parts.append(f"Attempted {len(net_events)} network connection(s).")
         if blocked_events:
             parts.append(f"Blocked {len(blocked_events)} outbound network attempt(s).")
 
         # Suspicious behaviors
-        suspicious = [e for e in self.events if e.event_type in (EventType.SUSPICIOUS_BEHAVIOR, EventType.PERSISTENCE_ATTEMPT)]
+        suspicious = [
+            e
+            for e in self.events
+            if e.event_type
+            in (EventType.SUSPICIOUS_BEHAVIOR, EventType.PERSISTENCE_ATTEMPT)
+        ]
         if suspicious:
             parts.append(f"Detected {len(suspicious)} suspicious behavior(s):")
             for s in suspicious[:5]:  # Limit to first 5
@@ -491,10 +532,10 @@ class SandboxSession:
 def load_session(session_path: Path) -> SandboxSession | None:
     """
     Load a session from disk (for crash recovery or review).
-    
+
     Args:
         session_path: Path to session workspace directory
-        
+
     Returns:
         Loaded SandboxSession or None if failed
     """

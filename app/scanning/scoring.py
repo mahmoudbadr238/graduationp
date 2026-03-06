@@ -14,7 +14,7 @@ Score Ranges:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class ScoringResult:
 class ThreatScorer:
     """
     Calculates threat scores from static and dynamic analysis results.
-    
+
     Scoring Philosophy:
     - Start at 0 (assume safe)
     - Add points for each indicator found
@@ -56,74 +56,95 @@ class ThreatScorer:
     # Weights for different finding categories
     WEIGHTS = {
         # Static analysis weights
-        "yara_critical": 18,        # Per critical YARA match
-        "yara_high": 10,            # Per high YARA match
-        "yara_medium": 5,           # Per medium YARA match
-        "yara_low": 1,              # Per low YARA match
-        "yara_max": 40,             # Cap for high-confidence YARA scoring
-        "yara_indicator_max": 8,    # Cap when only low-confidence indicator rules match
-        "suspicious_import": 5,      # Per suspicious import
-        "suspicious_import_max": 25, # Cap for import scoring
-        "packed_binary": 15,         # Entropy suggests packing
-        "suspicious_section": 8,     # Unusual PE section
-        "ioc_ip": 8,                 # IP address found
-        "ioc_url": 10,               # URL found
-        "ioc_domain": 8,             # Domain found
-        "ioc_email": 5,              # Email found
-        "ioc_registry": 12,          # Registry path found
-        "ioc_max": 30,               # Cap for all IOCs
-        "ioc_max_pe": 10,            # Lower IOC cap for PE binaries (common benign strings)
-
+        "yara_critical": 18,  # Per critical YARA match
+        "yara_high": 10,  # Per high YARA match
+        "yara_medium": 5,  # Per medium YARA match
+        "yara_low": 1,  # Per low YARA match
+        "yara_max": 40,  # Cap for high-confidence YARA scoring
+        "yara_indicator_max": 8,  # Cap when only low-confidence indicator rules match
+        "suspicious_import": 5,  # Per suspicious import
+        "suspicious_import_max": 25,  # Cap for import scoring
+        "packed_binary": 15,  # Entropy suggests packing
+        "suspicious_section": 8,  # Unusual PE section
+        "ioc_ip": 8,  # IP address found
+        "ioc_url": 10,  # URL found
+        "ioc_domain": 8,  # Domain found
+        "ioc_email": 5,  # Email found
+        "ioc_registry": 12,  # Registry path found
+        "ioc_max": 30,  # Cap for all IOCs
+        "ioc_max_pe": 10,  # Lower IOC cap for PE binaries (common benign strings)
         # Sandbox behavior weights
-        "sandbox_crash": 20,         # Process crashed
-        "sandbox_timeout": 10,       # Took too long (evasion?)
-        "high_cpu": 5,               # Excessive CPU usage
-        "high_memory": 5,            # Excessive memory usage
-        "file_created": 3,           # Each file created
-        "file_modified": 4,          # Each file modified
-        "file_deleted": 5,           # Each file deleted
-        "file_ops_max": 25,          # Cap for file operations
-        "registry_write": 8,         # Registry modification
-        "registry_max": 20,          # Cap for registry ops
-        "network_attempt": 15,       # Tried to access network
-        "process_spawned": 5,        # Each child process
-        "process_max": 15,           # Cap for process spawning
+        "sandbox_crash": 20,  # Process crashed
+        "sandbox_timeout": 10,  # Took too long (evasion?)
+        "high_cpu": 5,  # Excessive CPU usage
+        "high_memory": 5,  # Excessive memory usage
+        "file_created": 3,  # Each file created
+        "file_modified": 4,  # Each file modified
+        "file_deleted": 5,  # Each file deleted
+        "file_ops_max": 25,  # Cap for file operations
+        "registry_write": 8,  # Registry modification
+        "registry_max": 20,  # Cap for registry ops
+        "network_attempt": 15,  # Tried to access network
+        "process_spawned": 5,  # Each child process
+        "process_max": 15,  # Cap for process spawning
     }
 
     # Suspicious Windows API imports
     SUSPICIOUS_IMPORTS = {
         # Process manipulation
-        "CreateRemoteThread", "OpenProcess", "WriteProcessMemory",
-        "ReadProcessMemory", "VirtualAllocEx", "NtUnmapViewOfSection",
-        "QueueUserAPC", "SetThreadContext",
-
+        "CreateRemoteThread",
+        "OpenProcess",
+        "WriteProcessMemory",
+        "ReadProcessMemory",
+        "VirtualAllocEx",
+        "NtUnmapViewOfSection",
+        "QueueUserAPC",
+        "SetThreadContext",
         # Code injection
-        "LoadLibraryA", "LoadLibraryW", "GetProcAddress",
-        "VirtualAlloc", "VirtualProtect", "HeapCreate",
-
+        "LoadLibraryA",
+        "LoadLibraryW",
+        "GetProcAddress",
+        "VirtualAlloc",
+        "VirtualProtect",
+        "HeapCreate",
         # Persistence
-        "RegSetValueExA", "RegSetValueExW", "RegCreateKeyExA",
-        "CreateServiceA", "CreateServiceW",
-
+        "RegSetValueExA",
+        "RegSetValueExW",
+        "RegCreateKeyExA",
+        "CreateServiceA",
+        "CreateServiceW",
         # Evasion
-        "IsDebuggerPresent", "CheckRemoteDebuggerPresent",
-        "NtQueryInformationProcess", "GetTickCount", "QueryPerformanceCounter",
-
+        "IsDebuggerPresent",
+        "CheckRemoteDebuggerPresent",
+        "NtQueryInformationProcess",
+        "GetTickCount",
+        "QueryPerformanceCounter",
         # Credentials/crypto
-        "CryptEncrypt", "CryptDecrypt", "CryptAcquireContextA",
-        "CredEnumerateA", "CredEnumerateW",
-
+        "CryptEncrypt",
+        "CryptDecrypt",
+        "CryptAcquireContextA",
+        "CredEnumerateA",
+        "CredEnumerateW",
         # Network
-        "WSAStartup", "socket", "connect", "send", "recv",
-        "InternetOpenA", "InternetOpenW", "HttpOpenRequestA",
-        "URLDownloadToFileA", "URLDownloadToFileW",
-
+        "WSAStartup",
+        "socket",
+        "connect",
+        "send",
+        "recv",
+        "InternetOpenA",
+        "InternetOpenW",
+        "HttpOpenRequestA",
+        "URLDownloadToFileA",
+        "URLDownloadToFileW",
         # Keylogging
-        "SetWindowsHookExA", "SetWindowsHookExW",
-        "GetAsyncKeyState", "GetKeyState",
-
+        "SetWindowsHookExA",
+        "SetWindowsHookExW",
+        "GetAsyncKeyState",
+        "GetKeyState",
         # Screen capture
-        "BitBlt", "GetDC", "CreateCompatibleDC",
+        "BitBlt",
+        "GetDC",
+        "CreateCompatibleDC",
     }
 
     def __init__(self):
@@ -137,11 +158,11 @@ class ThreatScorer:
     ) -> ScoringResult:
         """
         Calculate threat score from analysis results.
-        
+
         Args:
             static_result: Output from StaticScanner.scan_file()
             sandbox_result: Output from IntegratedSandbox.run_file().to_dict()
-        
+
         Returns:
             ScoringResult with score, verdict, and explanation
         """
@@ -208,9 +229,8 @@ class ThreatScorer:
                 per_match = severity_weights.get(severity, self.WEIGHTS["yara_medium"])
 
                 rule_name_lower = rule_name.lower()
-                is_low_confidence_rule = (
-                    category in indicator_categories
-                    or any(token in rule_name_lower for token in low_confidence_rule_tokens)
+                is_low_confidence_rule = category in indicator_categories or any(
+                    token in rule_name_lower for token in low_confidence_rule_tokens
                 )
                 if is_low_confidence_rule:
                     per_match = min(per_match, self.WEIGHTS["yara_low"])
@@ -258,7 +278,7 @@ class ThreatScorer:
             if suspicious_found:
                 import_pts = min(
                     len(suspicious_found) * self.WEIGHTS["suspicious_import"],
-                    self.WEIGHTS["suspicious_import_max"]
+                    self.WEIGHTS["suspicious_import_max"],
                 )
                 points += import_pts
                 self._breakdown["suspicious_imports"] = import_pts
@@ -278,8 +298,20 @@ class ThreatScorer:
             # Check unusual sections
             sections = pe_info.get("sections", [])
             unusual_sections = []
-            normal_names = {".text", ".data", ".rdata", ".bss", ".idata", ".edata",
-                          ".reloc", ".rsrc", ".tls", ".pdata", ".gfids", ".00cfg"}
+            normal_names = {
+                ".text",
+                ".data",
+                ".rdata",
+                ".bss",
+                ".idata",
+                ".edata",
+                ".reloc",
+                ".rsrc",
+                ".tls",
+                ".pdata",
+                ".gfids",
+                ".00cfg",
+            }
             for sec in sections:
                 name = sec.get("name", "").strip()
                 if name and name.lower() not in {n.lower() for n in normal_names}:
@@ -287,7 +319,9 @@ class ThreatScorer:
                         unusual_sections.append(name)
 
             if unusual_sections:
-                sec_pts = min(len(unusual_sections) * self.WEIGHTS["suspicious_section"], 20)
+                sec_pts = min(
+                    len(unusual_sections) * self.WEIGHTS["suspicious_section"], 20
+                )
                 points += sec_pts
                 self._breakdown["unusual_sections"] = sec_pts
                 self._explanations.append(
@@ -346,7 +380,9 @@ class ThreatScorer:
             ioc_details.append(f"{len(iocs['emails'])} email indicator(s)")
 
         if ioc_pts > 0:
-            ioc_cap = self.WEIGHTS["ioc_max_pe"] if is_pe_binary else self.WEIGHTS["ioc_max"]
+            ioc_cap = (
+                self.WEIGHTS["ioc_max_pe"] if is_pe_binary else self.WEIGHTS["ioc_max"]
+            )
             ioc_pts = min(ioc_pts, ioc_cap)
             points += ioc_pts
             self._breakdown["iocs"] = ioc_pts
@@ -446,8 +482,10 @@ class ThreatScorer:
         # Registry operations (Windows)
         registry_ops = result.get("registry_modifications", [])
         if registry_ops:
-            reg_pts = min(len(registry_ops) * self.WEIGHTS["registry_write"],
-                         self.WEIGHTS["registry_max"])
+            reg_pts = min(
+                len(registry_ops) * self.WEIGHTS["registry_write"],
+                self.WEIGHTS["registry_max"],
+            )
             points += reg_pts
             self._breakdown["registry_modifications"] = reg_pts
             self._explanations.append(
@@ -471,8 +509,10 @@ class ThreatScorer:
         # Process spawning
         child_procs = result.get("child_processes", [])
         if child_procs:
-            proc_pts = min(len(child_procs) * self.WEIGHTS["process_spawned"],
-                          self.WEIGHTS["process_max"])
+            proc_pts = min(
+                len(child_procs) * self.WEIGHTS["process_spawned"],
+                self.WEIGHTS["process_max"],
+            )
             points += proc_pts
             self._breakdown["process_spawning"] = proc_pts
 
@@ -504,7 +544,9 @@ class ThreatScorer:
         if score <= 50:
             return f"Moderate risk (score: {score}/100). Some concerning behaviors detected."
         if score <= 80:
-            return f"High risk (score: {score}/100). Multiple threat indicators present."
+            return (
+                f"High risk (score: {score}/100). Multiple threat indicators present."
+            )
         return f"Critical risk (score: {score}/100). Strong evidence of malicious behavior."
 
     def _build_explanation(self, score: int, verdict_label: str) -> str:
@@ -546,7 +588,9 @@ class ThreatScorer:
             lines.append("Consider deleting or quarantining it.")
         else:
             lines.append("This file is almost certainly malicious. ")
-            lines.append("DELETE this file immediately and scan your system for infections. ")
+            lines.append(
+                "DELETE this file immediately and scan your system for infections. "
+            )
             lines.append("Do not share or execute this file under any circumstances.")
 
         return "\n".join(lines)
@@ -558,11 +602,11 @@ def score_scan_results(
 ) -> ScoringResult:
     """
     Convenience function to score analysis results.
-    
+
     Args:
         static_result: Output from StaticScanner.scan_file()
         sandbox_result: Output from IntegratedSandbox.run_file().to_dict()
-    
+
     Returns:
         ScoringResult with threat assessment
     """

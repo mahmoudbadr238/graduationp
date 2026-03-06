@@ -5,7 +5,6 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from ..core.interfaces import IEventRepository, IScanRepository
 from ..core.types import EventItem, ScanRecord, ScanType
@@ -83,7 +82,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
             # Add event_id column if it doesn't exist (migration for existing DBs)
             try:
-                cursor.execute("ALTER TABLE events ADD COLUMN event_id INTEGER DEFAULT 0")
+                cursor.execute(
+                    "ALTER TABLE events ADD COLUMN event_id INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
@@ -192,10 +193,18 @@ class SqliteRepo(IScanRepository, IEventRepository):
             cursor = conn.cursor()
 
             # Handle both datetime objects and ISO strings for started_at/finished_at
-            started_str = rec.started_at.isoformat() if hasattr(rec.started_at, "isoformat") else str(rec.started_at)
+            started_str = (
+                rec.started_at.isoformat()
+                if hasattr(rec.started_at, "isoformat")
+                else str(rec.started_at)
+            )
             finished_str = None
             if rec.finished_at:
-                finished_str = rec.finished_at.isoformat() if hasattr(rec.finished_at, "isoformat") else str(rec.finished_at)
+                finished_str = (
+                    rec.finished_at.isoformat()
+                    if hasattr(rec.finished_at, "isoformat")
+                    else str(rec.finished_at)
+                )
 
             cursor.execute(
                 """
@@ -370,7 +379,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 """,
                     [
                         (
-                            item.timestamp.isoformat() if hasattr(item.timestamp, "isoformat") else str(item.timestamp),
+                            item.timestamp.isoformat()
+                            if hasattr(item.timestamp, "isoformat")
+                            else str(item.timestamp),
                             item.level,
                             item.source,
                             item.message,
@@ -514,15 +525,17 @@ class SqliteRepo(IScanRepository, IEventRepository):
 
     # ============ Event Summary Cache ============
 
-    def get_event_summary(self, source: str, event_id: int, signature: str) -> dict | None:
+    def get_event_summary(
+        self, source: str, event_id: int, signature: str
+    ) -> dict | None:
         """
         Get a cached event summary from the database.
-        
+
         Args:
             source: Event source/provider
             event_id: Windows event ID
             signature: SHA256 hash prefix of the event message
-            
+
         Returns:
             dict with summary fields if found, None otherwise
         """
@@ -560,21 +573,17 @@ class SqliteRepo(IScanRepository, IEventRepository):
             conn.close()
 
     def save_event_summary(
-        self,
-        source: str,
-        event_id: int,
-        signature: str,
-        summary: dict
+        self, source: str, event_id: int, signature: str, summary: dict
     ) -> bool:
         """
         Save an event summary to the database cache.
-        
+
         Args:
             source: Event source/provider
             event_id: Windows event ID
             signature: SHA256 hash prefix of the event message
             summary: dict or EventSummary with summary fields
-            
+
         Returns:
             True if saved successfully, False otherwise
         """
@@ -630,14 +639,14 @@ class SqliteRepo(IScanRepository, IEventRepository):
     ) -> dict | None:
         """
         Get cached event explanation.
-        
+
         Args:
             provider: Event provider/source
             event_id: Windows event ID
             message_hash: Hash of event message (first 12 chars of MD5)
             detail_level: "full" or "simple"
             locale: Language code
-        
+
         Returns:
             Cached explanation dict or None if not found/expired
         """
@@ -660,7 +669,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
             row = cursor.fetchone()
             if row:
                 # Check TTL
-                created_at = datetime.fromisoformat(row[11]) if row[11] else datetime.now()
+                created_at = (
+                    datetime.fromisoformat(row[11]) if row[11] else datetime.now()
+                )
                 ttl = row[12] or 86400
                 age_seconds = (datetime.now() - created_at).total_seconds()
 
@@ -709,7 +720,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
     ) -> bool:
         """
         Save event explanation to cache.
-        
+
         Args:
             provider: Event provider/source
             event_id: Windows event ID
@@ -720,7 +731,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
             ai_provider: Which AI generated this
             token_count: Tokens used
             ttl_seconds: Cache TTL (default 24 hours)
-        
+
         Returns:
             True if saved successfully
         """
@@ -749,8 +760,17 @@ class SqliteRepo(IScanRepository, IEventRepository):
                     json.dumps(explanation.get("what_it_affects", [])),
                     1 if explanation.get("is_normal", True) else 0,
                     explanation.get("risk_level", "low"),
-                    json.dumps(explanation.get("what_to_do", explanation.get("what_to_do_now", []))),
-                    json.dumps(explanation.get("when_to_worry", explanation.get("follow_up_suggestions", []))),
+                    json.dumps(
+                        explanation.get(
+                            "what_to_do", explanation.get("what_to_do_now", [])
+                        )
+                    ),
+                    json.dumps(
+                        explanation.get(
+                            "when_to_worry",
+                            explanation.get("follow_up_suggestions", []),
+                        )
+                    ),
                     explanation.get("technical_brief", ""),
                     explanation.get("simplified_text", ""),
                     ai_provider,
@@ -759,7 +779,9 @@ class SqliteRepo(IScanRepository, IEventRepository):
                 ),
             )
             conn.commit()
-            logger.debug(f"Saved event explanation: {provider}:{event_id} ({detail_level})")
+            logger.debug(
+                f"Saved event explanation: {provider}:{event_id} ({detail_level})"
+            )
             return True
         except Exception as e:
             logger.error(f"Error saving event explanation: {e}")
@@ -770,10 +792,10 @@ class SqliteRepo(IScanRepository, IEventRepository):
     def cleanup_expired_explanations(self, max_age_days: int = 7) -> int:
         """
         Remove expired explanations from cache.
-        
+
         Args:
             max_age_days: Maximum age in days
-        
+
         Returns:
             Number of rows deleted
         """

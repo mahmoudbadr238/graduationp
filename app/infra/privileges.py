@@ -1,7 +1,6 @@
 """Administrative privileges detection - Windows only"""
 
 import ctypes
-import os
 
 
 def is_admin() -> bool:

@@ -8,13 +8,14 @@ Item {
     id: panel
     default property alias children: content.children
     property int padding: Theme.spacing_lg
+    property string title: ""
     property bool hoverable: false
     property bool elevated: false
     property bool glassmorphic: false
 
     // Let parent layout control size - NO hardcoded dimensions
     Layout.fillWidth: true
-    implicitHeight: content.implicitHeight + padding * 2
+    implicitHeight: outerCol.implicitHeight + padding * 2
 
     Accessible.role: Accessible.Grouping
 
@@ -53,12 +54,28 @@ Item {
     }
 
     ColumnLayout {
-        id: content
+        id: outerCol
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: padding
         spacing: Theme.spacing_md
+
+        Text {
+            visible: panel.title !== ""
+            text: panel.title
+            color: Theme.text
+            font.pixelSize: 13
+            font.weight: Font.SemiBold
+            Layout.fillWidth: true
+            elide: Text.ElideRight
+        }
+
+        ColumnLayout {
+            id: content
+            Layout.fillWidth: true
+            spacing: Theme.spacing_md
+        }
     }
 
     MouseArea {

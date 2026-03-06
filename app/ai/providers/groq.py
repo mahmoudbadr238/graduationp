@@ -28,7 +28,7 @@ import os
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .base import AIProvider, AIResponse, ProviderConfig
 from .privacy import redact_sensitive
@@ -207,9 +207,11 @@ Respond with the simplified explanation only, no JSON."""
 # PROMPT CACHE
 # =============================================================================
 
+
 @dataclass
 class CachedPrompt:
     """Cached prompt response."""
+
     response: dict[str, Any]
     timestamp: float
     model: str
@@ -220,7 +222,7 @@ class CachedPrompt:
 class PromptCache:
     """
     Cache for repeated prompt patterns.
-    
+
     Caches by:
     - Event explanations: (event_id, provider, level, message_hash)
     - Common queries: (query_hash)
@@ -234,7 +236,14 @@ class PromptCache:
         self._hits = 0
         self._misses = 0
 
-    def _make_key(self, event_id: int, provider: str, level: str, message: str, detail_level: str = "normal") -> str:
+    def _make_key(
+        self,
+        event_id: int,
+        provider: str,
+        level: str,
+        message: str,
+        detail_level: str = "normal",
+    ) -> str:
         """Create cache key for event explanation with detail level."""
         msg_hash = hashlib.md5(message.encode()[:500]).hexdigest()[:12]
         return f"event:{provider}:{event_id}:{level}:{msg_hash}:{detail_level}"
@@ -301,7 +310,9 @@ class PromptCache:
         with self._lock:
             # Evict if at capacity (LRU-ish: remove oldest)
             if len(self._cache) >= self._max_size:
-                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].timestamp)
+                oldest_key = min(
+                    self._cache.keys(), key=lambda k: self._cache[k].timestamp
+                )
                 del self._cache[oldest_key]
 
             self._cache[key] = CachedPrompt(
@@ -329,10 +340,11 @@ class PromptCache:
 # GROQ PROVIDER
 # =============================================================================
 
+
 class GroqProvider(AIProvider):
     """
     Groq Cloud AI provider using Llama models.
-    
+
     Features:
     - Ultra-fast inference (tokens/sec)
     - Free tier with generous limits
@@ -348,7 +360,9 @@ class GroqProvider(AIProvider):
             self.config.api_key = os.environ.get("GROQ_API_KEY", "")
 
         if not self.config.api_key:
-            logger.warning("GROQ_API_KEY not set. Set it in your .env file or environment variables.")
+            logger.warning(
+                "GROQ_API_KEY not set. Set it in your .env file or environment variables."
+            )
             logger.info("Get a free API key at: https://console.groq.com/keys")
 
         # Model selection
@@ -393,12 +407,13 @@ class GroqProvider(AIProvider):
     def _create_session(self):
         """
         Create a new aiohttp session for this request.
-        
+
         We use request-scoped sessions to avoid event loop issues
         when the session is reused across different event loops.
         """
         try:
             import aiohttp
+
             timeout = aiohttp.ClientTimeout(total=self.config.timeout_seconds)
             return aiohttp.ClientSession(timeout=timeout)
         except ImportError:
@@ -430,7 +445,9 @@ class GroqProvider(AIProvider):
 
         if self._failures >= 3:
             self._circuit_open = True
-            logger.warning(f"Groq circuit breaker opened after {self._failures} failures: {error}")
+            logger.warning(
+                f"Groq circuit breaker opened after {self._failures} failures: {error}"
+            )
 
     def _record_success(self) -> None:
         """Record success, reset failure count."""
@@ -488,9 +505,9 @@ class GroqProvider(AIProvider):
     ) -> tuple[str | None, dict[str, Any] | None]:
         """
         Make a request to Groq API.
-        
+
         Uses request-scoped aiohttp sessions to avoid event loop issues.
-        
+
         Returns:
             (content, usage) or (None, None) on error
         """
@@ -553,12 +570,14 @@ class GroqProvider(AIProvider):
                             continue
 
                         error_text = await response.text()
-                        logger.error(f"Groq API error {response.status}: {error_text[:200]}")
+                        logger.error(
+                            f"Groq API error {response.status}: {error_text[:200]}"
+                        )
                         self._record_failure(f"HTTP {response.status}")
 
                         if response.status >= 500:
                             # Server error, retry with backoff
-                            backoff = min(INITIAL_BACKOFF * (2 ** attempt), MAX_BACKOFF)
+                            backoff = min(INITIAL_BACKOFF * (2**attempt), MAX_BACKOFF)
                             await asyncio.sleep(backoff)
                             continue
 
@@ -567,7 +586,7 @@ class GroqProvider(AIProvider):
             except TimeoutError:
                 logger.warning(f"Groq request timeout (attempt {attempt + 1})")
                 self._record_failure("Timeout")
-                backoff = min(INITIAL_BACKOFF * (2 ** attempt), MAX_BACKOFF)
+                backoff = min(INITIAL_BACKOFF * (2**attempt), MAX_BACKOFF)
                 await asyncio.sleep(backoff)
                 continue
 
@@ -599,18 +618,22 @@ class GroqProvider(AIProvider):
         # Add conversation history if present
         if "conversation" in context:
             for msg in context["conversation"][-10:]:  # Last 10 messages
-                messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", ""),
-                })
+                messages.append(
+                    {
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", ""),
+                    }
+                )
 
         # Add context summary
         context_summary = self._build_context_summary(context)
         if context_summary:
-            messages.append({
-                "role": "user",
-                "content": f"[Context: {context_summary}]\n\n{query}",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Context: {context_summary}]\n\n{query}",
+                }
+            )
         else:
             messages.append({"role": "user", "content": query})
 
@@ -642,13 +665,13 @@ class GroqProvider(AIProvider):
     ) -> AIResponse:
         """
         Explain a security event using Groq.
-        
+
         Args:
             event: Event data (event_id, provider, level, message, log_name, timestamp)
             kb_explanation: Local knowledge base explanation (trusted facts)
             detail_level: "normal" or "simplified" for simpler language
             request_id: Optional request ID for cancellation
-        
+
         Returns:
             AIResponse with structured explanation including brief_user and brief_technical
         """
@@ -666,8 +689,9 @@ class GroqProvider(AIProvider):
         timestamp = event.get("timestamp", event.get("time_created", ""))
 
         # Check cache first (keyed by detail_level too)
-        cache_key = f"{detail_level}_{event_id}_{provider}_{level}"
-        cached = self._cache.get_event(event_id, provider, level, message, detail_level=detail_level)
+        cached = self._cache.get_event(
+            event_id, provider, level, message, detail_level=detail_level
+        )
         if cached:
             response = self._dict_to_response(cached)
             response.cached = True
@@ -692,16 +716,28 @@ class GroqProvider(AIProvider):
         evidence = [f"Event ID: {event_id}", f"Provider: {provider}", f"Level: {level}"]
         if kb_explanation:
             context_parts.append("\nLocal Analysis (trust these facts):")
-            context_parts.append(f"- Title: {kb_explanation.get('title', 'Unknown event')}")
-            context_parts.append(f"- Severity: {kb_explanation.get('severity', 'Minor')}")
+            context_parts.append(
+                f"- Title: {kb_explanation.get('title', 'Unknown event')}"
+            )
+            context_parts.append(
+                f"- Severity: {kb_explanation.get('severity', 'Minor')}"
+            )
             evidence.append(f"KB: {kb_explanation.get('title', 'matched')}")
             if kb_explanation.get("causes"):
-                context_parts.append(f"- Known causes: {', '.join(kb_explanation['causes'][:3])}")
+                context_parts.append(
+                    f"- Known causes: {', '.join(kb_explanation['causes'][:3])}"
+                )
             if kb_explanation.get("actions"):
-                context_parts.append(f"- Recommended: {', '.join(kb_explanation['actions'][:3])}")
+                context_parts.append(
+                    f"- Recommended: {', '.join(kb_explanation['actions'][:3])}"
+                )
 
         # Choose prompt based on detail level
-        prompt = EVENT_EXPLANATION_PROMPT_SIMPLIFIED if detail_level == "simplified" else EVENT_EXPLANATION_PROMPT
+        prompt = (
+            EVENT_EXPLANATION_PROMPT_SIMPLIFIED
+            if detail_level == "simplified"
+            else EVENT_EXPLANATION_PROMPT
+        )
 
         messages = [
             {"role": "system", "content": prompt},
@@ -732,7 +768,10 @@ class GroqProvider(AIProvider):
 
         # Cache the result (keyed by detail_level)
         self._cache.set_event(
-            event_id, provider, level, message,
+            event_id,
+            provider,
+            level,
+            message,
             response.to_dict(),
             self._event_model,
             usage.get("total_tokens", 0) if usage else 0,
@@ -750,13 +789,13 @@ class GroqProvider(AIProvider):
     ) -> AIResponse:
         """
         Chat with the AI using conversation history.
-        
+
         Args:
             user_message: Current user message
             conversation_history: Previous messages [{"role": "...", "content": "..."}]
             system_context: System state context (defender, events, etc.)
             request_id: Optional request ID for cancellation
-        
+
         Returns:
             AIResponse with the chat response
         """
@@ -771,10 +810,12 @@ class GroqProvider(AIProvider):
         # Add conversation history
         if conversation_history:
             for msg in conversation_history[-10:]:  # Last 10 messages
-                messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", ""),
-                })
+                messages.append(
+                    {
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", ""),
+                    }
+                )
 
         # Build context summary
         context_summary = ""
@@ -783,10 +824,12 @@ class GroqProvider(AIProvider):
 
         # Add current message with context
         if context_summary:
-            messages.append({
-                "role": "user",
-                "content": f"[System Context: {context_summary}]\n\nUser: {user_message}",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[System Context: {context_summary}]\n\nUser: {user_message}",
+                }
+            )
         else:
             messages.append({"role": "user", "content": user_message})
 
@@ -816,11 +859,11 @@ class GroqProvider(AIProvider):
     ) -> str:
         """
         Rewrite an explanation in simpler terms.
-        
+
         Args:
             original: Original explanation text
             request_id: Optional request ID for cancellation
-        
+
         Returns:
             Simplified explanation
         """
@@ -828,8 +871,14 @@ class GroqProvider(AIProvider):
             return original  # Return original if can't simplify
 
         messages = [
-            {"role": "system", "content": "You simplify technical explanations for non-technical users."},
-            {"role": "user", "content": SIMPLER_REWRITE_PROMPT.format(original=original)},
+            {
+                "role": "system",
+                "content": "You simplify technical explanations for non-technical users.",
+            },
+            {
+                "role": "user",
+                "content": SIMPLER_REWRITE_PROMPT.format(original=original),
+            },
         ]
 
         content, _ = await self._make_request(
@@ -905,7 +954,9 @@ class GroqProvider(AIProvider):
                 confidence="low",
             )
 
-    def _parse_event_response(self, content: str, evidence: list[str] | None = None) -> AIResponse:
+    def _parse_event_response(
+        self, content: str, evidence: list[str] | None = None
+    ) -> AIResponse:
         """Parse event explanation response with brief fields."""
         try:
             # Handle JSON wrapped in markdown
@@ -946,12 +997,19 @@ class GroqProvider(AIProvider):
 
             # Extract new brief fields
             brief_user = data.get("brief_user", "")
-            brief_technical = data.get("brief_technical", data.get("technical_brief", ""))
+            brief_technical = data.get(
+                "brief_technical", data.get("technical_brief", "")
+            )
             confidence_value = data.get("confidence", 1.0)
             evidence_list = data.get("evidence", evidence or [])
 
             # Use brief_user as primary answer, fall back to what_happened
-            answer = brief_user or data.get("summary") or data.get("what_happened") or data.get("title", "")
+            answer = (
+                brief_user
+                or data.get("summary")
+                or data.get("what_happened")
+                or data.get("title", "")
+            )
 
             return AIResponse(
                 answer=answer,
@@ -972,7 +1030,11 @@ class GroqProvider(AIProvider):
                     "evidence": evidence_list,
                 },
                 source="groq",
-                confidence="high" if confidence_value >= 0.7 else "medium" if confidence_value >= 0.4 else "low",
+                confidence="high"
+                if confidence_value >= 0.7
+                else "medium"
+                if confidence_value >= 0.4
+                else "low",
             )
         except Exception as e:
             logger.warning(f"Failed to parse Groq response: {e}")
@@ -1015,14 +1077,18 @@ class GroqProvider(AIProvider):
 
         return result
 
-    def _kb_to_response(self, kb: dict[str, Any], event: dict[str, Any] | None = None) -> AIResponse:
+    def _kb_to_response(
+        self, kb: dict[str, Any], event: dict[str, Any] | None = None
+    ) -> AIResponse:
         """Convert KB explanation to AIResponse with brief fields."""
         title = kb.get("title", "Event recorded")
         event_id = event.get("event_id", 0) if event else 0
         provider = event.get("provider", "Unknown") if event else "Unknown"
 
         # Generate briefs from KB data
-        brief_user = f"{title}. This is a routine event that doesn't require immediate action."
+        brief_user = (
+            f"{title}. This is a routine event that doesn't require immediate action."
+        )
         if kb.get("severity") in ("Warning", "Critical"):
             brief_user = f"{title}. This event may need attention - check the recommended actions."
 

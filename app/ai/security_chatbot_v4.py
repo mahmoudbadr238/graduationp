@@ -18,7 +18,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
@@ -29,9 +29,11 @@ logger = logging.getLogger(__name__)
 # CONVERSATION MEMORY
 # =============================================================================
 
+
 @dataclass
 class ConversationTurn:
     """A single conversation turn (user + assistant)."""
+
     role: str  # "user" or "assistant"
     content: str
     timestamp: float = field(default_factory=time.time)
@@ -41,7 +43,7 @@ class ConversationTurn:
 class ConversationMemory:
     """
     Manages conversation history with configurable memory size.
-    
+
     Features:
     - Fixed-size sliding window
     - Token budget awareness
@@ -59,29 +61,34 @@ class ConversationMemory:
     def add_user_message(self, content: str, metadata: dict[str, Any] | None = None):
         """Add a user message to history."""
         with self._lock:
-            self._history.append(ConversationTurn(
-                role="user",
-                content=content,
-                metadata=metadata or {},
-            ))
+            self._history.append(
+                ConversationTurn(
+                    role="user",
+                    content=content,
+                    metadata=metadata or {},
+                )
+            )
 
-    def add_assistant_message(self, content: str, metadata: dict[str, Any] | None = None):
+    def add_assistant_message(
+        self, content: str, metadata: dict[str, Any] | None = None
+    ):
         """Add an assistant response to history."""
         with self._lock:
-            self._history.append(ConversationTurn(
-                role="assistant",
-                content=content,
-                metadata=metadata or {},
-            ))
+            self._history.append(
+                ConversationTurn(
+                    role="assistant",
+                    content=content,
+                    metadata=metadata or {},
+                )
+            )
 
     def get_messages_for_prompt(self) -> list[dict[str, str]]:
         """
         Get conversation history formatted for LLM prompt.
-        
+
         Returns list of {"role": "...", "content": "..."} dicts.
         """
         with self._lock:
-            messages = []
             total_chars = 0
             char_limit = self.MAX_TOKENS_ESTIMATE * 4  # Rough chars per token
 
@@ -90,10 +97,12 @@ class ConversationMemory:
             for turn in reversed(self._history):
                 if total_chars + len(turn.content) > char_limit:
                     break
-                turns_to_include.append({
-                    "role": turn.role,
-                    "content": turn.content,
-                })
+                turns_to_include.append(
+                    {
+                        "role": turn.role,
+                        "content": turn.content,
+                    }
+                )
                 total_chars += len(turn.content)
 
             return list(reversed(turns_to_include))
@@ -124,9 +133,11 @@ class ConversationMemory:
 # CHAT RESPONSE
 # =============================================================================
 
+
 @dataclass
 class ChatResponse:
     """Structured chat response."""
+
     answer: str
     is_security_related: bool = True
     suggested_actions: list[str] = field(default_factory=list)
@@ -150,6 +161,7 @@ class ChatResponse:
 # =============================================================================
 # CHAT WORKER
 # =============================================================================
+
 
 class ChatWorker(QRunnable):
     """Background worker for chat requests."""
@@ -242,40 +254,112 @@ class ChatWorker(QRunnable):
 # Security topic keywords for filtering
 SECURITY_KEYWORDS = [
     # General security
-    "security", "secure", "threat", "malware", "virus", "trojan", "worm",
-    "ransomware", "spyware", "adware", "phishing", "exploit", "vulnerability",
-    "attack", "breach", "intrusion", "compromise", "infection",
-
+    "security",
+    "secure",
+    "threat",
+    "malware",
+    "virus",
+    "trojan",
+    "worm",
+    "ransomware",
+    "spyware",
+    "adware",
+    "phishing",
+    "exploit",
+    "vulnerability",
+    "attack",
+    "breach",
+    "intrusion",
+    "compromise",
+    "infection",
     # Windows security
-    "event", "log", "audit", "windows defender", "firewall", "antivirus",
-    "credential", "authentication", "authorization", "permission", "privilege",
-    "elevation", "uac", "admin", "administrator", "service", "process",
-
+    "event",
+    "log",
+    "audit",
+    "windows defender",
+    "firewall",
+    "antivirus",
+    "credential",
+    "authentication",
+    "authorization",
+    "permission",
+    "privilege",
+    "elevation",
+    "uac",
+    "admin",
+    "administrator",
+    "service",
+    "process",
     # Network security
-    "network", "port", "ip", "dns", "connection", "traffic", "packet",
-    "scan", "nmap", "firewall", "router", "vpn", "proxy",
-
+    "network",
+    "port",
+    "ip",
+    "dns",
+    "connection",
+    "traffic",
+    "packet",
+    "scan",
+    "nmap",
+    "firewall",
+    "router",
+    "vpn",
+    "proxy",
     # File security
-    "file", "hash", "checksum", "signature", "certificate", "executable",
-    "dll", "script", "powershell", "cmd", "suspicious", "quarantine",
-
+    "file",
+    "hash",
+    "checksum",
+    "signature",
+    "certificate",
+    "executable",
+    "dll",
+    "script",
+    "powershell",
+    "cmd",
+    "suspicious",
+    "quarantine",
     # Investigation
-    "investigate", "analyze", "explain", "what", "why", "how", "when",
-    "mean", "normal", "safe", "dangerous", "risk", "critical", "warning",
-
+    "investigate",
+    "analyze",
+    "explain",
+    "what",
+    "why",
+    "how",
+    "when",
+    "mean",
+    "normal",
+    "safe",
+    "dangerous",
+    "risk",
+    "critical",
+    "warning",
     # System
-    "system", "cpu", "memory", "disk", "registry", "startup", "boot",
-    "driver", "update", "patch", "vulnerability", "cve",
-
+    "system",
+    "cpu",
+    "memory",
+    "disk",
+    "registry",
+    "startup",
+    "boot",
+    "driver",
+    "update",
+    "patch",
+    "vulnerability",
+    "cve",
     # URLs and files
-    "url", "link", "website", "domain", "sandbox", "scan", "check",
+    "url",
+    "link",
+    "website",
+    "domain",
+    "sandbox",
+    "scan",
+    "check",
 ]
 
 
 class SecurityChatbotV4(QObject):
     """
     Security-focused chatbot with Groq AI and conversation memory.
-    
+
     Features:
     - Only answers security-related questions
     - Maintains conversation context
@@ -305,7 +389,7 @@ class SecurityChatbotV4(QObject):
     def set_system_context(self, context: dict[str, Any]):
         """
         Update system context for chat responses.
-        
+
         Context can include:
         - recent_events: List of recent security events
         - scan_results: Latest scan results
@@ -321,19 +405,20 @@ class SecurityChatbotV4(QObject):
     ) -> str:
         """
         Start a new resolution session for tracking AI actions.
-        
+
         Called when user clicks "Ask Chatbot to Help Resolve" on an event.
-        
+
         Args:
             event_id: Event ID being resolved
             event_source: Source of the event
             event_summary: Brief summary of the event
-        
+
         Returns:
             Session ID
         """
         try:
             from .action_record import get_action_log
+
             action_log = get_action_log()
             session = action_log.start_session(
                 event_id=event_id,
@@ -354,12 +439,13 @@ class SecurityChatbotV4(QObject):
     def end_resolution_session(self, summary: str = "") -> dict[str, Any] | None:
         """
         End the current resolution session.
-        
+
         Returns:
             Session data dict or None
         """
         try:
             from .action_record import get_action_log
+
             action_log = get_action_log()
             session = action_log.end_session(summary)
             self._current_event_context = None
@@ -373,7 +459,7 @@ class SecurityChatbotV4(QObject):
     def is_security_related(self, question: str) -> bool:
         """
         Check if question is security-related.
-        
+
         Returns True if question contains security keywords.
         """
         question_lower = question.lower()
@@ -387,11 +473,11 @@ class SecurityChatbotV4(QObject):
     def ask(self, question: str, force: bool = False) -> str:
         """
         Ask a security question.
-        
+
         Args:
             question: User's question
             force: If True, skip security relevance check
-        
+
         Returns:
             request_id for tracking/cancellation
         """
@@ -404,11 +490,11 @@ class SecurityChatbotV4(QObject):
             # Return immediate non-security response
             response = ChatResponse(
                 answer="I'm a security-focused assistant. I can help you with:\n\n"
-                       "• **Event Analysis**: Explain Windows security events\n"
-                       "• **Threat Investigation**: Analyze suspicious files and URLs\n"
-                       "• **System Security**: Check for vulnerabilities\n"
-                       "• **Security Guidance**: Best practices and recommendations\n\n"
-                       "Please ask me something related to security!",
+                "• **Event Analysis**: Explain Windows security events\n"
+                "• **Threat Investigation**: Analyze suspicious files and URLs\n"
+                "• **System Security**: Check for vulnerabilities\n"
+                "• **Security Guidance**: Best practices and recommendations\n\n"
+                "Please ask me something related to security!",
                 is_security_related=False,
                 provider="local",
             )
@@ -477,11 +563,16 @@ class SecurityChatbotV4(QObject):
             # Log action for resolution report
             try:
                 from .action_record import ActionOutcome, ActionType, get_action_log
+
                 action_log = get_action_log()
                 action_log.log_action(
                     action_type=ActionType.ANALYZE,
                     description="Responded to user question",
-                    input_data={"question_preview": answer[:100] if len(answer) > 100 else answer},
+                    input_data={
+                        "question_preview": answer[:100]
+                        if len(answer) > 100
+                        else answer
+                    },
                     output_data={
                         "suggested_actions": response.get("suggested_actions", []),
                         "latency_ms": response.get("latency_ms", 0),
@@ -504,6 +595,7 @@ class SecurityChatbotV4(QObject):
         # Log failed action
         try:
             from .action_record import ActionOutcome, ActionType, get_action_log
+
             action_log = get_action_log()
             action_log.log_action(
                 action_type=ActionType.ANALYZE,

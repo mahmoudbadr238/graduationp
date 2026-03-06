@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 
-class ScanType(str, Enum):
+class ScanType(StrEnum):
     """Types of scans supported by the system."""
 
     NETWORK = "network"

@@ -310,14 +310,61 @@ Item {
                             }
                         }
                         
-                        // Message
+                        // Summary / message
                         Text {
-                            text: model.message || ""
+                            text: model.summary || model.message || ""
                             color: ThemeManager.muted()
                             font.pixelSize: 13
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             Layout.leftMargin: 22
+                        }
+
+                        // Action button (optional — shown only when notification has an action)
+                        RowLayout {
+                            visible: (model.action || "") !== ""
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 22
+                            spacing: 0
+
+                            Rectangle {
+                                implicitWidth:  actionLabel.implicitWidth + 18
+                                implicitHeight: 24
+                                radius: 5
+                                color: actionBtnMa.containsMouse
+                                       ? ThemeManager.accent
+                                       : Qt.rgba(0.2, 0.4, 1.0, 0.18)
+
+                                Behavior on color { ColorAnimation { duration: 120 } }
+
+                                Text {
+                                    id: actionLabel
+                                    anchors.centerIn: parent
+                                    text: model.action || "Open"
+                                    color: actionBtnMa.containsMouse ? "#ffffff" : ThemeManager.accent
+                                    font.pixelSize: 11
+                                    font.weight: (Font.Medium || 500)
+                                }
+
+                                MouseArea {
+                                    id: actionBtnMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        // Navigate to the route encoded in actionPayload
+                                        try {
+                                            var payload = JSON.parse(model.actionPayload || "{}")
+                                            var route = payload.route || "scan-tool"
+                                            if (typeof Backend !== "undefined" && Backend !== null)
+                                                Backend.navigateTo(route)
+                                        } catch (_e) {}
+                                        root.close()
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
                         }
                     }
                     
@@ -339,9 +386,9 @@ Item {
                         hoverEnabled: true
                         // Don't block clicks to child elements
                         propagateComposedEvents: true
-                        onClicked: mouse.accepted = false
-                        onPressed: mouse.accepted = false
-                        onReleased: mouse.accepted = false
+                        onClicked: function(mouse) { mouse.accepted = false }
+                        onPressed: function(mouse) { mouse.accepted = false }
+                        onReleased: function(mouse) { mouse.accepted = false }
                     }
                 }
                 

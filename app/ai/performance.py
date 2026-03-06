@@ -23,14 +23,14 @@ T = TypeVar("T")
 class Debouncer(QObject):
     """
     Debounce function calls to reduce redundant processing.
-    
+
     Use for: search input, event selection, filter changes.
     Waits until calls stop for `delay_ms` before executing.
-    
+
     Example:
         debouncer = Debouncer(300)  # 300ms delay
         debouncer.triggered.connect(do_search)
-        
+
         # In input handler:
         debouncer.call(search_text)
     """
@@ -40,7 +40,7 @@ class Debouncer(QObject):
     def __init__(self, delay_ms: int = 300, parent: QObject = None):
         """
         Initialize debouncer.
-        
+
         Args:
             delay_ms: Delay in milliseconds before triggering
             parent: Qt parent object
@@ -56,7 +56,7 @@ class Debouncer(QObject):
     def call(self, args: Any = None) -> None:
         """
         Schedule a debounced call.
-        
+
         Args:
             args: Arguments to pass when triggered
         """
@@ -83,14 +83,14 @@ class Debouncer(QObject):
 class Throttler(QObject):
     """
     Throttle function calls to limit frequency.
-    
+
     Use for: scroll handlers, resize events, live updates.
     Executes immediately, then ignores calls until `interval_ms` passes.
-    
+
     Example:
         throttler = Throttler(100)  # Max 10 calls/second
         throttler.triggered.connect(update_ui)
-        
+
         # In scroll handler:
         throttler.call(scroll_position)
     """
@@ -100,7 +100,7 @@ class Throttler(QObject):
     def __init__(self, interval_ms: int = 100, parent: QObject = None):
         """
         Initialize throttler.
-        
+
         Args:
             interval_ms: Minimum interval between calls
             parent: Qt parent object
@@ -117,7 +117,7 @@ class Throttler(QObject):
     def call(self, args: Any = None) -> None:
         """
         Make a throttled call.
-        
+
         Args:
             args: Arguments to pass when triggered
         """
@@ -145,12 +145,12 @@ class Throttler(QObject):
 class LazyLoader:
     """
     Lazy loading helper for expensive objects.
-    
+
     Defers initialization until first access.
-    
+
     Example:
         ai_engine = LazyLoader(lambda: LocalLLMEngine())
-        
+
         # Later, when needed:
         engine = ai_engine.get()  # Now it initializes
     """
@@ -158,7 +158,7 @@ class LazyLoader:
     def __init__(self, factory: Callable[[], T]):
         """
         Initialize lazy loader.
-        
+
         Args:
             factory: Function that creates the object
         """
@@ -170,7 +170,7 @@ class LazyLoader:
     def get(self) -> T:
         """
         Get the instance, initializing if needed.
-        
+
         Returns:
             The lazily-loaded instance
         """
@@ -195,16 +195,17 @@ class LazyLoader:
 def debounce(delay_ms: int = 300):
     """
     Decorator to debounce a function.
-    
+
     Args:
         delay_ms: Delay in milliseconds
-    
+
     Example:
         @debounce(300)
         def on_search_changed(text):
             # This won't be called until 300ms after last invocation
             perform_search(text)
     """
+
     def decorator(func: Callable) -> Callable:
         timer: QTimer = None
         pending_args = None
@@ -230,22 +231,24 @@ def debounce(delay_ms: int = 300):
             timer.start(delay_ms)
 
         return wrapper
+
     return decorator
 
 
 def throttle(interval_ms: int = 100):
     """
     Decorator to throttle a function.
-    
+
     Args:
         interval_ms: Minimum interval between calls
-    
+
     Example:
         @throttle(100)
         def on_scroll(position):
             # Max 10 times per second
             update_view(position)
     """
+
     def decorator(func: Callable) -> Callable:
         last_call: list[float] = [0]
         lock = threading.Lock()
@@ -261,25 +264,26 @@ def throttle(interval_ms: int = 100):
             return None
 
         return wrapper
+
     return decorator
 
 
 class BatchProcessor:
     """
     Batch multiple items for processing together.
-    
+
     Useful for reducing overhead when processing many items.
-    
+
     Example:
         processor = BatchProcessor(
             process_func=save_to_db,
             batch_size=50,
             max_wait_ms=1000
         )
-        
+
         for item in items:
             processor.add(item)  # Batches automatically
-        
+
         processor.flush()  # Process remaining items
     """
 
@@ -291,7 +295,7 @@ class BatchProcessor:
     ):
         """
         Initialize batch processor.
-        
+
         Args:
             process_func: Function to process a batch
             batch_size: Maximum items per batch
@@ -350,17 +354,17 @@ class BatchProcessor:
 class RequestDeduplicator:
     """
     Deduplicate concurrent requests for the same resource.
-    
+
     If multiple requests come in for the same key while one is
     in progress, they all share the same result.
-    
+
     Example:
         dedup = RequestDeduplicator()
-        
+
         async def get_explanation(event_id):
             async def fetch():
                 return await ai.explain(event_id)
-            
+
             return await dedup.request(event_id, fetch)
     """
 
@@ -377,11 +381,11 @@ class RequestDeduplicator:
     ) -> T:
         """
         Request a resource, deduplicating concurrent requests.
-        
+
         Args:
             key: Unique key for the request
             fetch_func: Function to fetch the resource
-        
+
         Returns:
             The fetched resource
         """

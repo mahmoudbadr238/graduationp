@@ -18,7 +18,6 @@ import time
 from collections.abc import Callable
 from ctypes import wintypes
 from dataclasses import dataclass
-from typing import List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +78,7 @@ INSTALLER_TITLE_PATTERNS = [
 @dataclass
 class AutopilotAction:
     """Record of an autopilot action."""
+
     timestamp: str
     action_type: str  # "click", "wait", "skip"
     target: str  # Button text or description
@@ -90,7 +90,7 @@ class AutopilotAction:
 class InstallerAutopilot:
     """
     Safe autopilot for stepping through installers.
-    
+
     Only performs minimal, safe interactions:
     - Clicks Next/Install/Finish buttons
     - Waits between actions
@@ -107,7 +107,7 @@ class InstallerAutopilot:
     ):
         """
         Initialize the autopilot.
-        
+
         Args:
             target_pid: PID of the installer process
             action_callback: Called for each action taken
@@ -160,7 +160,9 @@ class InstallerAutopilot:
             self._thread.join(timeout=2.0)
             self._thread = None
 
-        logger.info(f"Installer autopilot stopped. Performed {self._action_count} actions.")
+        logger.info(
+            f"Installer autopilot stopped. Performed {self._action_count} actions."
+        )
         return self._actions.copy()
 
     def _autopilot_loop(self) -> None:
@@ -273,13 +275,14 @@ class InstallerAutopilot:
 
                     # Record action
                     from datetime import datetime
+
                     action = AutopilotAction(
                         timestamp=datetime.now().isoformat(),
                         action_type="click",
                         target=btn_text,
                         window_title=self._get_window_text(hwnd),
                         success=True,
-                        details=f"Clicked button: {btn_text}"
+                        details=f"Clicked button: {btn_text}",
                     )
                     self._actions.append(action)
 
@@ -373,13 +376,13 @@ def create_autopilot_if_installer(
 ) -> InstallerAutopilot | None:
     """
     Create an autopilot if the file is an installer and autopilot is enabled.
-    
+
     Args:
         file_path: Path to the file being executed
         pid: PID of the process
         enabled: Whether autopilot is enabled
         action_callback: Callback for actions
-    
+
     Returns:
         InstallerAutopilot instance or None
     """

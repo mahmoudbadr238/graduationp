@@ -14,14 +14,15 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     """Types of actions the AI can perform."""
+
     EXPLAIN = "explain"
     SCAN = "scan"
     CHECK_STATUS = "check_status"
@@ -31,8 +32,9 @@ class ActionType(str, Enum):
     INFO = "info"
 
 
-class ActionOutcome(str, Enum):
+class ActionOutcome(StrEnum):
     """Outcome of an action."""
+
     SUCCESS = "success"
     PARTIAL = "partial"
     FAILED = "failed"
@@ -44,7 +46,7 @@ class ActionOutcome(str, Enum):
 class ActionRecord:
     """
     Record of a single AI action during a resolution session.
-    
+
     Attributes:
         action_id: Unique identifier for this action
         session_id: Resolution session this action belongs to
@@ -57,6 +59,7 @@ class ActionRecord:
         duration_ms: How long the action took
         error: Error message if failed
     """
+
     action_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     session_id: str = ""
     action_type: ActionType = ActionType.INFO
@@ -73,11 +76,15 @@ class ActionRecord:
         return {
             "action_id": self.action_id,
             "session_id": self.session_id,
-            "action_type": self.action_type.value if isinstance(self.action_type, ActionType) else self.action_type,
+            "action_type": self.action_type.value
+            if isinstance(self.action_type, ActionType)
+            else self.action_type,
             "description": self.description,
             "input_data": self.input_data,
             "output_data": self.output_data,
-            "outcome": self.outcome.value if isinstance(self.outcome, ActionOutcome) else self.outcome,
+            "outcome": self.outcome.value
+            if isinstance(self.outcome, ActionOutcome)
+            else self.outcome,
             "timestamp": self.timestamp,
             "duration_ms": self.duration_ms,
             "error": self.error,
@@ -104,7 +111,7 @@ class ActionRecord:
 class ResolutionSession:
     """
     A resolution session containing multiple actions.
-    
+
     Attributes:
         session_id: Unique session identifier
         event_id: Event being resolved (if applicable)
@@ -115,6 +122,7 @@ class ResolutionSession:
         actions: List of actions performed
         summary: Summary of what was done
     """
+
     session_id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
     event_id: int | None = None
     event_source: str | None = None
@@ -141,7 +149,9 @@ class ResolutionSession:
         if not self.actions:
             return "No actions performed."
 
-        success_count = sum(1 for a in self.actions if a.outcome == ActionOutcome.SUCCESS)
+        success_count = sum(
+            1 for a in self.actions if a.outcome == ActionOutcome.SUCCESS
+        )
         total = len(self.actions)
 
         return f"Performed {total} actions ({success_count} successful)"
@@ -180,7 +190,7 @@ class ResolutionSession:
 class ActionLog:
     """
     Manages action records and resolution sessions.
-    
+
     Thread-safe logging of AI actions during resolution.
     """
 
@@ -226,7 +236,7 @@ class ActionLog:
 
             # Trim to max size
             if len(self._sessions) > self.MAX_SESSIONS:
-                self._sessions = self._sessions[-self.MAX_SESSIONS:]
+                self._sessions = self._sessions[-self.MAX_SESSIONS :]
 
             self._current_session = None
             logger.info(f"Ended resolution session: {session.session_id}")

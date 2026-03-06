@@ -12,7 +12,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.ai.url_explainer import UrlExplanation
@@ -39,7 +39,9 @@ def sanitize_filename(url: str) -> str:
         path = parsed.path.strip("/").replace("/", "_") or "root"
 
         # Remove/replace unsafe characters
-        safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.")
+        safe_chars = set(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
+        )
         domain = "".join(c if c in safe_chars else "_" for c in domain)
         path = "".join(c if c in safe_chars else "_" for c in path)
 
@@ -56,16 +58,16 @@ def sanitize_filename(url: str) -> str:
 def write_url_scan_report(
     result: UrlScanResult,
     explanation: UrlExplanation | None = None,
-    output_dir: Path | None = None
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Write a TXT report for a URL scan.
-    
+
     Args:
         result: The UrlScanResult to report on
         explanation: Optional UrlExplanation for human-readable analysis
         output_dir: Optional output directory (defaults to %APPDATA%\\Sentinel\\scan_reports\\url)
-        
+
     Returns:
         Path to the created report file
     """
@@ -162,7 +164,9 @@ def write_url_scan_report(
             for header in security_headers:
                 value = headers.get(header, headers.get(header.lower(), "Not present"))
                 status = "✓" if value != "Not present" else "✗"
-                lines.append(f"  {status} {header}: {value[:50] + '...' if len(str(value)) > 50 else value}")
+                lines.append(
+                    f"  {status} {header}: {value[:50] + '...' if len(str(value)) > 50 else value}"
+                )
 
         lines.append("")
 
@@ -174,7 +178,7 @@ def write_url_scan_report(
 
         for i, redirect_url in enumerate(result.redirects):
             prefix = "└──" if i == len(result.redirects) - 1 else "├──"
-            lines.append(f"  {i+1}. {prefix} {redirect_url}")
+            lines.append(f"  {i + 1}. {prefix} {redirect_url}")
 
         lines.append("")
 
@@ -278,7 +282,9 @@ def write_url_scan_report(
 
                 if sandbox.get("network_requests"):
                     lines.append("")
-                    lines.append(f"Network Requests: {len(sandbox['network_requests'])} total")
+                    lines.append(
+                        f"Network Requests: {len(sandbox['network_requests'])} total"
+                    )
             else:
                 lines.append("Status:        Failed")
                 lines.append(f"Error:         {sandbox.get('error', 'Unknown error')}")
@@ -340,16 +346,16 @@ def write_url_scan_report(
 def write_url_scan_json(
     result: UrlScanResult,
     explanation: UrlExplanation | None = None,
-    output_dir: Path | None = None
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Write a JSON report for a URL scan.
-    
+
     Args:
         result: The UrlScanResult to report on
         explanation: Optional UrlExplanation
         output_dir: Optional output directory
-        
+
     Returns:
         Path to the created JSON file
     """
@@ -393,7 +399,9 @@ def write_url_scan_json(
         "signals": result.signals,
         "iocs": result.iocs or {},
         "yara_matches": result.yara_matches or [],
-        "sandbox_result": result.sandbox_result.to_dict() if hasattr(result.sandbox_result, "to_dict") else result.sandbox_result,
+        "sandbox_result": result.sandbox_result.to_dict()
+        if hasattr(result.sandbox_result, "to_dict")
+        else result.sandbox_result,
     }
 
     if explanation:

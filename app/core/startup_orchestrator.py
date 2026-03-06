@@ -6,7 +6,6 @@ Prevents UI blocking during app launch by scheduling non-critical tasks
 import logging
 import time
 from collections.abc import Callable
-from typing import Optional
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 

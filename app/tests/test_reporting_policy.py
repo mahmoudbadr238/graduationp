@@ -35,4 +35,3 @@ def test_report_deduplicates_yara_findings_and_avoids_unknown_rule_label():
 
     assert report.count("YARA: PE_Suspicious_Imports") == 1
     assert "Matched known pattern: Unknown" not in report
-

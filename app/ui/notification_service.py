@@ -73,6 +73,55 @@ class NotificationService(QObject):
 
         return notification_id
 
+    @Slot(str, str, str, str, str, result=str)
+    def pushRich(
+        self,
+        title: str,
+        summary: str,
+        notification_type: str = "info",
+        action_label: str = "",
+        action_payload_json: str = "",
+    ) -> str:
+        """Push a rich actionable notification with an optional action button.
+
+        Args:
+            title:                Short heading (e.g. "Scan complete").
+            summary:              One-line result (e.g. "Clean — score 5/100").
+            notification_type:    "info" | "success" | "warning" | "error".
+            action_label:         Button label if an action is available (e.g. "Open report").
+            action_payload_json:  JSON dict for the action handler, e.g.
+                                  '{"route": "scan-tool", "tab": 0}'.
+        Returns:
+            The notification ID.
+        """
+        notification_id = str(uuid.uuid4())[:8]
+        notification: dict[str, Any] = {
+            "id":        notification_id,
+            "title":     title,
+            "message":   summary,   # kept for backward-compat with existing delegate
+            "summary":   summary,
+            "type":      notification_type,
+            "time":      datetime.now().strftime("%H:%M"),
+            "timestamp": datetime.now().isoformat(),
+            "read":      False,
+        }
+        if action_label:
+            notification["action"]        = action_label
+            notification["actionPayload"] = action_payload_json
+
+        self._notifications.insert(0, notification)
+        self._unread_count += 1
+        if len(self._notifications) > 100:
+            self._notifications = self._notifications[:100]
+
+        logger.info("Rich notification pushed: [%s] %s", notification_type, title)
+        self.notificationReceived.emit(
+            notification_id, title, summary, notification_type
+        )
+        self.notificationListUpdated.emit()
+        self.notificationCountChanged.emit()
+        return notification_id
+
     @Slot(result=list)
     def getNotifications(self) -> list[dict[str, Any]]:
         """Get all notifications as a list of dicts for QML."""

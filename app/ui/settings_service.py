@@ -4,7 +4,6 @@ import json
 import os
 import platform
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
