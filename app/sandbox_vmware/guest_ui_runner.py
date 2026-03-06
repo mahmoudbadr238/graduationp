@@ -403,6 +403,26 @@ class GuestUIRunner:
         except Exception as exc:
             self._step("Failed", f"[UI-runner] Could not retrieve behavior.json: {exc}")
 
+        # ── Pull detonate_behavior.json (Python visual agent output) ─────────
+        try:
+            host_det_behav = host_run_dir / "detonate_behavior.json"
+            self._client.copy_file_from_guest_to_host(
+                r"C:\Sandbox\out\detonate_behavior.json", host_det_behav, timeout=15
+            )
+            self._step("OK", f"[UI-runner] detonate_behavior.json → {host_det_behav}")
+        except Exception:
+            pass  # Python agent may not have run; non-fatal
+
+        # ── Pull detonate_actions.jsonl (Python visual agent action log) ──────
+        try:
+            self._client.copy_file_from_guest_to_host(
+                r"C:\Sandbox\out\detonate_actions.jsonl",
+                host_run_dir / "detonate_actions.jsonl",
+                timeout=10,
+            )
+        except Exception:
+            pass  # non-fatal
+
         # ── Pull done file ────────────────────────────────────────────────────
         try:
             self._client.copy_file_from_guest_to_host(

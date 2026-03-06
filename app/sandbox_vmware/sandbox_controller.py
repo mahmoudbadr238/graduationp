@@ -17,6 +17,7 @@ from PySide6.QtCore import Property, QObject, QThread, QTimer, QUrl, Signal, Slo
 from PySide6.QtGui import QGuiApplication, QImage
 
 from .config import SandboxConfig, load_sandbox_config
+from .preview_stream import SandboxPreviewStream
 from .report_parser import build_llm_prompt, load_report, score_report
 from .vmrun_client import VmrunClient, VmrunError
 
@@ -159,6 +160,9 @@ class SandboxLabController(QObject):
         # UI runner state
         self._automation_visible: bool = False
         self._ui_runner_status: str = ""
+        # SandboxPreviewStream: continuously polls vmrun captureScreen on its own
+        # daemon thread and pushes BGRA data into the image://sandboxpreview/ provider.
+        self._preview_stream: SandboxPreviewStream | None = None
 
         self._captureFrameReady.connect(self._apply_capture_frame)
         self._captureFailure.connect(self._apply_capture_failure)
@@ -290,6 +294,9 @@ class SandboxLabController(QObject):
 
     def shutdown(self) -> None:
         self._capture_timer.stop()
+        if self._preview_stream is not None:
+            self._preview_stream.stop()
+            self._preview_stream = None
         self._teardown_worker()
 
     @Slot()
@@ -1658,6 +1665,40 @@ class SandboxLabController(QObject):
         )
         if should_capture and not self._capture_timer.isActive():
             self._capture_timer.start()
+            # ── Start SandboxPreviewStream for live image://sandboxpreview/ feed ──
+            if self._preview_stream is None or not self._preview_stream.running:
+                _out = str(
+                    (self._frames_dir or self._config.host_frames_dir)
+                    / "_live_preview.png"
+                )
+                # Build frame_callback that feeds the image provider directly
+                _frame_cb = None
+                try:
+                    from ..ui.sandbox_preview_provider import get_preview_provider, get_preview_controller
+                    _provider = get_preview_provider()
+                    def _on_frame(data: bytes, w: int, h: int) -> None:   # noqa: E306
+                        _provider.update_frame(data, w, h)
+                    _frame_cb = _on_frame
+                except Exception:
+                    pass
+
+                def _on_file_update(path: str, ts_ms: int) -> None:
+                    url = QUrl.fromLocalFile(path).toString() + "?ts=" + str(ts_ms)
+                    self._captureFrameReady.emit(url)
+
+                self._preview_stream = SandboxPreviewStream(
+                    vmrun_path=self._config.vmrun_path,
+                    vmx_path=self._config.vmx_path,
+                    out_path=_out,
+                    interval_sec=max(0.3, self._config.capture_interval_ms / 1000.0),
+                    on_update=_on_file_update,
+                    frame_callback=_frame_cb,
+                    guest_user=self._config.guest_user,
+                    guest_pass=self._config.guest_pass,
+                )
+                self._preview_stream.start()
+                logger.debug("SandboxPreviewStream started alongside capture timer")
+
             # Start the global SandboxPreviewController refresh timer
             try:
                 from ..ui.sandbox_preview_provider import get_preview_controller
@@ -1668,6 +1709,11 @@ class SandboxLabController(QObject):
                 pass
         elif not should_capture and self._capture_timer.isActive():
             self._capture_timer.stop()
+            # Stop the preview stream when capture is no longer needed
+            if self._preview_stream is not None:
+                self._preview_stream.stop()
+                self._preview_stream = None
+                logger.debug("SandboxPreviewStream stopped")
             try:
                 from ..ui.sandbox_preview_provider import get_preview_controller
                 get_preview_controller().stop()

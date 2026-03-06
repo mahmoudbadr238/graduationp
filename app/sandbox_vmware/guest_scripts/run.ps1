@@ -48,6 +48,7 @@ function Write-Step([string]$Status, [string]$Message) {
 #region ── Report skeleton ─────────────────────────────────────────────────────
 $report = [ordered]@{
     sample              = $SamplePath
+    job_id              = [System.IO.Path]::GetFileNameWithoutExtension($outDir.TrimEnd('\'))
     started_at          = (Get-Date -Format "o")
     monitor_seconds     = $MonitorSeconds
     file_type_detected  = ""

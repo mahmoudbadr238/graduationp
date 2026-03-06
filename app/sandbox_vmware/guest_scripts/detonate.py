@@ -506,16 +506,21 @@ def detonate(
         logger.log("open_file", f"Sample not found: {sample}", "error")
         result["errors"].append(f"Sample not found: {sample}")
     else:
-        # Try multiple strategies
+        # Try multiple strategies, tracking which one succeeded
+        open_method = "none"
         opened = open_via_run_dialog(sample, logger)
+        if opened:
+            open_method = "run_dialog"
         if not opened:
             opened = open_via_startfile(sample, logger)
+            if opened:
+                open_method = "startfile"
         if not opened:
             opened = open_via_explorer(sample, logger)
+            if opened:
+                open_method = "explorer"
         result["sample_opened"] = opened
-        result["open_method"] = (
-            "run_dialog" if opened else "none"
-        )
+        result["open_method"] = open_method
 
     shot = take_screenshot(out, "after_open")
     if shot:
