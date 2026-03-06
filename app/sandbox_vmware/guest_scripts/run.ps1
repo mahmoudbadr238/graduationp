@@ -217,49 +217,167 @@ switch -Regex ($fileType) {
     "^(PE|SCRIPT_BATCH)$" {
         $report.analysis_mode = "run"
         Write-Step "Running" "Launching sample in interactive session: $SamplePath"
+
+        # ── P/Invoke for mouse and cursor (visible activity) ──────────────────
+        Add-Type -TypeDefinition @"
+using System;using System.Runtime.InteropServices;
+public class _Mse {
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint f,int x,int y,uint d,int e);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    public const uint LD=0x0002, LU=0x0004;
+}
+"@ -ErrorAction SilentlyContinue
+
+        # ── Helper: smooth cursor movement (anti-evasion + visible activity) ──
+        function Move-CursorSmooth([int]$tx,[int]$ty,[int]$steps=18) {
+            try {
+                $pos = [System.Windows.Forms.Cursor]::Position
+                $cx  = $pos.X; $cy = $pos.Y
+                for ($i=1; $i -le $steps; $i++) {
+                    $frac = $i / $steps
+                    [_Mse]::SetCursorPos([int]($cx+($tx-$cx)*$frac), [int]($cy+($ty-$cy)*$frac)) | Out-Null
+                    Start-Sleep -Milliseconds 16
+                }
+            } catch {}
+        }
+
+        # ── Pre-launch: Desktop sweep (defeats sandbox-aware malware) ─────────
         try {
-            # Launch via a Scheduled Task bound to the INTERACTIVE group (SID S-1-5-4).
-            # vmrun runProgramInGuest always runs in Session 0 (non-interactive), so any
-            # Start-Process call here would be invisible. Scheduling with the INTERACTIVE
-            # principal forces execution into Session 1 — the visible desktop captured
-            # by the live preview screen.
-            $taskId = "SentinelRun_" + [guid]::NewGuid().ToString("N").Substring(0,8)
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+            $sw = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width
+            $sh = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+            Move-CursorSmooth ([int]($sw/2)) ([int]($sh/2))
+            Start-Sleep -Milliseconds 200
+            Move-CursorSmooth ([int]($sw*0.2)) ([int]($sh*0.2))
+            Move-CursorSmooth ([int]($sw*0.8)) ([int]($sh*0.2))
+            Move-CursorSmooth ([int]($sw*0.8)) ([int]($sh*0.8))
+            Move-CursorSmooth ([int]($sw*0.2)) ([int]($sh*0.8))
+            Move-CursorSmooth ([int]($sw/2)) ([int]($sh/2))
+            Write-Step "OK" "Desktop sweep complete (anti-evasion)"
+        } catch {
+            Write-Step "Running" "Desktop sweep skipped: $_"
+        }
+
+        try {
+            # ── Strategy 1: UseShellExecute with visible window ───────────────
+            # This is the most reliable way to launch visibly in Session 1 because
+            # ShellExecute honours the current desktop session.
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.UseShellExecute = $true
+            $psi.WindowStyle     = [System.Diagnostics.ProcessWindowStyle]::Normal
             if ($fileType -eq "SCRIPT_BATCH") {
-                $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$SamplePath`""
+                $psi.FileName  = "cmd.exe"
+                $psi.Arguments = "/c `"$SamplePath`""
             } else {
-                $action = New-ScheduledTaskAction -Execute $SamplePath
+                $psi.FileName  = $SamplePath
+                $psi.Arguments = ""
             }
-            $trigger   = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(2))
-            $settings  = New-ScheduledTaskSettingsSet `
-                             -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
-                             -DeleteExpiredTaskAfter (New-TimeSpan -Minutes 2) `
-                             -StartWhenAvailable
-            # S-1-5-4 = INTERACTIVE — runs in the currently active interactive session
-            $principal = New-ScheduledTaskPrincipal -GroupId "S-1-5-4" -RunLevel Highest
-            Register-ScheduledTask -TaskName $taskId -Action $action -Trigger $trigger `
-                -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
-            Start-Sleep -Milliseconds 2500
-            Start-ScheduledTask -TaskName $taskId -ErrorAction SilentlyContinue
+            $procHandle = [System.Diagnostics.Process]::Start($psi)
             $report.executed = $true
-            $report.highlights.Add("Sample executed (interactive): $([System.IO.Path]::GetFileName($SamplePath))")
-            Write-Step "OK" "Sample launched in interactive session via task [$taskId]"
-            # Give the process a moment to appear then try to track it
+            $report.highlights.Add("Sample executed (visible): $([System.IO.Path]::GetFileName($SamplePath))")
+            Write-Step "OK" "Sample launched via ShellExecute PID=$($procHandle.Id)"
+
+            # Give the process a moment to appear then track it
             Start-Sleep -Seconds 3
-            $procHandle = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-                try { $_.Path -like "*$([System.IO.Path]::GetFileName($SamplePath))*" } catch { $false }
-            } | Sort-Object StartTime -Descending | Select-Object -First 1
-            if ($procHandle) {
-                $report.processes.Add([PSCustomObject]@{
-                    pid  = $procHandle.Id
-                    name = $procHandle.ProcessName
-                    path = $SamplePath
-                    action = "started"
-                })
-                Write-Step "OK" "Process tracked PID=$($procHandle.Id)"
+
+            # Bring sample window to foreground
+            if ($procHandle -and -not $procHandle.HasExited) {
+                try {
+                    $procHandle.Refresh()
+                    if ($procHandle.MainWindowHandle -ne [IntPtr]::Zero) {
+                        [_Mse]::ShowWindow($procHandle.MainWindowHandle, 9) | Out-Null  # SW_RESTORE
+                        [_Mse]::SetForegroundWindow($procHandle.MainWindowHandle)        | Out-Null
+                        Write-Step "OK" "Sample window brought to foreground"
+                    }
+                } catch {}
+            }
+
+            $report.processes.Add([PSCustomObject]@{
+                pid  = $procHandle.Id
+                name = $procHandle.ProcessName
+                path = $SamplePath
+                action = "started"
+            })
+            Write-Step "OK" "Process tracked PID=$($procHandle.Id)"
+        } catch {
+            # ── Strategy 2: Fallback to scheduled task with INTERACTIVE SID ───
+            Write-Step "Running" "ShellExecute failed ($_), falling back to schtasks INTERACTIVE"
+            try {
+                $taskId = "SentinelRun_" + [guid]::NewGuid().ToString("N").Substring(0,8)
+                if ($fileType -eq "SCRIPT_BATCH") {
+                    $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$SamplePath`""
+                } else {
+                    $action = New-ScheduledTaskAction -Execute $SamplePath
+                }
+                $trigger   = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(2))
+                $settings  = New-ScheduledTaskSettingsSet `
+                                 -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
+                                 -DeleteExpiredTaskAfter (New-TimeSpan -Minutes 2) `
+                                 -StartWhenAvailable
+                $principal = New-ScheduledTaskPrincipal -GroupId "S-1-5-4" -RunLevel Highest
+                Register-ScheduledTask -TaskName $taskId -Action $action -Trigger $trigger `
+                    -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
+                Start-Sleep -Milliseconds 2500
+                Start-ScheduledTask -TaskName $taskId -ErrorAction SilentlyContinue
+                $report.executed = $true
+                $report.highlights.Add("Sample executed (interactive via schtasks): $([System.IO.Path]::GetFileName($SamplePath))")
+                Write-Step "OK" "Sample launched via interactive scheduled task [$taskId]"
+                Start-Sleep -Seconds 3
+                $procHandle = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+                    try { $_.Path -like "*$([System.IO.Path]::GetFileName($SamplePath))*" } catch { $false }
+                } | Sort-Object StartTime -Descending | Select-Object -First 1
+                if ($procHandle) {
+                    $report.processes.Add([PSCustomObject]@{
+                        pid  = $procHandle.Id
+                        name = $procHandle.ProcessName
+                        path = $SamplePath
+                        action = "started"
+                    })
+                    Write-Step "OK" "Process tracked PID=$($procHandle.Id)"
+                }
+            } catch {
+                $report.errors.Add("Failed to launch (both strategies): $_")
+                Write-Step "Failed" "Launch failed: $_"
+            }
+        }
+
+        # ── Optional: Launch AHK detonation helper (if AutoHotkey v2 is installed) ──
+        # The AHK script provides smoother human-like mouse simulation, faster
+        # UAC prompt handling, and native window control interaction. It runs in
+        # parallel with the PowerShell UIA clicker below — belt and suspenders.
+        $ahkProc = $null
+        try {
+            $ahkPaths = @(
+                "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
+                "C:\Program Files\AutoHotkey\AutoHotkey64.exe",
+                "C:\Program Files\AutoHotkey\v2\AutoHotkey.exe",
+                "C:\Program Files\AutoHotkey\AutoHotkey.exe"
+            )
+            $ahkExe = $null
+            foreach ($p in $ahkPaths) { if (Test-Path $p) { $ahkExe = $p; break } }
+            if ($ahkExe) {
+                # Look for detonate.ahk in the same directory as run.ps1, or in tools subdir
+                $ahkScript = $null
+                $candidates = @(
+                    (Join-Path $PSScriptRoot "detonate.ahk"),
+                    (Join-Path $PSScriptRoot "tools\detonate.ahk"),
+                    "C:\Sandbox\tools\detonate.ahk"
+                )
+                foreach ($c in $candidates) { if (Test-Path $c) { $ahkScript = $c; break } }
+                if ($ahkScript) {
+                    $ahkArgs = "`"$ahkScript`" `"$SamplePath`" `"$outDir`" $MonitorSeconds"
+                    $ahkProc = Start-Process -FilePath $ahkExe -ArgumentList $ahkArgs -PassThru -WindowStyle Normal -ErrorAction Stop
+                    Write-Step "OK" "AHK detonation helper launched PID=$($ahkProc.Id)"
+                } else {
+                    Write-Step "Running" "AHK helper: detonate.ahk not found — skipping"
+                }
+            } else {
+                Write-Step "Running" "AHK helper: AutoHotkey not found in guest — skipping"
             }
         } catch {
-            $report.errors.Add("Failed to launch: $_")
-            Write-Step "Failed" "Launch failed: $_"
+            Write-Step "Running" "AHK helper: failed to launch ($_ ) — continuing without"
         }
 
         # UIA button-clicker wrapped in try-catch — failure is non-critical and must not
@@ -277,7 +395,12 @@ switch -Regex ($fileType) {
         [void]$autoPS.AddScript({
             Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
             Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
-            $accept = @('ok','next','yes','i agree','accept','install','finish','continue','allow','agree','run','apply','proceed','confirm','skip','close','open')
+            # Expanded button-name list including UAC-specific labels, ampersand
+            # accelerator forms ("&Yes"), and common installer/wizard buttons
+            $accept = @('ok','next','yes','&yes','i agree','accept','install','finish',
+                         'continue','allow','agree','run','apply','proceed','confirm',
+                         'skip','close','open','got it','later','not now','remind me later',
+                         'i accept','setup','extract','unzip','launch','start','execute')
             $deadline = [datetime]::Now.AddSeconds($_SecsMon + 15)
             while ([datetime]::Now -lt $deadline) {
                 try {
@@ -323,11 +446,29 @@ switch -Regex ($fileType) {
             $autoHandle = $null
         }
 
-        # Monitoring loop
+        # Monitoring loop — track spawned processes, network connections, and
+        # periodically jitter the mouse cursor to defeat sandbox-aware malware
+        # that checks for human interaction patterns.
         $seenPids  = [System.Collections.Generic.HashSet[int]]::new()
         $seenConns = [System.Collections.Generic.HashSet[string]]::new()
+        $jitterRng = [System.Random]::new()
+        $jitterIdx = 0
         while ((New-TimeSpan -Start $monitorStart -End (Get-Date)).TotalSeconds -lt $MonitorSeconds) {
             Start-Sleep -Seconds 2
+
+            # ── Periodic mouse jitter (every ~6 seconds) ──────────────────────
+            $jitterIdx++
+            if ($jitterIdx % 3 -eq 0) {
+                try {
+                    $pos = [System.Windows.Forms.Cursor]::Position
+                    $dx  = $jitterRng.Next(-40, 41)
+                    $dy  = $jitterRng.Next(-30, 31)
+                    $nx  = [Math]::Max(10, [Math]::Min($sw - 10, $pos.X + $dx))
+                    $ny  = [Math]::Max(10, [Math]::Min($sh - 10, $pos.Y + $dy))
+                    Move-CursorSmooth $nx $ny 8
+                } catch {}
+            }
+
             Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -notin $baseProcs -and $seenPids.Add($_.Id) } | ForEach-Object {
                 $report.spawned_processes.Add([PSCustomObject]@{ pid=$_.Id; name=$_.ProcessName; path=(try{$_.Path}catch{""}) })
                 if ($_.ProcessName -match "(?i)cmd|powershell|wscript|cscript|regsvr32|rundll32|mshta|certutil|bitsadmin") {
@@ -343,6 +484,10 @@ switch -Regex ($fileType) {
         if ($null -ne $autoHandle) {
             try { $autoPS.Stop(); $autoPS.Dispose(); $autoRS.Close(); $autoRS.Dispose() } catch {}
         }
+        # Stop AHK helper if it's still running
+        if ($null -ne $ahkProc -and -not $ahkProc.HasExited) {
+            try { $ahkProc.Kill(); Write-Step "OK" "AHK helper stopped" } catch {}
+        }
         Write-Step "OK" "Monitoring complete"
     }
 
@@ -351,15 +496,19 @@ switch -Regex ($fileType) {
         if ($AllowRun) {
             $report.analysis_mode = "run"
             Write-Step "Running" "AllowRun set — executing $fileType: $SamplePath"
-            $runCmd = switch ($fileType) {
-                "SCRIPT_PS"  { @("powershell.exe","-ExecutionPolicy","Bypass","-File",$SamplePath) }
-                "SCRIPT_VBS" { @("wscript.exe",$SamplePath) }
-                "SCRIPT_JS"  { @("wscript.exe",$SamplePath) }
-                "SCRIPT_WSF" { @("wscript.exe",$SamplePath) }
-                "MSI"        { @("msiexec.exe","/i",$SamplePath,"/quiet","/norestart") }
-            }
             try {
-                $procHandle = Start-Process -FilePath $runCmd[0] -ArgumentList ($runCmd[1..99]) -PassThru -ErrorAction Stop
+                # Use UseShellExecute so the process runs visibly in the current desktop session
+                $psi = [System.Diagnostics.ProcessStartInfo]::new()
+                $psi.UseShellExecute = $true
+                $psi.WindowStyle     = [System.Diagnostics.ProcessWindowStyle]::Normal
+                switch ($fileType) {
+                    "SCRIPT_PS"  { $psi.FileName = "powershell.exe"; $psi.Arguments = "-ExecutionPolicy Bypass -File `"$SamplePath`"" }
+                    "SCRIPT_VBS" { $psi.FileName = "wscript.exe";    $psi.Arguments = "`"$SamplePath`"" }
+                    "SCRIPT_JS"  { $psi.FileName = "wscript.exe";    $psi.Arguments = "`"$SamplePath`"" }
+                    "SCRIPT_WSF" { $psi.FileName = "wscript.exe";    $psi.Arguments = "`"$SamplePath`"" }
+                    "MSI"        { $psi.FileName = "msiexec.exe";    $psi.Arguments = "/i `"$SamplePath`" /norestart" }
+                }
+                $procHandle = [System.Diagnostics.Process]::Start($psi)
                 $report.executed = $true
                 Write-Step "OK" "Running PID=$($procHandle.Id)"
                 Start-Sleep -Seconds ([Math]::Min($MonitorSeconds, 60))

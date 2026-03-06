@@ -342,6 +342,7 @@ class GuestUIRunner:
             r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
             launch_args,
             wait=True,
+            interactive=True,
             timeout=total_timeout,
         )
         self._step("OK", "[UI-runner] launch_interactive finished")

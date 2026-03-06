@@ -192,10 +192,24 @@ class VmrunClient:
         program_args: Iterable[str] | None = None,
         *,
         wait: bool = True,
+        interactive: bool = False,
         timeout: int = 300,
     ) -> None:
-        """Run a program inside the guest OS."""
+        """Run a program inside the guest OS.
+
+        Args:
+            program_path: Absolute path to the executable inside the guest.
+            program_args: Arguments to pass to the program.
+            wait:         If True, block until the program finishes.
+            interactive:  If True, use ``-activeWindow -interactive`` flags so the
+                          program window is visible on the guest desktop.  Without
+                          these flags, ``vmrun runProgramInGuest`` launches the
+                          process in Session 0 (invisible service session).
+            timeout:      Seconds before giving up.
+        """
         args = ["runProgramInGuest", self._config.vmx_path]
+        if interactive:
+            args.extend(["-activeWindow", "-interactive"])
         if not wait:
             args.append("-noWait")
         args.append(program_path)

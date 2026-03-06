@@ -599,8 +599,7 @@ class VMwareRunner:
             )
             ps_args = [
                 "-ExecutionPolicy", "Bypass",
-                "-WindowStyle", "Minimized",
-                "-NonInteractive",
+                "-WindowStyle", "Normal",
                 "-File", guest_script,
                 "-SamplePath", guest_sample,
                 "-MonitorSeconds", str(min(monitor_seconds, 300)),
@@ -611,9 +610,9 @@ class VMwareRunner:
                 ps_args.append("-AllowRun")
             try:
                 self._client.run_program_in_guest(
-                    _PS, ps_args, wait=False, timeout=30
+                    _PS, ps_args, wait=False, interactive=True, timeout=30
                 )
-                self._ok("Analysis script launched in guest")
+                self._ok("Analysis script launched in guest (interactive)")
             except VmrunError as exc:
                 result["errors"].append(f"Failed to launch analysis script: {exc}")
 

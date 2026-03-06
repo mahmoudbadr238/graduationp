@@ -1138,6 +1138,7 @@ class SandboxLabController(QObject):
                 _GUEST_POWERSHELL,
                 guest_args,
                 wait=True,
+                interactive=True,
                 timeout=max(120, int(self._run_options["monitorSeconds"]) + 180),
             )
             worker.emit_step("OK", "Guest automation finished")
@@ -1412,6 +1413,12 @@ class SandboxLabController(QObject):
             if _top_runner_src.exists():
                 _guest_top_runner = f"{guest_job_base}\\tools\\ui_runner.ps1"
                 self._client.copy_file_from_host_to_guest(_top_runner_src, _guest_top_runner)
+            # Deploy the AHK detonation helper if present (optional)
+            _ahk_src = _GUEST_SCRIPTS_DIR / "detonate.ahk"
+            if _ahk_src.exists():
+                _guest_ahk = f"{guest_job_base}\\tools\\detonate.ahk"
+                self._client.copy_file_from_host_to_guest(_ahk_src, _guest_ahk)
+                worker.emit_step("OK", "[UI-runner] Deployed detonate.ahk companion")
         except Exception as exc:
             worker.emit_step("Failed", f"[UI-runner] Deploy failed: {exc}")
             return _empty
