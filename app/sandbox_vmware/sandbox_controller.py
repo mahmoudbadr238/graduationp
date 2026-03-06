@@ -1419,6 +1419,14 @@ class SandboxLabController(QObject):
                 _guest_ahk = f"{guest_job_base}\\tools\\detonate.ahk"
                 self._client.copy_file_from_host_to_guest(_ahk_src, _guest_ahk)
                 worker.emit_step("OK", "[UI-runner] Deployed detonate.ahk companion")
+            # Deploy the Python visual-agent script if present (optional)
+            _py_agent_src = _GUEST_SCRIPTS_DIR / "detonate.py"
+            if _py_agent_src.exists():
+                _guest_py_agent = f"{guest_job_base}\\tools\\detonate.py"
+                self._client.copy_file_from_host_to_guest(
+                    _py_agent_src, _guest_py_agent
+                )
+                worker.emit_step("OK", "[UI-runner] Deployed detonate.py visual agent")
         except Exception as exc:
             worker.emit_step("Failed", f"[UI-runner] Deploy failed: {exc}")
             return _empty

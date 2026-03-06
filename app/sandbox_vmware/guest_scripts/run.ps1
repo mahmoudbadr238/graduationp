@@ -380,6 +380,60 @@ public class _Mse {
             Write-Step "Running" "AHK helper: failed to launch ($_ ) — continuing without"
         }
 
+        # ── Optional: Launch Python visual-agent (HUD overlay + pyautogui) ───
+        # Runs in parallel with the UIA clicker and AHK helper — belt, suspenders,
+        # and a helmet.  The Python agent shows a live tkinter HUD overlay on screen
+        # reading "🤖 Sentinel Agent: [Current Action]" and performs human-like
+        # mouse movement with ease-in/ease-out easing curves.
+        $pyProc = $null
+        try {
+            $pyPaths = @(
+                "C:\Python312\python.exe",
+                "C:\Python311\python.exe",
+                "C:\Python310\python.exe",
+                "C:\Python39\python.exe",
+                "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+                "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+                "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe"
+            )
+            $pyExe = $null
+            foreach ($p in $pyPaths) {
+                $expanded = $ExecutionContext.InvokeCommand.ExpandString($p)
+                if (Test-Path $expanded) { $pyExe = $expanded; break }
+            }
+            if (-not $pyExe) {
+                $found = Get-Command python.exe -ErrorAction SilentlyContinue
+                if ($found) { $pyExe = $found.Source }
+            }
+            if ($pyExe) {
+                $pyScript = $null
+                $pyCandidates = @(
+                    (Join-Path $PSScriptRoot "detonate.py"),
+                    (Join-Path $PSScriptRoot "tools\detonate.py"),
+                    "C:\Sandbox\tools\detonate.py"
+                )
+                foreach ($c in $pyCandidates) { if (Test-Path $c) { $pyScript = $c; break } }
+                if ($pyScript) {
+                    $pyArgs = @(
+                        "`"$pyScript`"",
+                        "--sample", "`"$SamplePath`"",
+                        "--outdir", "`"$outDir`"",
+                        "--timeout", "$MonitorSeconds",
+                        "--jobid", "`"$($report.job_id)`""
+                    ) -join " "
+                    $pyProc = Start-Process -FilePath $pyExe -ArgumentList $pyArgs `
+                        -PassThru -WindowStyle Normal -ErrorAction Stop
+                    Write-Step "OK" "Python visual-agent launched PID=$($pyProc.Id)"
+                } else {
+                    Write-Step "Running" "Python agent: detonate.py not found — skipping"
+                }
+            } else {
+                Write-Step "Running" "Python agent: python.exe not found in guest — skipping"
+            }
+        } catch {
+            Write-Step "Running" "Python agent: failed to launch ($_) — continuing without"
+        }
+
         # UIA button-clicker wrapped in try-catch — failure is non-critical and must not
         # propagate to the outer catch (which would abort the entire analysis run).
         $autoRS = $null; $autoPS = $null
@@ -487,6 +541,10 @@ public class _Mse {
         # Stop AHK helper if it's still running
         if ($null -ne $ahkProc -and -not $ahkProc.HasExited) {
             try { $ahkProc.Kill(); Write-Step "OK" "AHK helper stopped" } catch {}
+        }
+        # Stop Python visual-agent if it's still running
+        if ($null -ne $pyProc -and -not $pyProc.HasExited) {
+            try { $pyProc.Kill(); Write-Step "OK" "Python agent stopped" } catch {}
         }
         Write-Step "OK" "Monitoring complete"
     }

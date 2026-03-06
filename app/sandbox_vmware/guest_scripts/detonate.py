@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Sentinel – Visible VM Detonation Script
-────────────────────────────────────────
+Sentinel – Visual AI Agent  (guest-side detonation script)
+──────────────────────────────────────────────────────────
 Deployed into the guest VM by the host sandbox controller.
-Visibly opens the sample file, moves the mouse, clicks through basic
-prompts/dialogs, and captures periodic screenshots — all designed to be
-visible in the live preview stream.
+Visibly opens the sample file with human-like mouse movement
+(ease-in / ease-out curves), clicks through UAC / installer prompts,
+captures periodic screenshots, and renders a live tkinter HUD overlay
+showing "🤖 Sentinel Agent: [Current Action]" in the top-right corner.
 
 Requirements (pre-installed in the sandbox VM):
     pip install pyautogui Pillow psutil
+    (tkinter ships with the standard CPython installer on Windows)
 
 Usage:
     python detonate.py --sample C:\\Sandbox\\sample.exe --outdir C:\\Sandbox\\out
@@ -20,7 +22,9 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import math
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -43,8 +47,115 @@ try:
 except ImportError:
     psutil = None  # type: ignore[assignment]
 
+try:
+    import tkinter as tk
+
+    _HAS_TK = True
+except ImportError:
+    tk = None  # type: ignore[assignment]
+    _HAS_TK = False
+
 
 IS_WIN = os.name == "nt"
+
+
+# ── HUD Overlay (tkinter always-on-top window) ──────────────────────────────
+
+
+class HUDOverlay:
+    """Semi-transparent always-on-top HUD showing the agent's current action.
+
+    The HUD runs its own tkinter mainloop on a daemon thread so it never
+    blocks pyautogui mouse/keyboard automation on the main thread.
+    """
+
+    _BG = "#0d1117"
+    _FG = "#3fb950"            # GitHub-green accent
+    _FG_LABEL = "#e6edf3"     # light text for the action description
+    _FONT_FACE = "Segoe UI"
+    _W, _H = 440, 52
+    _MARGIN = 16              # pixels from screen edge
+
+    def __init__(self) -> None:
+        self._root: tk.Tk | None = None
+        self._label: tk.Label | None = None
+        self._thread: threading.Thread | None = None
+        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._ready = threading.Event()
+
+    # ── public API (thread-safe) ─────────────────────────────────────────
+
+    def start(self) -> None:
+        """Launch the HUD window on a background thread."""
+        if not _HAS_TK:
+            return
+        self._thread = threading.Thread(target=self._run, daemon=True, name="hud")
+        self._thread.start()
+        self._ready.wait(timeout=3)
+
+    def update(self, action: str) -> None:
+        """Update the HUD text (called from any thread)."""
+        self._queue.put(f"\U0001f916 Sentinel Agent: {action}")
+
+    def stop(self) -> None:
+        """Destroy the HUD window."""
+        self._queue.put(None)  # sentinel → quit mainloop
+
+    # ── internals ────────────────────────────────────────────────────────
+
+    def _run(self) -> None:
+        root = tk.Tk()
+        root.withdraw()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        try:
+            root.attributes("-alpha", 0.88)
+        except tk.TclError:
+            pass  # alpha unsupported on some VMs
+
+        root.configure(bg=self._BG)
+        screen_w = root.winfo_screenwidth()
+        x = screen_w - self._W - self._MARGIN
+        y = self._MARGIN
+        root.geometry(f"{self._W}x{self._H}+{x}+{y}")
+
+        label = tk.Label(
+            root,
+            text="\U0001f916 Sentinel Agent: Initializing\u2026",
+            font=(self._FONT_FACE, 11, "bold"),
+            fg=self._FG,
+            bg=self._BG,
+            anchor="w",
+            padx=14,
+        )
+        label.pack(fill="both", expand=True)
+
+        self._root = root
+        self._label = label
+        root.deiconify()
+        self._ready.set()
+        self._poll()
+        root.mainloop()
+
+    def _poll(self) -> None:
+        """Drain the queue and reschedule every 80 ms."""
+        try:
+            while True:
+                msg = self._queue.get_nowait()
+                if msg is None:
+                    # Sentinel: destroy window and exit mainloop
+                    if self._root:
+                        self._root.destroy()
+                    return
+                if self._label:
+                    self._label.config(text=msg)
+        except queue.Empty:
+            pass
+        if self._root:
+            try:
+                self._root.after(80, self._poll)
+            except Exception:
+                pass
 
 # ── Logging to JSONL ────────────────────────────────────────────────────────
 
@@ -107,17 +218,47 @@ def take_screenshot(out_dir: Path, label: str = "") -> Optional[str]:
     return None
 
 
-# ── Mouse movement helpers ───────────────────────────────────────────────────
+# ── Mouse movement helpers (ease-in / ease-out) ─────────────────────────────
 
 
-def smooth_move(x: int, y: int, duration: float = 0.4) -> None:
-    """Visibly slide the mouse cursor to (x, y)."""
+def _ease_in_out_sine(t: float) -> float:
+    """Sinusoidal ease-in-out: slow start → fast middle → slow end."""
+    return -(math.cos(math.pi * t) - 1.0) / 2.0
+
+
+def smooth_move(x: int, y: int, duration: float = 0.4, steps: int = 0) -> None:
+    """Visibly slide the mouse cursor to (*x*, *y*) with ease-in/ease-out.
+
+    Uses a sine-based easing curve so the movement accelerates gently,
+    cruises, then decelerates — mimicking a real human hand.
+
+    *steps* defaults to ``max(20, duration * 60)`` (~60 fps feeling).
+    """
     if pyautogui is None:
         return
     try:
-        pyautogui.moveTo(x, y, duration=duration)
+        sx, sy = pyautogui.position()
+    except Exception:
+        return
+
+    if steps <= 0:
+        steps = max(20, int(duration * 60))
+
+    interval = duration / steps
+    _pause_backup = pyautogui.PAUSE
+    pyautogui.PAUSE = 0  # we handle timing ourselves
+
+    try:
+        for i in range(1, steps + 1):
+            t = _ease_in_out_sine(i / steps)
+            nx = int(sx + (x - sx) * t)
+            ny = int(sy + (y - sy) * t)
+            pyautogui.moveTo(nx, ny)
+            time.sleep(interval)
     except Exception:
         pass
+    finally:
+        pyautogui.PAUSE = _pause_backup
 
 
 def desktop_sweep(w: int, h: int) -> None:
@@ -304,6 +445,11 @@ def detonate(
     logger = ActionLog(out / "detonate_actions.jsonl")
     logger.log("start", f"job={job_id}  sample={sample.name}  timeout={timeout_sec}s")
 
+    # ── Launch HUD overlay ───────────────────────────────────────────────
+    hud = HUDOverlay()
+    hud.start()
+    hud.update("Initializing\u2026")
+
     result: Dict[str, Any] = {
         "job_id": job_id,
         "sample_name": sample.name,
@@ -326,6 +472,7 @@ def detonate(
     logger.log("screen", f"{w}x{h}")
 
     # ── Phase 1: Desktop sweep ───────────────────────────────────────────
+    hud.update("Desktop Sweep")
     logger.log("phase", "Phase 1: Desktop sweep")
     try:
         desktop_sweep(w, h)
@@ -338,6 +485,7 @@ def detonate(
         result["screenshots"].append(shot)
 
     # ── Phase 2: Taskbar hover ───────────────────────────────────────────
+    hud.update("Taskbar Hover")
     logger.log("phase", "Phase 2: Taskbar hover")
     try:
         taskbar_hover(w, h)
@@ -350,6 +498,7 @@ def detonate(
         result["screenshots"].append(shot)
 
     # ── Phase 3: Open the sample ─────────────────────────────────────────
+    hud.update(f"Opening {sample.name}")
     logger.log("phase", "Phase 3: Open sample")
     baseline_procs = snapshot_processes()
 
@@ -374,6 +523,7 @@ def detonate(
     time.sleep(2)
 
     # ── Phase 4: Start periodic screenshots ──────────────────────────────
+    hud.update("Capturing Screenshots")
     stop_shots = threading.Event()
     shot_thread = threading.Thread(
         target=_screenshot_loop,
@@ -383,6 +533,7 @@ def detonate(
     shot_thread.start()
 
     # ── Phase 5: Click through dialogs ───────────────────────────────────
+    hud.update("Clicking Dialogs / UAC")
     logger.log("phase", "Phase 5: Click dialogs / prompts")
     dialog_rounds = max(3, timeout_sec // 8)
     result["dialog_clicks"] = click_dialogs(
@@ -390,12 +541,14 @@ def detonate(
     )
 
     # ── Phase 6: Wait / monitor ──────────────────────────────────────────
+    hud.update("Monitoring Behavior\u2026")
     logger.log("phase", "Phase 6: Monitoring")
     remaining = max(0, timeout_sec - dialog_rounds * 3)
     if remaining > 0:
         time.sleep(min(remaining, 20))
 
     # ── Phase 7: Collect new processes ───────────────────────────────────
+    hud.update("Collecting Results")
     stop_shots.set()
     shot_thread.join(timeout=5)
 
@@ -421,6 +574,11 @@ def detonate(
     result["finished_at"] = datetime.now(timezone.utc).isoformat()
     result["phases"]["complete"] = "ok"
     logger.log("done", f"Detonation finished — {len(result['screenshots'])} screenshots")
+
+    # ── Tear down HUD ────────────────────────────────────────────────────
+    hud.update("Done \u2714")
+    time.sleep(1.5)  # keep visible briefly so the live stream captures it
+    hud.stop()
 
     # Write behavior.json
     behavior_path = out / "detonate_behavior.json"
