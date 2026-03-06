@@ -214,11 +214,13 @@ if ($Mode -eq "inspect") {
         # Authenticode signature
         try {
             $sig = Get-AuthenticodeSignature $SamplePath -ErrorAction Stop
-            $result.inspect_signature = "$($sig.Status) — $($sig.SignerCertificate?.Subject)"
+            $signerSubject    = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject }    else { "" }
+            $signerThumbprint = if ($sig.SignerCertificate) { $sig.SignerCertificate.Thumbprint } else { "" }
+            $result.inspect_signature = "$($sig.Status) — $signerSubject"
             Write-Host "[B] Signature: $($result.inspect_signature)"
             $result.inspect_metadata.signature_status  = $sig.Status.ToString()
-            $result.inspect_metadata.signer_subject    = $sig.SignerCertificate?.Subject
-            $result.inspect_metadata.signer_thumbprint = $sig.SignerCertificate?.Thumbprint
+            $result.inspect_metadata.signer_subject    = $signerSubject
+            $result.inspect_metadata.signer_thumbprint = $signerThumbprint
         } catch {
             $result.inspect_signature = "unavailable: $_"
             Write-Host "[B] Signature check failed: $_"
@@ -228,8 +230,8 @@ if ($Mode -eq "inspect") {
         try {
             $bytes   = [System.IO.File]::ReadAllBytes($SamplePath)
             $ascii   = [System.Text.Encoding]::ASCII.GetString($bytes)
-            $matches = ([regex]"[\x20-\x7E]{6,}").Matches($ascii) | Select-Object -First 20 | ForEach-Object { $_.Value }
-            $result.inspect_metadata.top_strings = @($matches)
+            $stringMatches = ([regex]"[\x20-\x7E]{6,}").Matches($ascii) | Select-Object -First 20 | ForEach-Object { $_.Value }
+            $result.inspect_metadata.top_strings = @($stringMatches)
         } catch {}
 
         $result.notes.Add("Inspect mode: sample was NOT executed.")
@@ -292,7 +294,7 @@ if ($Mode -eq "inspect") {
 
             # Frame capture helper
             $frameIdx = 0
-            function Capture-Frame {
+            function CaptureFrame {
                 try {
                     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
                     $bmp    = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
@@ -331,7 +333,7 @@ if ($Mode -eq "inspect") {
             $lastCap    = [DateTime]::MinValue
             while ((Get-Date) -lt $deadline) {
                 if (((Get-Date) - $lastCap).TotalSeconds -ge 1.0) {
-                    $f = Capture-Frame
+                    $f = CaptureFrame
                     if ($f) { $result.frames_count++ }
                     $lastCap = Get-Date
                 }
