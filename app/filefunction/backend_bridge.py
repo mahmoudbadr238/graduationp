@@ -1,49 +1,58 @@
+import json
 import os
-import random
-import string
+import threading
 from PySide6.QtCore import QObject, Slot, Signal, QThread
+
+from ..utils.secure_delete import validate_target, shred_file
 
 
 class ShredderWorker(QThread):
-    progress = Signal(int)
-    log = Signal(str)
+    """Runs ``shred_file()`` on a background thread, emitting JSON signals."""
 
-    def __init__(self, file_path):
+    progressChanged = Signal(str)   # JSON: {phase, percent, pass_idx, total_passes}
+    finished_ok = Signal(str)       # JSON result dict
+    finished_err = Signal(str)      # JSON result dict
+
+    def __init__(self, path, passes, rename, verify, log_enabled):
         super().__init__()
-        self.file_path = file_path
+        self.path = path
+        self.passes = passes
+        self.rename = rename
+        self.verify = verify
+        self.log_enabled = log_enabled
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    def _on_progress(self, phase, percent, pass_idx, total_passes):
+        self.progressChanged.emit(json.dumps({
+            "phase": phase,
+            "percent": percent,
+            "pass_idx": pass_idx,
+            "total_passes": total_passes,
+        }))
 
     def run(self):
-        if not os.path.exists(self.file_path):
-            self.log.emit("Error: File not found.")
+        ok, reason = validate_target(self.path)
+        if not ok:
+            self.finished_err.emit(json.dumps({"ok": False, "message": reason}))
             return
 
-        try:
-            file_size = os.path.getsize(self.file_path)
-            self.progress.emit(10)
+        result = shred_file(
+            self.path,
+            passes=self.passes,
+            rename=self.rename,
+            verify=self.verify,
+            log_enabled=self.log_enabled,
+            progress_cb=self._on_progress,
+            cancel_event=self.cancel_event,
+        )
 
-            with open(self.file_path, "r+b") as f:
-                for i in range(3):
-                    f.seek(0)
-                    if i < 2:
-                        f.write(os.urandom(file_size))
-                    else:
-                        f.write(b'\x00' * file_size)
-
-                    os.fsync(f.fileno())
-                    self.progress.emit(10 + ((i + 1) * 25))
-
-            dir_name = os.path.dirname(self.file_path)
-            random_name = ''.join(random.choices(string.ascii_letters + string.digits, k=16)) + ".tmp"
-            scrambled_path = os.path.join(dir_name, random_name)
-
-            os.rename(self.file_path, scrambled_path)
-            os.remove(scrambled_path)
-
-            self.progress.emit(100)
-            self.log.emit("Success: File permanently destroyed.")
-
-        except Exception as e:
-            self.log.emit(f"Shredding failed: {str(e)}")
+        if result["ok"]:
+            self.finished_ok.emit(json.dumps(result))
+        else:
+            self.finished_err.emit(json.dumps(result))
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +198,12 @@ class CarverWorker(QThread):
 
 
 class FileFunctionBridge(QObject):
+    # ── Shredder signals (new, JSON-based) ──────────────────────────────
+    shredderProgressChanged = Signal(str)   # JSON progress dict
+    shredderFinished = Signal(str)          # JSON result dict (success)
+    shredderFailed = Signal(str)            # JSON result dict (failure)
+
+    # ── Legacy / Carver signals ─────────────────────────────────────────
     shredProgressUpdated = Signal(int)
     carverLogUpdated = Signal(str)
 
@@ -197,15 +212,27 @@ class FileFunctionBridge(QObject):
         self.shred_thread = None
         self.carver_thread = None
 
-    @Slot(str)
-    def start_shredding(self, file_path):
+    # ── New secure-delete API ───────────────────────────────────────────
+    @Slot(str, int, bool, bool, bool)
+    def startSecureDelete(self, file_path, passes, rename, verify, log_enabled):
         if self.shred_thread and self.shred_thread.isRunning():
             return
 
-        self.shred_thread = ShredderWorker(file_path)
-        self.shred_thread.progress.connect(self.shredProgressUpdated.emit)
-        self.shred_thread.log.connect(self.carverLogUpdated.emit)
+        self.shred_thread = ShredderWorker(file_path, passes, rename, verify, log_enabled)
+        self.shred_thread.progressChanged.connect(self.shredderProgressChanged.emit)
+        self.shred_thread.finished_ok.connect(self.shredderFinished.emit)
+        self.shred_thread.finished_err.connect(self.shredderFailed.emit)
         self.shred_thread.start()
+
+    @Slot()
+    def cancelSecureDelete(self):
+        if self.shred_thread and self.shred_thread.isRunning():
+            self.shred_thread.cancel()
+
+    # ── Legacy shredder (kept for backward compat) ──────────────────────
+    @Slot(str)
+    def start_shredding(self, file_path):
+        self.startSecureDelete(file_path, 3, True, True, False)
 
     @Slot(str)
     def start_recovery(self, extension_input):

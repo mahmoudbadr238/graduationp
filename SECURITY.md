@@ -8,7 +8,7 @@
 
 If you discover a security vulnerability in Sentinel, please email:
 
-**security@example.com**
+**mahmoudbadr238@gmail.com**
 
 **Subject**: `[SECURITY] Vulnerability in Sentinel`
 
@@ -67,10 +67,11 @@ Sentinel requests administrator privileges to access:
 
 ### AI-Powered Analysis
 
-- **API-based**: Uses Claude or OpenAI for security explanations
+- **Cloud-based**: Uses Groq (free tier), Claude, or OpenAI for security explanations
 - **User initiated**: AI analysis only runs when requested by user
-- **Data sent**: Event descriptions and context sent for analysis
-- **Privacy**: Refer to Anthropic/OpenAI privacy policies for data handling
+- **Data sent**: Event descriptions and system context sent for analysis
+- **Offline mode**: Built-in knowledge base works without any API key
+- **Privacy**: Refer to Groq/Anthropic/OpenAI privacy policies for data handling
 
 ### Crash Reporting (Sentry)
 

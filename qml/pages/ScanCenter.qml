@@ -773,7 +773,7 @@ Item {
                                                 }
                                                 color: ThemeManager.foreground()
                                                 font.pixelSize: 11
-                                                font.weight: Font.SemiBold
+                                                font.weight: (Font.SemiBold || 600)
                                             }
                                             Item { Layout.fillWidth: true }
                                             // Spinner for running phase
@@ -1018,12 +1018,20 @@ Item {
                                     color: ThemeManager.panel(); radius: 10
                                     border.color: ThemeManager.border(); border.width: 1
 
-                                    property int scoreVal: ((root.fileReport || {}).verdict || {}).score || 0
-                                    property string riskLabel: ((root.fileReport || {}).verdict || {}).risk || "Unknown"
+                                    property int scoreVal: {
+                                        var r = root.fileReport
+                                        if (!r || !r.verdict) return 0
+                                        return r.verdict.score || 0
+                                    }
+                                    property string riskLabel: {
+                                        var r = root.fileReport
+                                        if (!r || !r.verdict) return "Unknown"
+                                        return r.verdict.risk || "Unknown"
+                                    }
                                     property real animatedScore: 0
                                     NumberAnimation on animatedScore {
                                         id: gaugeAnim
-                                        from: 0; to: parent.scoreVal
+                                        from: 0; to: parent.scoreVal !== undefined ? parent.scoreVal : 0
                                         duration: 900
                                         easing.type: Easing.OutCubic
                                     }
@@ -1148,7 +1156,7 @@ Item {
                                             Text {
                                                 text: "AI Analysis"
                                                 color: ThemeManager.foreground()
-                                                font.pixelSize: 12; font.weight: Font.SemiBold
+                                                font.pixelSize: 12; font.weight: (Font.SemiBold || 600)
                                             }
                                         }
                                         Text {

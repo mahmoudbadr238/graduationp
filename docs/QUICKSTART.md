@@ -5,7 +5,7 @@ Get Sentinel up and running in 5 minutes!
 ## ⚡ Prerequisites
 
 - Windows 10 or 11
-- Python 3.13+ installed ([Download](https://www.python.org/downloads/))
+- Python 3.10+ installed ([Download](https://www.python.org/downloads/))
 - Git (optional, for cloning)
 
 ## 📥 Installation
@@ -78,20 +78,49 @@ The application will launch in a new window!
 
 ## 🔍 Features to Check Out
 
+### AI Setup (Optional but Recommended)
+Set up Groq for free AI-powered security analysis:
+1. Get a free API key at [console.groq.com](https://console.groq.com/)
+2. Create a `.env` file in the project root:
+   ```
+   GROQ_API_KEY=gsk_your-key-here
+   ```
+3. Restart Sentinel — AI features are now available in Event Viewer and Security Assistant
+
+> Without an API key, Sentinel works fully offline using its built-in knowledge base (500+ event IDs).
+
 ### System Snapshot
 Navigate to System Snapshot (Ctrl+2) and explore:
-- **Overview** - Security status summary
-- **OS Info** - Operating system details
-- **Hardware** - Live CPU, Memory, GPU, Storage charts
-- **Network** - Upload/Download monitoring
-- **Security** - Windows security features status
+- **Overview** — Security status summary
+- **OS Info** — Operating system details
+- **Hardware** — Live CPU, Memory, GPU, Storage charts
+- **Network** — Upload/Download monitoring
+- **Security** — Windows security features status
+
+### Event Viewer
+Open Event Viewer (Ctrl+1) for AI-powered Windows event analysis:
+- Click any event for a plain-English explanation
+- Color-coded severity (Critical/Error/Warning/Info)
+- Run as Admin for Security log access
+
+### Scan Center
+Open Scan Center (Ctrl+5) for file and URL scanning:
+- Drag-and-drop files for analysis
+- Paste URLs for threat detection
+- VirusTotal integration (optional, set `VT_API_KEY` in `.env`)
+
+### Secure File Shredder
+Open File Functions for secure file deletion:
+- Choose overwrite passes (1/3/7/35 Gutmann)
+- Two-step confirmation for safety
+- Real-time progress with cancellation
 
 ### Live Monitoring
 Watch the live charts update in real-time:
 - CPU usage updates every second
 - Memory percentage displayed
 - Network throughput graphs
-- Storage capacity
+- GPU telemetry (NVIDIA/AMD)
 
 ## ⚠️ Common Issues
 
@@ -110,7 +139,7 @@ pip install -r requirements.txt
 ```
 
 ### QML errors
-Ensure you're using Python 3.13+ and PySide6 6.8.1:
+Ensure you're using Python 3.10+ and PySide6 6.6+:
 ```bash
 python --version
 pip show PySide6
