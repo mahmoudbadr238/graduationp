@@ -313,7 +313,7 @@ ApplicationWindow {
                             width: 18
                             height: 18
                             radius: 9
-                            color: "#EF4444"
+                            color: ThemeManager.danger
                             
                             Text {
                                 anchors.centerIn: parent

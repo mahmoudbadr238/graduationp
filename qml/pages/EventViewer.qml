@@ -739,7 +739,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     height: errorContent.implicitHeight + Theme.spacing_md * 2
-                    color: "#7F1D1D"
+                    color: Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.15)
                     radius: Theme.radii_xs
                     visible: aiError !== "" && !aiBusy
                     
@@ -753,13 +753,13 @@ Item {
                             text: "Analysis failed"
                             font.pixelSize: Theme.typography.body.size
                             font.weight: Font.Medium
-                            color: "#FCA5A5"
+                            color: Theme.danger
                         }
                         
                         Text {
                             text: aiError
                             font.pixelSize: Theme.typography.caption.size
-                            color: "#FECACA"
+                            color: Theme.danger
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -769,7 +769,7 @@ Item {
                             implicitHeight: 28
                             
                             background: Rectangle {
-                                color: parent.hovered ? "#DC2626" : "#B91C1C"
+                                color: parent.hovered ? Qt.lighter(Theme.danger, 1.2) : Theme.danger
                                 radius: Theme.radii_xs
                             }
                             

@@ -280,11 +280,11 @@ ScrollView {
                 spacing: 4
                 RowLayout {
                     spacing: 8; Layout.fillWidth: true
-                    Text { text: "\u26A0  Error"; color: "#ef4444"; font.pixelSize: 13; font.weight: (Font.SemiBold || 600) }
+                    Text { text: "\u26A0  Error"; color: ThemeManager.danger; font.pixelSize: 13; font.weight: (Font.SemiBold || 600) }
                     Item { Layout.fillWidth: true }
                     Text { text: "\u2715"; color: ThemeManager.muted(); font.pixelSize: 14; MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root._lastError = "" } }
                 }
-                Text { text: root._lastError; color: "#fca5a5"; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                Text { text: root._lastError; color: ThemeManager.danger; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             }
         }
 

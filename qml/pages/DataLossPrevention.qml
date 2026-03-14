@@ -62,7 +62,7 @@ Item {
                         text: "Active"
                         font.pixelSize: 20
                         font.bold: true
-                        color: "#22C55E"
+                        color: ThemeManager.success
                     }
                 }
 
@@ -167,7 +167,7 @@ Item {
                                     Rectangle {
                                         width: 40
                                         height: 24
-                                        color: model.enabled ? "#7C3AED" : "#4B5563"
+                                        color: model.enabled ? ThemeManager.accent : ThemeManager.muted()
                                         radius: 12
 
                                         Text {
