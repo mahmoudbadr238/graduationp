@@ -828,7 +828,10 @@ class ScanController:
     ) -> SandboxSection:
         """Delegate to VMwareRunner and map output to SandboxSection."""
         _emit_step = emit_step or (lambda *_a, **_kw: None)
-        sb = SandboxSection(enabled=True, mode="inspect" if not opts.allow_execution else "run")
+        sb = SandboxSection(
+            enabled=True,
+            mode="visual_agent",
+        )
         try:
             from ..sandbox.vmware_runner import VMwareRunner, load_runner_config
 
@@ -847,12 +850,13 @@ class ScanController:
                 )
                 _emit_step("sandbox", msg, "", _s)
 
-            result = runner.run_file(
-                str(path),
-                monitor_seconds=opts.monitor_seconds,
-                disable_network=opts.disable_network,
-                allow_execution=opts.allow_execution,
-                step_cb=_step,
+            # Phase 4: Visual Agent Detonation
+            # Copies dist/sentinel_agent.exe + sample to C:\Sandbox\
+            # and executes interactively (-activeWindow -interactive)
+            runner._step_cb = _step
+            result = runner.execute_with_visual_agent(
+                host_malware_path=str(path),
+                agent_timeout=opts.monitor_seconds,
                 cancel_event=self._cancel_event,
             )
 
@@ -877,7 +881,7 @@ class ScanController:
             ]
 
             # GUI automation fields
-            sb.automation_visible = bool(r.get("automation_visible", False))
+            sb.automation_visible = bool(r.get("automation_visible", True))
             sb.uac_secure_desktop = r.get("uac_secure_desktop")
             sb.frames_dir         = r.get("ui_frames_dir", "")
             sb.frames_paths       = r.get("ui_key_frames", r.get("frames", []))

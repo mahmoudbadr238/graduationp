@@ -206,6 +206,15 @@ ApplicationWindow {
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("dlp")
                 }
+
+                SidebarItem {
+                    Layout.fillWidth: true
+                    icon: "🗂️"
+                    label: "File Function"
+                    isActive: currentRoute === "file-function"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("file-function")
+                }
                 
                 // Separator before AI section
                 Rectangle {
@@ -373,6 +382,11 @@ ApplicationWindow {
                 DataLossPrevention {
                     anchors.fill: parent
                     visible: currentRoute === "dlp"
+                }
+
+                FileFunction {
+                    anchors.fill: parent
+                    visible: currentRoute === "file-function"
                 }
 
                 SandboxLabPage {

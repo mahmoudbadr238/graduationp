@@ -31,18 +31,6 @@ Item {
     property bool   optNet:      true
     property var    explainData: null
 
-    // ── Sandbox live-preview state ──────────────────────────────────────
-    property string sandboxPreviewUrl:    ""   // cache-busted file:/// URL or ""
-    property real   sandboxPreviewLastMs: 0    // Date.now() of last good capture
-    property bool   showPreview:          true // user toggle (persists while page is open)
-    property bool   sandboxPanelVisible:  false // true when sandbox panel is open
-    property int    _pvFrame:             0    // frame counter for image:// cache-bust
-    property bool   _pvLive:              false // true while image provider is streaming
-
-    // ── Agent Timeline state ────────────────────────────────────────────
-    property bool replayActive:      false
-    property int  replayCurrentStep: -1
-
     // ── URL-scan state ─────────────────────────────────────────────────────
     property string urlInput:         ""
     property var    urlResult:        null
@@ -52,6 +40,10 @@ Item {
     property bool   urlOptSandbox:    false
     property bool   urlOptBlockDl:    true
     property bool   urlOptBlockPvt:   true
+
+    // ── Agent Timeline replay (report overview sub-tab) ──────────────────
+    property bool replayActive:      false
+    property int  replayCurrentStep: -1
 
     // ── Shared helpers ─────────────────────────────────────────────────────
     function riskColor(risk) {
@@ -67,22 +59,6 @@ Item {
         if (b < 1024)    return b + " B"
         if (b < 1048576) return (b / 1024).toFixed(1) + " KB"
         return (b / 1048576).toFixed(2) + " MB"
-    }
-
-    // ── SandboxPreview image-provider connections (live video feed) ──────
-    Connections {
-        target: (typeof SandboxPreview !== "undefined" && SandboxPreview !== null)
-                ? SandboxPreview : null
-        enabled: target !== null
-
-        function onFrameUpdated() {
-            root._pvFrame++
-            root._pvLive = true
-            root.sandboxPreviewLastMs = Date.now()
-            if (!sandboxAgeTimer.running) sandboxAgeTimer.restart()
-        }
-        function onPreviewStarted() { root._pvLive = true;  root.sandboxPanelVisible = true }
-        function onPreviewStopped() { root._pvLive = false }
     }
 
     // ── Backend connections ────────────────────────────────────────────────
@@ -119,21 +95,6 @@ Item {
             if (result.ok) expOkLabel.text = "Exported → " + (result.report_path || "")
         }
 
-        // Sandbox live preview ─ emitted by preview_stream.py thread
-        function onScanCenterPreviewUpdated(url) {
-            if (url !== "") {
-                root.sandboxPreviewUrl    = url
-                root.sandboxPreviewLastMs = Date.now()
-                sandboxAgeTimer.restart()
-                root.sandboxPanelVisible = true  // show panel as soon as first frame arrives
-            } else {
-                // Preview stream stopped — keep the last screenshot; it stays in the panel
-                root.sandboxPreviewUrl    = ""
-                root.sandboxPreviewLastMs = 0
-                sandboxAgeTimer.stop()
-            }
-        }
-
         // Agent Timeline — one step per signal emission (cross-thread safe)
         function onAgentStepAdded(stepJson) {
             try {
@@ -146,17 +107,11 @@ Item {
                     "status":         step.status         || "ok",
                     "artifact_paths": JSON.stringify(step.artifact_paths || [])
                 })
-                // Show the sandbox split panel as soon as steps start arriving
-                if (root.optSandbox)
-                    root.sandboxPanelVisible = true
             } catch (_e) {}
         }
         function onAgentStepsCleared() {
             agentTimelineListModel.clear()
             phaseModel.clear()
-            root.replayActive      = false
-            root.replayCurrentStep = -1
-            root.sandboxPreviewUrl = ""  // reset image (new scan starting)
         }
 
         // Phase-card updates — emitted by backend for each pipeline phase
@@ -187,15 +142,6 @@ Item {
             } catch (_e) {}
         }
 
-        // When the app navigates back to scan-tool (e.g. notification action),
-        // re-show the sandbox panel if there is data to display.
-        function onNavigateTo(route) {
-            if (route === "scan-tool") {
-                if (agentTimelineListModel.count > 0 || root.sandboxPreviewUrl !== "")
-                    root.sandboxPanelVisible = true
-            }
-        }
-
         // URL scan
         function onUrlScanStarted() {
             root.urlScanning = true; root.urlPct = 0; root.urlStage = "Starting…"
@@ -208,31 +154,8 @@ Item {
         }
     }
 
-    // Ticks every second while preview is active — drives the "N s ago" label.
-    Timer {
-        id: sandboxAgeTimer
-        interval: 1000
-        repeat: true
-        running: false
-        property int tick: 0   // binding anchor: any expression that reads
-        onTriggered: tick++    // this will re-evaluate on every tick
-    }
-
-    // Advances replayCurrentStep once per interval during Timeline replay.
-    Timer {
-        id: replayTimer
-        interval: 700
-        repeat: true
-        running: root.replayActive
-        onTriggered: {
-            if (root.replayCurrentStep < agentTimelineListModel.count - 1) {
-                root.replayCurrentStep++
-            } else {
-                root.replayActive      = false
-                root.replayCurrentStep = -1
-            }
-        }
-    }
+    // ListModel for agent timeline (kept for phase-card lookups)
+    ListModel { id: agentTimelineListModel }
 
     // ── Overlays / dialogs ─────────────────────────────────────────────────
     // Execute-mode confirmation dialog
@@ -309,7 +232,6 @@ Item {
     }
 
     ListModel { id: histModel }
-    ListModel { id: agentTimelineListModel }
     ListModel { id: phaseModel }   // Phase-card tracker: {phase, status, summary, score}
 
     // ══════════════════════════════════════════════════════════════════════
@@ -502,7 +424,6 @@ Item {
                                     root.filePct = 0
                                     root.fileStage = "Preparing…"
                                     root.explainData = null
-                                    if (root.optSandbox) root.sandboxPanelVisible = true
                                     if (typeof Backend !== "undefined")
                                         Backend.startScanCenter(root.filePath,
                                             JSON.stringify({
@@ -588,7 +509,14 @@ Item {
                                 onToggled: {
                                     if (root.fileScanning) return
                                     root.optSandbox = checked
-                                    if (!checked) { root.optExec = false; root.optGuiAuto = false }
+                                    if (checked) {
+                                        // Sandbox always implies execution + visual agent
+                                        root.optExec = true
+                                        root.optGuiAuto = true
+                                    } else {
+                                        root.optExec = false
+                                        root.optGuiAuto = false
+                                    }
                                 }
                                 indicator: Rectangle {
                                     width: 16; height: 16
@@ -631,7 +559,7 @@ Item {
                                 implicitWidth: ckExecLabel.implicitWidth + 24
                                 implicitHeight: 28
                                 checked: root.optExec
-                                enabled: root.optSandbox
+                                enabled: root.optSandbox && !root.fileScanning
                                 opacity: (root.optSandbox && !root.fileScanning) ? 1.0 : 0.4
                                 onToggled: {
                                     if (root.fileScanning) return
@@ -639,7 +567,6 @@ Item {
                                         execConfirmDlg.open()
                                     } else {
                                         root.optExec = false
-                                        root.optGuiAuto = false
                                     }
                                 }
                                 indicator: Rectangle {
@@ -703,13 +630,13 @@ Item {
                             Item { Layout.fillWidth: true }
                         } // Row 2b
 
-                        // ── Row 2c: Visible GUI automation (only visible when optExec) ──
+                        // ── Row 2c: Visual Agent indicator (auto-enabled with sandbox) ──
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            Layout.preferredHeight: root.optExec ? 32 : 0
-                            visible: root.optExec
+                            Layout.preferredHeight: root.optSandbox ? 32 : 0
+                            visible: root.optSandbox
                             spacing: 24
                             clip: true
                             Behavior on Layout.preferredHeight { NumberAnimation { duration: 160 } }
@@ -719,9 +646,8 @@ Item {
                                 implicitWidth: ckGuiAutoLabel.implicitWidth + 24
                                 implicitHeight: 28
                                 checked: root.optGuiAuto
-                                enabled: root.optExec
-                                opacity: (root.optExec && !root.fileScanning) ? 1.0 : 0.4
-                                onToggled: { if (!root.fileScanning) root.optGuiAuto = checked }
+                                enabled: false  // always auto-set when sandbox is on
+                                opacity: root.optSandbox ? 0.7 : 0.4
                                 indicator: Rectangle {
                                     width: 16; height: 16
                                     anchors.left: parent.left
@@ -740,7 +666,7 @@ Item {
                                 contentItem: Text {
                                     id: ckGuiAutoLabel
                                     leftPadding: 24
-                                    text: "Visible GUI automation (Win10)"
+                                    text: "Visual Agent Detonation (Phase 4 — auto)"
                                     color: ThemeManager.foreground()
                                     font.pixelSize: (ThemeManager.fontSize_body() || 14)
                                     verticalAlignment: Text.AlignVCenter
@@ -879,594 +805,7 @@ Item {
                         }
                     }
 
-                    // ── Sandbox Live View: Preview + Timeline split panel ──
-                    // Auto-appears when sandbox is enabled and steps start streaming.
-                    // Persists after scan ends; user closes with ✕.
-                    Rectangle {
-                        id: sandboxSplitPanel
-                        Layout.fillWidth: true
-                        clip: true
-                        color: ThemeManager.panel()
-                        border.color: ThemeManager.border()
-                        border.width: 1
-
-                        property real _ph: (root.optSandbox && root.sandboxPanelVisible) ? 360 : 0
-                        Behavior on _ph { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                        implicitHeight: _ph
-                        visible: _ph > 1
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 0
-
-                            // ─ Header bar
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: 36
-                                color: ThemeManager.elevated()
-                                border.color: ThemeManager.border(); border.width: 1
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 12; anchors.rightMargin: 12
-                                    spacing: 8
-
-                                    Rectangle {
-                                        width: 8; height: 8; radius: 4
-                                        color: root.sandboxPreviewUrl !== ""
-                                               ? ThemeManager.success : ThemeManager.warning
-                                        SequentialAnimation on opacity {
-                                            loops: Animation.Infinite
-                                            running: root.fileScanning
-                                            NumberAnimation { to: 0.2; duration: 600 }
-                                            NumberAnimation { to: 1.0; duration: 600 }
-                                        }
-                                    }
-
-                                    Text {
-                                        text: "🖵  Sandbox Live Preview"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: (ThemeManager.fontSize_small() || 12)
-                                        font.weight: (Font.SemiBold || 600)
-                                    }
-
-                                    // Automation visible badges
-                                    Rectangle {
-                                        visible: root.fileReport !== null &&
-                                                 root.optExec &&
-                                                 (root.fileReport.sandbox || {}).automation_visible === true
-                                        implicitWidth: autoVisTxt.implicitWidth + 12
-                                        implicitHeight: 18; radius: 9
-                                        color: Qt.rgba(0.07, 0.75, 0.32, 0.18)
-                                        border.color: ThemeManager.success; border.width: 1
-                                        Text {
-                                            id: autoVisTxt; anchors.centerIn: parent
-                                            text: "Automation Visible ✅"
-                                            color: ThemeManager.success; font.pixelSize: 9
-                                            font.weight: Font.SemiBold
-                                        }
-                                    }
-                                    Rectangle {
-                                        visible: root.fileReport !== null &&
-                                                 root.optExec &&
-                                                 (root.fileReport.sandbox || {}).automation_visible !== true
-                                        implicitWidth: noVisTxt.implicitWidth + 12
-                                        implicitHeight: 18; radius: 9
-                                        color: Qt.rgba(0.97, 0.75, 0.10, 0.13)
-                                        border.color: ThemeManager.warning; border.width: 1
-                                        Text {
-                                            id: noVisTxt; anchors.centerIn: parent
-                                            text: "No visible automation ⚠"
-                                            color: ThemeManager.warning; font.pixelSize: 9
-                                            font.weight: Font.SemiBold
-                                        }
-                                    }
-
-                                    Rectangle { width: 1; height: 16; color: ThemeManager.border() }
-
-                                    Text {
-                                        text: "📡  Agent Timeline"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: (ThemeManager.fontSize_small() || 12)
-                                        font.weight: (Font.SemiBold || 600)
-                                    }
-
-                                    Text {
-                                        visible: agentTimelineListModel.count > 0
-                                        text: agentTimelineListModel.count + " step" +
-                                              (agentTimelineListModel.count !== 1 ? "s" : "")
-                                        color: ThemeManager.muted(); font.pixelSize: 11
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    Text {
-                                        visible: root.sandboxPreviewUrl !== ""
-                                        text: {
-                                            var _ignored = sandboxAgeTimer.tick
-                                            var dt = root.sandboxPreviewLastMs > 0
-                                                ? Math.round((Date.now() - root.sandboxPreviewLastMs) / 1000) : 0
-                                            return "Last updated: " + dt + "s ago"
-                                        }
-                                        color: ThemeManager.muted(); font.pixelSize: 10
-                                    }
-
-                                    // Open VM Window
-                                    Rectangle {
-                                        visible: root.fileScanning
-                                        implicitWidth: openVmTxt.implicitWidth + 14; implicitHeight: 24; radius: 5
-                                        color: openVmMa.containsMouse ? ThemeManager.accent : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Behavior on color { ColorAnimation { duration: 100 } }
-                                        Text {
-                                            id: openVmTxt; anchors.centerIn: parent
-                                            text: "↗  Open VM"
-                                            color: openVmMa.containsMouse ? "#ffffff" : ThemeManager.foreground()
-                                            font.pixelSize: 10
-                                        }
-                                        MouseArea {
-                                            id: openVmMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (typeof Backend !== "undefined" && Backend !== null)
-                                                    Backend.openVmWindowInScanCenter()
-                                            }
-                                        }
-                                    }
-
-                                    // Copy steps
-                                    Rectangle {
-                                        visible: agentTimelineListModel.count > 0
-                                        implicitWidth: cpTxt.implicitWidth + 14; implicitHeight: 24; radius: 5
-                                        color: cpMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Behavior on color { ColorAnimation { duration: 100 } }
-                                        Text {
-                                            id: cpTxt; anchors.centerIn: parent
-                                            text: "📋  Copy"; color: ThemeManager.foreground(); font.pixelSize: 10
-                                        }
-                                        MouseArea {
-                                            id: cpMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                var lines = []
-                                                for (var i = 0; i < agentTimelineListModel.count; i++) {
-                                                    var s = agentTimelineListModel.get(i)
-                                                    lines.push("[" + (s.ts||"") + "] [" + (s.stage||"") + "] " +
-                                                               (s.title||"") + (s.result ? " → " + s.result : ""))
-                                                }
-                                                if (typeof Backend !== "undefined")
-                                                    Backend.copyToClipboard(lines.join("\n"))
-                                            }
-                                        }
-                                    }
-
-                                    // Open run folder
-                                    Rectangle {
-                                        visible: root.fileReport !== null
-                                        implicitWidth: rfTxt.implicitWidth + 14; implicitHeight: 24; radius: 5
-                                        color: rfMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Behavior on color { ColorAnimation { duration: 100 } }
-                                        Text {
-                                            id: rfTxt; anchors.centerIn: parent
-                                            text: "📂  Run folder"; color: ThemeManager.foreground(); font.pixelSize: 10
-                                        }
-                                        MouseArea {
-                                            id: rfMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (typeof Backend !== "undefined")
-                                                    Backend.openScanCenterRunDir()
-                                            }
-                                        }
-                                    }
-
-                                    // ✕ Close
-                                    Rectangle {
-                                        implicitWidth: 24; implicitHeight: 24; radius: 5
-                                        color: closeMa.containsMouse ? Qt.rgba(1,0,0,0.2) : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Behavior on color { ColorAnimation { duration: 100 } }
-                                        Text { anchors.centerIn: parent; text: "✕"; color: ThemeManager.muted(); font.pixelSize: 11 }
-                                        MouseArea {
-                                            id: closeMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.sandboxPanelVisible = false
-                                        }
-                                    }
-                                }
-                            } // header bar
-
-                            // ─ LEFT = VM screenshot | RIGHT = Agent Timeline
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: 0
-
-                                Item {
-                                    Layout.preferredWidth: Math.round(parent.width * 0.45)
-                                    Layout.fillHeight: true
-
-                                    // Primary live feed: image provider (smooth, no disk I/O)
-                                    Image {
-                                        id: pvImgLive
-                                        anchors.fill: parent; anchors.margins: 8
-                                        fillMode: Image.PreserveAspectFit
-                                        cache: false; asynchronous: true
-                                        source: root._pvLive
-                                            ? "image://sandboxpreview/frame?t=" + root._pvFrame
-                                            : ""
-                                        visible: root._pvLive
-                                    }
-
-                                    // Fallback: file:/// URL (shown when provider stream is not active)
-                                    Image {
-                                        id: pvImg
-                                        anchors.fill: parent; anchors.margins: 8
-                                        fillMode: Image.PreserveAspectFit
-                                        cache: false; asynchronous: true
-                                        source: (!root._pvLive && root.sandboxPreviewUrl !== "")
-                                            ? root.sandboxPreviewUrl : ""
-                                        visible: !root._pvLive && root.sandboxPreviewUrl !== ""
-                                    }
-
-                                    // "LIVE" badge + age overlay
-                                    Rectangle {
-                                        anchors.left: parent.left; anchors.bottom: parent.bottom
-                                        anchors.leftMargin: 16; anchors.bottomMargin: 16
-                                        visible: root._pvLive || root.sandboxPreviewUrl !== ""
-                                        implicitWidth: ageRow.implicitWidth + 12; implicitHeight: 20; radius: 4
-                                        color: Qt.rgba(0, 0, 0, 0.62)
-                                        Row {
-                                            id: ageRow; anchors.centerIn: parent; spacing: 6
-                                            Rectangle {
-                                                width: 6; height: 6; radius: 3; y: 5
-                                                color: root._pvLive ? "#22c55e" : ThemeManager.muted()
-                                                SequentialAnimation on opacity {
-                                                    running: root._pvLive; loops: Animation.Infinite
-                                                    NumberAnimation { to: 0.35; duration: 600 }
-                                                    NumberAnimation { to: 1.0;  duration: 600 }
-                                                }
-                                            }
-                                            Text {
-                                                id: ageOvTxt
-                                                text: {
-                                                    var _ignored = sandboxAgeTimer.tick
-                                                    if (root._pvLive) return "LIVE"
-                                                    var dt = root.sandboxPreviewLastMs > 0
-                                                        ? Math.round((Date.now() - root.sandboxPreviewLastMs) / 1000) : 0
-                                                    return dt + "s ago"
-                                                }
-                                                color: "white"; font.pixelSize: 9; font.bold: root._pvLive
-                                            }
-                                        }
-                                    }
-
-                                    // Placeholder when no preview at all
-                                    Rectangle {
-                                        anchors.fill: parent; anchors.margins: 8
-                                        visible: !root._pvLive && root.sandboxPreviewUrl === ""
-                                        color: ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1; radius: 6
-                                        ColumnLayout {
-                                            anchors.centerIn: parent; spacing: 8
-                                            Text {
-                                                text: root.fileScanning ? "🖵" : "🔒"
-                                                font.pixelSize: 36; opacity: 0.3
-                                                Layout.alignment: Qt.AlignHCenter
-                                            }
-                                            Text {
-                                                text: root.fileScanning
-                                                      ? "Preview starting… (VM powering on)"
-                                                      : "Preview unavailable"
-                                                color: ThemeManager.muted(); font.pixelSize: 11
-                                                Layout.alignment: Qt.AlignHCenter
-                                            }
-                                        }
-                                    }
-                                } // left preview
-
-                                Rectangle { width: 1; Layout.fillHeight: true; color: ThemeManager.border() }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    spacing: 0
-
-                                    Item {
-                                        visible: agentTimelineListModel.count === 0
-                                        Layout.fillWidth: true; Layout.fillHeight: true
-                                        ColumnLayout {
-                                            anchors.centerIn: parent; spacing: 8
-                                            Text { text: "📡"; font.pixelSize: 32; opacity: 0.25; Layout.alignment: Qt.AlignHCenter }
-                                            Text {
-                                                text: root.fileScanning
-                                                      ? "Steps streaming…"
-                                                      : "Run a sandbox scan to see the agent timeline."
-                                                color: ThemeManager.muted(); font.pixelSize: 11
-                                                Layout.alignment: Qt.AlignHCenter
-                                            }
-                                        }
-                                    }
-
-                                    ListView {
-                                        id: splitTlList
-                                        visible: agentTimelineListModel.count > 0
-                                        Layout.fillWidth: true; Layout.fillHeight: true
-                                        model: agentTimelineListModel
-                                        clip: true; spacing: 2
-                                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                                        onCountChanged: {
-                                            if (root.fileScanning) splitTlList.positionViewAtEnd()
-                                        }
-
-                                        delegate: Rectangle {
-                                            width: splitTlList.width
-                                            implicitHeight: splTlRow.implicitHeight + 10
-                                            radius: 5
-                                            color: index % 2 === 0 ? "transparent" : ThemeManager.elevated()
-
-                                            RowLayout {
-                                                id: splTlRow
-                                                anchors.left: parent.left; anchors.right: parent.right
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                                spacing: 6
-
-                                                Rectangle {
-                                                    width: 8; height: 8; radius: 4
-                                                    Layout.alignment: Qt.AlignVCenter
-                                                    color: {
-                                                        var s = model.status || "ok"
-                                                        if (s === "ok")      return ThemeManager.success
-                                                        if (s === "running") return ThemeManager.warning
-                                                        if (s === "warn")    return "#f97316"
-                                                        if (s === "fail")    return ThemeManager.danger
-                                                        return ThemeManager.muted()
-                                                    }
-                                                    SequentialAnimation on opacity {
-                                                        loops: Animation.Infinite
-                                                        running: (model.status || "") === "running" && root.fileScanning
-                                                        NumberAnimation { to: 0.25; duration: 500 }
-                                                        NumberAnimation { to: 1.0;  duration: 500 }
-                                                    }
-                                                }
-
-                                                Text {
-                                                    text: model.ts || ""
-                                                    color: ThemeManager.muted()
-                                                    font.pixelSize: 9; font.family: "Consolas"
-                                                    Layout.preferredWidth: 50
-                                                }
-
-                                                Rectangle {
-                                                    implicitWidth: splStageTxt.implicitWidth + 10
-                                                    implicitHeight: 15; radius: 7
-                                                    color: ThemeManager.elevated()
-                                                    Text {
-                                                        id: splStageTxt; anchors.centerIn: parent
-                                                        text: (model.stage || "").toUpperCase()
-                                                        color: ThemeManager.accent
-                                                        font.pixelSize: 8; font.weight: (Font.Bold || 700)
-                                                    }
-                                                }
-
-                                                ColumnLayout {
-                                                    Layout.fillWidth: true; spacing: 0
-                                                    Text {
-                                                        text: model.title || ""
-                                                        color: ThemeManager.foreground()
-                                                        font.pixelSize: 11; font.weight: (Font.Medium || 500)
-                                                        elide: Text.ElideRight; Layout.fillWidth: true
-                                                    }
-                                                    Text {
-                                                        visible: (model.result || "") !== ""
-                                                        text: model.result || ""
-                                                        color: ThemeManager.muted()
-                                                        font.pixelSize: 9; font.family: "Consolas"
-                                                        elide: Text.ElideRight; Layout.fillWidth: true
-                                                    }
-                                                }
-                                            }
-                                        } // delegate
-                                    } // splitTlList
-                                } // right timeline
-                            } // content RowLayout
-                        } // inner ColumnLayout
-                    } // sandboxSplitPanel
-
-                    // ── Frames Playback Card (post-scan, when frames_paths is populated) ──
-                    Rectangle {
-                        id: framesPlaybackCard
-                        Layout.fillWidth: true
-                        property var frameFiles: (root.fileReport !== null) ? ((root.fileReport.sandbox || {}).frames_paths || []) : []
-                        property int frameIndex: 0
-
-                        onFrameFilesChanged: frameIndex = 0
-
-                        implicitHeight: frameFiles.length > 0 ? 200 : 0
-                        visible: frameFiles.length > 0
-                        clip: true
-                        color: ThemeManager.panel()
-                        border.color: ThemeManager.border(); border.width: 1
-                        Behavior on implicitHeight { NumberAnimation { duration: 200 } }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 0
-
-                            // header
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: 30
-                                color: ThemeManager.elevated()
-                                border.color: ThemeManager.border(); border.width: 1
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 12; anchors.rightMargin: 12
-                                    spacing: 8
-                                    Text {
-                                        text: "🎬  GUI Frames Replay"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: (ThemeManager.fontSize_small() || 12)
-                                        font.weight: (Font.SemiBold || 600)
-                                    }
-                                    Text {
-                                        text: framesPlaybackCard.frameFiles.length > 0
-                                              ? (framesPlaybackCard.frameIndex + 1) + " / " + framesPlaybackCard.frameFiles.length
-                                              : "No frames"
-                                        color: ThemeManager.muted(); font.pixelSize: 10
-                                    }
-                                    Item { Layout.fillWidth: true }
-                                    // Prev
-                                    Rectangle {
-                                        implicitWidth: 24; implicitHeight: 22; radius: 4
-                                        color: prevFrMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        opacity: framesPlaybackCard.frameIndex > 0 ? 1.0 : 0.3
-                                        Text { anchors.centerIn: parent; text: "‹"; color: ThemeManager.foreground(); font.pixelSize: 14 }
-                                        MouseArea {
-                                            id: prevFrMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: if (framesPlaybackCard.frameIndex > 0) framesPlaybackCard.frameIndex--
-                                        }
-                                    }
-                                    // Next
-                                    Rectangle {
-                                        implicitWidth: 24; implicitHeight: 22; radius: 4
-                                        color: nextFrMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        opacity: (framesPlaybackCard.frameFiles.length > 0 && framesPlaybackCard.frameIndex < framesPlaybackCard.frameFiles.length - 1) ? 1.0 : 0.3
-                                        Text { anchors.centerIn: parent; text: "›"; color: ThemeManager.foreground(); font.pixelSize: 14 }
-                                        MouseArea {
-                                            id: nextFrMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: if (framesPlaybackCard.frameIndex < framesPlaybackCard.frameFiles.length - 1) framesPlaybackCard.frameIndex++
-                                        }
-                                    }
-                                    // Latest
-                                    Rectangle {
-                                        implicitWidth: latFrTxt.implicitWidth + 12; implicitHeight: 22; radius: 4
-                                        color: latFrMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Text { id: latFrTxt; anchors.centerIn: parent; text: "Latest"; color: ThemeManager.foreground(); font.pixelSize: 10 }
-                                        MouseArea {
-                                            id: latFrMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: framesPlaybackCard.frameIndex = Math.max(0, framesPlaybackCard.frameFiles.length - 1)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Frame image area
-                            Item {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Image {
-                                    anchors.fill: parent; anchors.margins: 6
-                                    fillMode: Image.PreserveAspectFit
-                                    cache: false; asynchronous: true
-                                    source: framesPlaybackCard.frameFiles.length > 0
-                                            ? "file:///" + framesPlaybackCard.frameFiles[framesPlaybackCard.frameIndex].replace(/\\/g, "/")
-                                            : ""
-                                    visible: framesPlaybackCard.frameFiles.length > 0
-                                }
-                                Rectangle {
-                                    anchors.fill: parent; anchors.margins: 6
-                                    color: ThemeManager.surface(); radius: 4
-                                    border.color: ThemeManager.border(); border.width: 1
-                                    visible: framesPlaybackCard.frameFiles.length === 0
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "No frames available"
-                                        color: ThemeManager.muted(); font.pixelSize: 11
-                                    }
-                                }
-                            }
-                        }
-                    } // framesPlaybackCard
-
-                    // ── UAC Secure Desktop Warning Banner ──────────────────
-                    Rectangle {
-                        id: uacWarningBanner
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 8; Layout.rightMargin: 8
-                        property bool showBanner: (root.fileReport !== null) &&
-                                                  ((root.fileReport.sandbox || {}).uac_secure_desktop === 1)
-                        implicitHeight: showBanner ? uacBannerCol.implicitHeight + 20 : 0
-                        visible: showBanner
-                        clip: true
-                        color: Qt.rgba(0.97, 0.75, 0.10, 0.08)
-                        border.color: ThemeManager.warning; border.width: 1
-                        radius: 6
-                        Behavior on implicitHeight { NumberAnimation { duration: 180 } }
-
-                        ColumnLayout {
-                            id: uacBannerCol
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: 12
-                            spacing: 6
-
-                            RowLayout {
-                                spacing: 8
-                                Text { text: "⚠️"; font.pixelSize: 14 }
-                                Text {
-                                    text: "UAC Secure Desktop enabled — GUI automation cannot interact with UAC prompts"
-                                    color: ThemeManager.warning
-                                    font.pixelSize: (ThemeManager.fontSize_body() || 14)
-                                    font.weight: (Font.SemiBold || 600)
-                                    wrapMode: Text.WordWrap
-                                    Layout.fillWidth: true
-                                }
-                            }
-
-                            Text {
-                                text: "Inside the sandbox VM only, run this as Administrator to disable UAC secure desktop:"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: (ThemeManager.fontSize_small() || 12)
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: uacCmdTxt.implicitHeight + 10
-                                color: ThemeManager.surface()
-                                border.color: ThemeManager.border(); border.width: 1
-                                radius: 4
-                                RowLayout {
-                                    anchors.fill: parent; anchors.margins: 6; spacing: 8
-                                    Text {
-                                        id: uacCmdTxt
-                                        Layout.fillWidth: true
-                                        text: 'reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v PromptOnSecureDesktop /t REG_DWORD /d 0 /f'
-                                        color: ThemeManager.accent
-                                        font.family: "Consolas"
-                                        font.pixelSize: 10
-                                        wrapMode: Text.WrapAnywhere
-                                    }
-                                    Rectangle {
-                                        implicitWidth: uacCpTxt.implicitWidth + 10; implicitHeight: 20; radius: 4
-                                        color: uacCpMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface()
-                                        border.color: ThemeManager.border(); border.width: 1
-                                        Text { id: uacCpTxt; anchors.centerIn: parent; text: "Copy"; color: ThemeManager.foreground(); font.pixelSize: 9 }
-                                        MouseArea {
-                                            id: uacCpMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (typeof Backend !== "undefined")
-                                                    Backend.copyToClipboard(uacCmdTxt.text)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } // uacWarningBanner
+                    // (Sandbox preview + timeline + frames playback moved to Sandbox Lab theater tab)
 
                     // ── Verdict bar ───────────────────────────────────────
                     Rectangle {

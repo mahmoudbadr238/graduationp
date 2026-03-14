@@ -5216,14 +5216,15 @@ class BackendBridge(QObject):
         except Exception:
             raw = {}
 
+        _use_sandbox = bool(raw.get("use_sandbox", False))
         opts = ScanOptions(
-            use_sandbox=bool(raw.get("use_sandbox", False)),
-            allow_execution=bool(raw.get("allow_execution", False)),
+            use_sandbox=_use_sandbox,
+            allow_execution=True if _use_sandbox else bool(raw.get("allow_execution", False)),
             disable_network=bool(raw.get("disable_network", True)),
             run_clamav=bool(raw.get("run_clamav", True)),
             monitor_seconds=int(raw.get("monitor_seconds", 60)),
             strings_limit=int(raw.get("strings_limit", 200)),
-            visible_gui=bool(raw.get("use_visible_gui", False)),
+            visible_gui=True if _use_sandbox else bool(raw.get("use_visible_gui", False)),
         )
 
         self._scancenter_controller = ScanController()
@@ -5241,9 +5242,12 @@ class BackendBridge(QObject):
                     "phase": _ph, "status": "pending", "summary": "", "score": -1, "pct": 0
                 }))
 
+            _nav_switched_to_sandbox = False  # track whether we switched tabs
+
             def _on_agent_step(step: dict) -> None:
                 """Forward a pipeline step dict to the QML Agent Timeline
                 and emit structured phase updates for the phase-card UI."""
+                nonlocal _nav_switched_to_sandbox
                 self.agentStepAdded.emit(json.dumps(step))
                 # Map agent-step stages to phase-card updates
                 _stage = (step.get("stage") or "").lower()
@@ -5268,6 +5272,15 @@ class BackendBridge(QObject):
                         "score": -1,
                         "pct": 0,
                     }))
+
+                # ── Theater Mode: auto-navigate to Sandbox Lab when Phase 4 starts,
+                #    and back to File Scan when it finishes. ───────────────────────
+                if _stage == "sandbox" and _status_raw == "running" and not _nav_switched_to_sandbox:
+                    _nav_switched_to_sandbox = True
+                    self.navigateTo.emit("sandbox-lab")
+                elif _stage == "sandbox" and _status_raw != "running" and _nav_switched_to_sandbox:
+                    _nav_switched_to_sandbox = False
+                    self.navigateTo.emit("scan-tool")
 
             try:
                 # ── Start live preview stream when sandbox is requested ───────

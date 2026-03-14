@@ -7,6 +7,7 @@ NetworkScan 1.0 NetworkScan.qml
 NmapScanResultPage 1.0 NmapScanResultPage.qml
 ScanCenter 1.0 ScanCenter.qml
 DataLossPrevention 1.0 DataLossPrevention.qml
+FileFunction 1.0 FileFunction.qml
 SandboxLabPage 1.0 SandboxLabPage.qml
 SettingsPage 1.0 SettingsPage.qml
 SecurityAssistant 1.0 SecurityAssistant.qml

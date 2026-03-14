@@ -40,3 +40,5 @@ SidebarItem 1.0 SidebarItem.qml
 NotificationCenter 1.0 NotificationCenter.qml
 ReportPreviewDialog 1.0 ReportPreviewDialog.qml
 SandboxLiveView 1.0 SandboxLiveView.qml
+StyledTextField 1.0 StyledTextField.qml
+StyledComboBox 1.0 StyledComboBox.qml

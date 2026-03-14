@@ -462,6 +462,212 @@ class SandboxLabController(QObject):
         )
         self._start_task("Running URL detonation", self._task_run_url)
 
+    # ── Visual Agent (live interactive execution with HUD) ────────────────
+
+    @Slot(str, int)
+    def runVisualAgent(self, host_file_path: str, agent_timeout: int = 120) -> None:
+        """Launch the compiled visual-agent payload inside the guest VM.
+
+        The agent EXE is deployed alongside the sample into ``C:\\Sandbox``,
+        then executed **interactively** (Session 1) so the Tkinter HUD and
+        pyautogui mouse movements are visible on the guest desktop.
+
+        While the agent runs, the existing ``SandboxPreviewStream`` captures
+        screenshots every ~0.7 s and pushes them to the QML
+        ``image://sandboxpreview/`` provider — giving the user a real-time
+        live feed of the agent's activity.
+        """
+        host_path = Path(host_file_path)
+        if not host_file_path or not host_path.exists() or not host_path.is_file():
+            self._set_last_error(f"Selected file was not found: {host_file_path}")
+            return
+        self._prepare_run_context(
+            "file",
+            str(host_path),
+            agent_timeout,
+            disable_network=False,
+            kill_on_finish=True,
+            allow_run=True,
+            interactive_gui=True,
+        )
+        self._run_options["agent_timeout"] = agent_timeout
+        self._start_task("Visual Agent detonation", self._task_run_visual_agent)
+
+    def _task_run_visual_agent(self, worker: VmwareTaskWorker) -> dict[str, Any]:
+        """Background task: deploy agent + sample, execute interactively, stream."""
+        assert self._run_dir is not None
+        assert self._frames_dir is not None
+
+        sample_path = Path(self._run_target)
+        agent_timeout = int(self._run_options.get("agent_timeout", 120))
+        guest_dir = r"C:\Sandbox"
+        sample_name = sample_path.name
+        guest_sample = f"{guest_dir}\\{sample_name}"
+        guest_agent = f"{guest_dir}\\sentinel_agent.exe"
+
+        # Locate agent EXE on host (dist/sentinel_agent.exe)
+        _project_root = Path(__file__).parent.parent.parent
+        host_agent = _project_root / "dist" / "sentinel_agent.exe"
+
+        payload: dict[str, Any] = {
+            "success": False,
+            "operation": "visual_agent",
+            "run_dir": str(self._run_dir),
+            "mode": "visual_agent",
+            "target": self._run_target,
+            "error": "",
+            "proof_gif": "",
+            "proof_mp4": "",
+            "mp4_note": "",
+        }
+        error_text = ""
+
+        if not host_agent.exists():
+            error_text = (
+                f"Visual-agent EXE not found: {host_agent}. "
+                "Build it first: python build_agent.py"
+            )
+            worker.emit_step("Failed", error_text)
+            payload["error"] = error_text
+            return payload
+
+        try:
+            self._client.validate_host_requirements()
+            self._client.ensure_guest_credentials()
+
+            # 1. Revert to clean snapshot
+            worker.emit_progress(5)
+            worker.emit_step("Running", "Reverting VM to clean snapshot")
+            try:
+                self._client.stop(hard=True)
+            except VmrunError:
+                pass
+            self._client.revert_to_snapshot()
+            worker.emit_step("OK", "Snapshot restored")
+
+            # 2. Start VM (headless — user watches via live preview feed)
+            worker.emit_progress(15)
+            worker.emit_step("Running", "Starting VM")
+            self._client.start(nogui=True)
+            worker.set_vm_running(True)  # triggers _sync_capture_state → starts preview stream
+            worker.emit_step("OK", "VM started — live preview active")
+
+            # 3. Wait for VMware Tools
+            worker.emit_progress(25)
+            worker.emit_step("Running", "Waiting for VMware Tools…")
+            self._client.wait_for_tools(
+                timeout=180, poll_interval=3, cancel_event=self._cancel_event,
+            )
+            worker.emit_step("OK", "VMware Tools is running — guest ready")
+
+            # 4. Create guest sandbox directory
+            worker.emit_progress(30)
+            worker.emit_step("Running", f"Creating {guest_dir} in guest")
+            self._client.run_program_in_guest(
+                _GUEST_POWERSHELL,
+                ["-ExecutionPolicy", "Bypass", "-Command",
+                 f"New-Item -ItemType Directory -Force -Path '{guest_dir}' | Out-Null"],
+                wait=True, timeout=60,
+            )
+            worker.emit_step("OK", "Guest sandbox directory ready")
+
+            # 5. Copy sample to guest
+            worker.emit_progress(40)
+            worker.emit_step("Running", f"Copying {sample_name} to guest")
+            self._client.copy_file_from_host_to_guest(
+                str(sample_path), guest_sample, timeout=120,
+            )
+            worker.emit_step("OK", f"Sample deployed: {guest_sample}")
+
+            # 6. Copy visual-agent EXE to guest
+            worker.emit_progress(50)
+            worker.emit_step("Running", "Copying sentinel_agent.exe to guest")
+            self._client.copy_file_from_host_to_guest(
+                str(host_agent), guest_agent, timeout=120,
+            )
+            worker.emit_step("OK", f"Agent deployed: {guest_agent}")
+
+            # 7. Launch agent interactively (Session 1 — visible on desktop)
+            #    vmrun flags: -activeWindow -interactive -noWait
+            worker.emit_progress(55)
+            worker.emit_step("Running", "Launching visual agent on guest desktop")
+            self._client.run_program_in_guest(
+                guest_agent,
+                [guest_sample, "--timeout", str(agent_timeout)],
+                wait=False,          # don't block host
+                interactive=True,    # -activeWindow -interactive → Session 1
+                timeout=30,
+            )
+            self._set_automation_visible(True)
+            worker.emit_step("OK", "Visual agent launched — live feed streaming")
+
+            # 8. Wait while agent runs; preview stream captures screenshots
+            #    continuously via _sync_capture_state → SandboxPreviewStream
+            worker.emit_progress(60)
+            total_wait = agent_timeout + 15
+            waited = 0
+            poll_interval = 3
+            while waited < total_wait:
+                if self._cancel_event.is_set():
+                    error_text = "Cancelled by user during agent execution"
+                    worker.emit_step("Failed", error_text)
+                    break
+                remaining = total_wait - waited
+                worker.emit_step(
+                    "Running",
+                    f"Agent active — {remaining}s remaining  (live feed streaming)",
+                )
+                pct = 60 + int(35 * (waited / total_wait))
+                worker.emit_progress(min(pct, 95))
+                time.sleep(poll_interval)
+                waited += poll_interval
+
+            self._set_automation_visible(False)
+            worker.emit_step("OK", "Agent analysis window complete")
+            worker.emit_progress(96)
+            payload["success"] = True
+
+        except VmrunError as exc:
+            error_text = str(exc)
+            worker.emit_step("Failed", error_text)
+        except Exception as exc:
+            error_text = str(exc)
+            worker.emit_step("Failed", f"Unexpected: {error_text}")
+        finally:
+            self._abort_capture.set()
+            worker.set_vm_running(False)  # stops preview stream
+            self._set_automation_visible(False)
+            worker.emit_step("Running", "Resetting VM to clean snapshot")
+            try:
+                try:
+                    self._client.stop(hard=True)
+                except VmrunError:
+                    pass
+                self._client.revert_to_snapshot()
+                worker.emit_step("OK", "Cleanup snapshot restore completed")
+            except Exception as cleanup_exc:
+                cleanup_msg = f"Cleanup failed: {cleanup_exc}"
+                error_text = f"{error_text} | {cleanup_msg}" if error_text else cleanup_msg
+                worker.emit_step("Failed", cleanup_msg)
+
+        time.sleep(0.8)
+
+        # Export captured frames to GIF/MP4 for replay
+        if self._config.capture_enabled and self._frames_dir is not None:
+            export_result = self._export_media(self._frames_dir, self._run_dir, worker)
+        else:
+            export_result = {
+                "proof_gif": "", "proof_mp4": "",
+                "frames_saved": False, "media_exported": False,
+                "mp4_note": "Capture disabled.",
+            }
+        payload.update(export_result)
+        payload["error"] = error_text
+        worker.emit_progress(100)
+        if not error_text:
+            worker.emit_step("OK", "Visual Agent run completed ✅")
+        return payload
+
     @Slot()
     def openLastRunFolder(self) -> None:
         if not self._last_run_folder:

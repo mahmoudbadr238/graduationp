@@ -74,6 +74,7 @@ class DesktopSecurityApplication:
         self.settings_service = None
         self.notification_service = None
         self.sandbox_lab = None
+        self.file_function_service = None
         self._setup_backend()
 
     def _setup_paths(self):
@@ -222,6 +223,19 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] Sandbox Lab controller failed: {e}")
                 self.sandbox_lab = None
                 self.engine.rootContext().setContextProperty("SandboxLab", None)
+
+            # IMMEDIATE: File Function Service (shred + recovery)
+            try:
+                from .filefunction.backend_bridge import FileFunctionBridge
+
+                self.file_function_service = FileFunctionBridge()
+                self.engine.rootContext().setContextProperty(
+                    "backend", self.file_function_service
+                )
+                print("[OK] File Function service registered")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] File Function service failed: {e}")
+                self.file_function_service = None
 
             # IMMEDIATE: Notification Service (cross-platform)
             try:

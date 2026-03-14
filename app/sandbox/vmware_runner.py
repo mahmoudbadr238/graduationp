@@ -458,6 +458,182 @@ class VMwareRunner:
             else:
                 self._fail(f"Stop VM warning (continuing): {exc}")
 
+    # ── Visual-agent execution ───────────────────────────────────────────────
+
+    def execute_with_visual_agent(
+        self,
+        host_malware_path: str | Path,
+        *,
+        host_agent_path: str | Path | None = None,
+        guest_sandbox_dir: str = r"C:\Sandbox",
+        agent_timeout: int = 120,
+        cancel_event: threading.Event | None = None,
+    ) -> dict:
+        """Deploy the visual-agent payload + sample into the guest and execute.
+
+        This copies BOTH the compiled agent EXE and the target sample into the
+        guest VM, then launches the agent **interactively** so it appears on the
+        guest desktop (Session 1) — not hidden in Session 0.
+
+        vmrun flags used:
+            -activeWindow   → attach the process to the foreground window station
+            -interactive    → run in the interactive desktop session (Session 1)
+
+        Args:
+            host_malware_path:  Absolute or relative path to the sample on the host.
+            host_agent_path:    Path to the compiled agent EXE on the host.
+                                Defaults to ``<project_root>/dist/sentinel_agent.exe``.
+            guest_sandbox_dir:  Working directory inside the guest VM.
+            agent_timeout:      Seconds to let the agent run before the host
+                                considers it "done" (the agent has its own internal
+                                timeout as well).
+            cancel_event:       Optional threading.Event for cancellation.
+
+        Returns:
+            dict with keys: executed, errors, screenshot_path, duration_sec
+        """
+        _cancel = cancel_event or threading.Event()
+        t_start = time.monotonic()
+
+        result: dict = {
+            "executed": False,
+            "errors": [],
+            "screenshot_path": "",
+            "duration_sec": 0.0,
+        }
+
+        # ── Resolve host paths ───────────────────────────────────────────────
+        malware_path = Path(host_malware_path)
+        if not malware_path.exists():
+            result["errors"].append(f"Sample not found on host: {malware_path}")
+            return result
+
+        if host_agent_path is None:
+            # Default: dist/sentinel_agent.exe relative to project root
+            host_agent_path = (
+                Path(__file__).parent.parent.parent / "dist" / "sentinel_agent.exe"
+            )
+        agent_path = Path(host_agent_path)
+        if not agent_path.exists():
+            result["errors"].append(
+                f"Visual-agent EXE not found: {agent_path}. "
+                "Build it first: python build_agent.py"
+            )
+            return result
+
+        sample_name = malware_path.name
+        guest_sample = guest_sandbox_dir.rstrip("\\") + "\\" + sample_name
+        guest_agent = guest_sandbox_dir.rstrip("\\") + "\\sentinel_agent.exe"
+
+        try:
+            # 1. Revert to clean snapshot
+            if _cancel.is_set():
+                result["errors"].append("Cancelled before start")
+                return result
+            self.revert_snapshot()
+
+            # 2. Start VM headless (preview stream captures the frame buffer)
+            if _cancel.is_set():
+                return result
+            self._running("Starting VM (headless — preview via frame capture)")
+            try:
+                self._client.start(nogui=True, timeout=180)
+            except VmrunError as exc:
+                if "already" not in str(exc).lower():
+                    raise
+            self._ok("VM started (headless)")
+
+            # 3. Wait for guest OS + VMware Tools
+            if _cancel.is_set():
+                self.stop_vm()
+                return result
+            self.ensure_guest_ready()
+
+            # 4. Create guest sandbox directory
+            if _cancel.is_set():
+                self.stop_vm()
+                return result
+            self._running(f"Creating guest directory: {guest_sandbox_dir}")
+            self._client.run_program_in_guest(
+                _PS,
+                [
+                    "-ExecutionPolicy", "Bypass", "-Command",
+                    f"New-Item -ItemType Directory -Force -Path '{guest_sandbox_dir}' | Out-Null",
+                ],
+                wait=True,
+                timeout=60,
+            )
+            self._ok("Guest sandbox directory ready")
+
+            # 5. Copy malware sample to guest
+            if _cancel.is_set():
+                self.stop_vm()
+                return result
+            self.copy_to_guest(str(malware_path), guest_sample, timeout=120)
+
+            # 6. Copy visual-agent EXE to guest
+            if _cancel.is_set():
+                self.stop_vm()
+                return result
+            self.copy_to_guest(str(agent_path), guest_agent, timeout=120)
+
+            # 7. Execute the agent INTERACTIVELY on the guest desktop
+            #    vmrun flags: -activeWindow -interactive → visible in Session 1
+            if _cancel.is_set():
+                self.stop_vm()
+                return result
+            self._running(f"Launching visual agent → {sample_name}")
+            self._client.run_program_in_guest(
+                guest_agent,
+                [guest_sample, "--timeout", str(agent_timeout)],
+                wait=False,          # don't block the host
+                interactive=True,    # -activeWindow -interactive → Session 1
+                timeout=30,
+            )
+            self._ok("Visual agent launched on guest desktop (interactive)")
+            result["executed"] = True
+
+            # 8. Wait for the agent's analysis window to complete
+            self._running(
+                f"Agent running on guest desktop ({agent_timeout}s window)"
+            )
+            waited = 0
+            poll = 5
+            while waited < agent_timeout + 30:
+                if _cancel.is_set():
+                    result["errors"].append("Cancelled during agent execution")
+                    break
+                time.sleep(poll)
+                waited += poll
+
+            # 9. Capture a final screenshot
+            try:
+                frames_dir = Path(
+                    str(self._cfg.host_frames_dir) or "data/artifacts"
+                )
+                frames_dir.mkdir(parents=True, exist_ok=True)
+                scrn_file = str(
+                    frames_dir / f"agent_{int(time.time())}.png"
+                )
+                self._client.capture_screen(scrn_file, timeout=30)
+                result["screenshot_path"] = scrn_file
+                self._ok("Final screenshot captured")
+            except Exception as exc:
+                self._running(f"Screenshot unavailable: {exc}")
+
+            # 10. Stop VM
+            self.stop_vm()
+
+        except VmrunError as exc:
+            logger.error("execute_with_visual_agent VmrunError: %s", exc)
+            result["errors"].append(f"VMware error: {exc}")
+        except Exception as exc:
+            logger.exception("execute_with_visual_agent error: %s", exc)
+            result["errors"].append(f"Unexpected error: {exc}")
+
+        result["duration_sec"] = round(time.monotonic() - t_start, 1)
+        return result
+
     # ── Automated file analysis pipeline ─────────────────────────────────────
 
     def run_file(
