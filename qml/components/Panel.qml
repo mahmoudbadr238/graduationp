@@ -66,7 +66,7 @@ Item {
             text: panel.title
             color: Theme.text
             font.pixelSize: 13
-            font.weight: Font.SemiBold
+            font.weight: (Font.SemiBold || 600)
             Layout.fillWidth: true
             elide: Text.ElideRight
         }
