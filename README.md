@@ -6,7 +6,7 @@
 
 <br>
 
-<img src="https://img.shields.io/badge/version-1.0.0--beta-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Version">
+<img src="https://img.shields.io/badge/version-1.0.0-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Version">
 <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
 <img src="https://img.shields.io/badge/Qt-6.x-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt">
 <img src="https://img.shields.io/badge/AI-Groq%20%7C%20Claude%20%7C%20OpenAI-FF6F00?style=for-the-badge&logo=openai&logoColor=white" alt="AI">
@@ -52,13 +52,17 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 **AI-Powered Event Analysis** | Claude/OpenAI translates Windows events into detailed, actionable explanations |
+| 🤖 **AI-Powered Event Analysis** | Groq/Claude/OpenAI translates Windows events into detailed, actionable explanations |
 | 📊 **Real-Time Monitoring** | Live CPU, Memory, Disk, GPU, and Network metrics with beautiful visualizations |
 | 🔍 **Smart Event Viewer** | Color-coded security events with severity ratings and AI recommendations |
-| 🛡️ **Intelligent Scanning** | AI-enhanced file and URL analysis with malware detection |
+| 🛡️ **Intelligent Scanning** | AI-enhanced file and URL analysis with VirusTotal integration |
 | 🌐 **Network Scanner** | 8 specialized Nmap scan types with streaming output (optional) |
-| 🎨 **Modern UI** | Dark/Light/System themes with smooth 300ms transitions |
-| 💬 **Security Chatbot** | SOC analyst chatbot with access to your system data |
+| 🗑️ **Secure File Shredder** | Multi-pass overwrite with SSD-aware secure deletion |
+| 🔓 **File Recovery** | Signature-based file carving with 53+ supported formats |
+| 🖥️ **Sandbox Lab** | VMware Workstation sandbox detonation with live preview |
+| 📈 **GPU Monitor** | NVIDIA & AMD GPU telemetry with real-time charts |
+| 💬 **Security AI Assistant** | SOC analyst chatbot with access to your live system data |
+| 🎨 **Modern UI** | Dark/Light/System themes with smooth transitions |
 
 ---
 
@@ -186,7 +190,7 @@ python main.py
 
 ### 🤖 AI-Powered Event Analysis (Core Feature)
 
-Sentinel's standout feature is its **local AI engine** that transforms complex Windows events into human-readable explanations:
+Sentinel's standout feature is its **cloud AI integration** (Groq, Claude, or OpenAI) that transforms complex Windows events into human-readable explanations:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -222,10 +226,10 @@ Sentinel's standout feature is its **local AI engine** that transforms complex W
 ```
 
 **Key Benefits:**
-- 🔒 **100% Local Processing** — No data sent to external servers
-- ⚡ **Instant Analysis** — No API latency or rate limits
-- 📚 **Knowledge Base** — Pre-built explanations for 50+ common events
+- ⚡ **Fast Cloud AI** — Groq free tier for instant responses, Claude/OpenAI as alternatives
+- 📚 **Offline Knowledge Base** — Built-in explanations for 500+ common events (no API key needed)
 - 🎯 **Severity-Aware** — Recommendations tailored to event criticality
+- 🔒 **Privacy-Conscious** — Only event metadata sent for analysis, never personal data
 
 <br>
 
@@ -295,6 +299,62 @@ Get a comprehensive view of your system:
 
 <br>
 
+### 🗑️ Secure File Shredder
+
+Permanently destroy sensitive files beyond recovery:
+
+- **Multi-pass overwrite** — 1, 3, 7, or 35 (Gutmann) passes
+- **SSD-aware** — Disclaimer about wear-leveling limitations
+- **Two-step confirmation** — Checkbox + type "DELETE" to proceed
+- **Real-time progress** — Per-file progress with cancellation support
+- **Audit logging** — Shred operations logged to `%APPDATA%/Sentinel/logs/shredder/`
+
+<br>
+
+### 🔓 File Recovery / Carving
+
+Recover deleted files using signature-based carving:
+
+- **53+ file signatures** — Images, documents, archives, media, databases
+- **Header scanning** — Finds files by magic bytes in raw disk data
+- **Batch recovery** — Recover multiple files simultaneously
+
+<br>
+
+### 🖥️ Sandbox Lab
+
+Detonate suspicious files in an isolated VMware environment:
+
+- **VMware Workstation integration** — Automated snapshot/restore workflow
+- **Live preview** — Watch execution in real-time through the app
+- **Behavioral analysis** — Track file system, registry, and network activity
+- **Safe rollback** — VM restored to clean snapshot after every detonation
+
+> 📝 **Requires:** VMware Workstation Pro installed and configured
+
+<br>
+
+### 📈 GPU Monitor
+
+Real-time GPU telemetry with interactive charts:
+
+- **NVIDIA** — Utilization, VRAM, temperature, power, clock speeds (via pynvml)
+- **AMD** — Basic monitoring via pyadl (Windows)
+- **Live charts** — Animated time-series graphs with 60 FPS rendering
+
+<br>
+
+### 💬 Security AI Assistant
+
+An AI-powered SOC analyst chatbot:
+
+- **System-aware** — Has access to your live CPU, RAM, disk, and network data
+- **Groq-powered** — Fast responses via Groq free tier
+- **Security focused** — Trained to answer security and operational questions
+- **Context-rich** — References your specific system configuration in answers
+
+<br>
+
 ## ⚙️ Configuration
 
 ### Environment Setup
@@ -356,9 +416,9 @@ For full Security event log access:
 |-------|------------|---------|
 | **Frontend** | PySide6 + QML | Modern declarative UI with animations |
 | **Backend** | Python 3.10+ | Business logic and system integration |
-| **AI Engine** | Local LLM | Event analysis without cloud dependency |
+| **AI Engine** | Groq / Claude / OpenAI | Cloud AI for event analysis and security chatbot |
 | **Database** | SQLite | Local persistence for scans and settings |
-| **Monitoring** | psutil | Cross-platform system metrics |
+| **Monitoring** | psutil + pynvml | System and GPU metrics |
 | **Events** | win32evtlog | Windows Event Log integration |
 
 ### Design Principles
@@ -367,7 +427,7 @@ For full Security event log access:
 - 💉 **Dependency Injection** — Testable, modular components
 - 🎨 **Singleton Theme System** — Consistent styling across all components
 - ⚡ **Async Processing** — Non-blocking UI with background workers
-- 🔒 **Privacy First** — All processing happens locally
+- 🔒 **Privacy First** — Minimal data sent to AI providers, full offline mode available
 
 ### Project Structure
 
@@ -375,10 +435,13 @@ For full Security event log access:
 sentinel/
 ├── 📁 app/                    # Python Backend
 │   ├── 🤖 ai/                 # AI engine and event analysis
-│   │   ├── ai_worker.py       # Background AI processing
-│   │   ├── event_explainer.py # Event explanation generation
-│   │   ├── local_llm_engine.py# Local LLM integration
-│   │   └── event_id_knowledge.py # Pre-built event knowledge base
+│   │   ├── groq_smart_assistant.py # Groq AI chatbot integration
+│   │   ├── event_explainer_v5.py   # Event explanation generator
+│   │   ├── event_id_knowledge.py   # Built-in knowledge base (500+ events)
+│   │   ├── event_rules_engine.py   # Offline rule-based explainer
+│   │   ├── security_chatbot_v4.py  # Security AI assistant backend
+│   │   ├── url_explainer.py        # URL threat analysis
+│   │   └── report_explainer.py     # Scan report AI interpreter
 │   ├── 🔧 core/               # Domain logic
 │   │   ├── container.py       # Dependency injection container
 │   │   ├── interfaces.py      # Abstract interfaces
@@ -387,25 +450,41 @@ sentinel/
 │   │   ├── sqlite_repo.py     # Database operations
 │   │   ├── events_windows.py  # Windows Event Log reader
 │   │   └── nmap_cli.py        # Nmap integration
-│   ├── 🖥️ ui/                 # QML ↔ Python Bridge
-│   │   ├── backend_bridge.py  # Main bridge for QML
+│   ├── 🖥️ ui/                 # QML ↔ Python Bridges
+│   │   ├── backend_bridge.py  # Main bridge (events, scans, monitoring)
 │   │   └── settings_service.py# Settings management
+│   ├── 🗂️ filefunction/       # File Shredder & Recovery
+│   │   └── backend_bridge.py  # Shredder worker + Carver (53 signatures)
+│   ├── 🧪 utils/              # Utilities
+│   │   └── secure_delete.py   # Multi-pass secure deletion engine
+│   ├── 🏖️ sandbox/            # Sandbox orchestration
+│   ├── 📈 gpu/                # GPU monitoring (NVIDIA + AMD)
 │   └── 🧪 tests/              # Unit tests
 │
 ├── 📁 qml/                    # Qt Quick Frontend
-│   ├── main.qml               # Application root
-│   ├── 📄 pages/              # Application pages
+│   ├── main.qml               # Application root with sidebar navigation
+│   ├── 📄 pages/              # 14 application pages
+│   │   ├── HomePage.qml       # Dashboard with live metrics
 │   │   ├── EventViewer.qml    # AI-powered event viewer
-│   │   ├── SystemSnapshot.qml # System information
-│   │   └── ...                # Other pages
-│   ├── 🧩 components/         # Reusable UI components
-│   │   ├── Theme.qml          # Singleton theme system
+│   │   ├── SystemSnapshot.qml # Hardware/network/OS inventory
+│   │   ├── ScanCenter.qml     # File & URL scanning with VirusTotal
+│   │   ├── NetworkScan.qml    # Nmap 8-type network scanner
+│   │   ├── FileFunction.qml   # Secure Shredder + File Recovery
+│   │   ├── SandboxLabPage.qml # VMware sandbox detonation
+│   │   ├── SecurityAssistant.qml # AI chatbot (Groq-powered)
+│   │   ├── GPUMonitor.qml     # GPU telemetry & charts
+│   │   ├── DataLossPrevention.qml # DLP rules dashboard
+│   │   └── SettingsPage.qml   # Theme, API keys, preferences
+│   ├── 🧩 components/         # 48 reusable QML components
 │   │   ├── Card.qml           # Hover-enabled containers
-│   │   └── ...                # Other components
-│   └── 🎨 theme/              # Theme definitions
+│   │   ├── Panel.qml          # Section containers
+│   │   ├── StatCard.qml       # Metric display cards
+│   │   └── ...                # More components
+│   └── 🎨 theme/              # Theme system (Dark/Light/System)
 │
 ├── 📁 docs/                   # Documentation
 ├── 📁 scripts/                # Helper scripts
+├── 📁 tools/                  # Standalone tools (sandbox agent, URL detonator)
 ├── 📄 main.py                 # Application entry point
 ├── 📄 requirements.txt        # Python dependencies
 └── 📄 README.md               # This file
@@ -458,7 +537,7 @@ Sentinel is designed with privacy as a core principle:
 |--------|----------------|
 | 🔒 **Data Storage** | All data stored locally in `~/.sentinel/sentinel.db` |
 | 🚫 **No Telemetry** | Zero usage statistics or analytics collected |
-| 🤖 **Local AI** | All AI processing happens on your machine |
+| 🤖 **Cloud AI** | Event metadata sent to Groq/Claude/OpenAI; offline mode available without API key |
 | 🌐 **Optional APIs** | Nmap network scanning is opt-in only |
 
 📄 See [SECURITY.md](SECURITY.md) and [Privacy Policy](docs/PRIVACY.md) for details.
@@ -480,31 +559,38 @@ Sentinel is designed with privacy as a core principle:
 
 ## 🗺️ Roadmap
 
-### ✅ v1.0.0-beta (Current)
+### ✅ v1.0.0 (Current)
 
 - [x] Real-time system monitoring (CPU, RAM, GPU, Disk, Network)
-- [x] **AI-powered event explanations with 5-section format**
+- [x] AI-powered event explanations (Groq / Claude / OpenAI)
+- [x] Offline knowledge base for 500+ Windows Event IDs
 - [x] Windows Event Viewer with severity color-coding
-- [x] Scan history with CSV export
+- [x] Scan Center with VirusTotal API integration
+- [x] 8-type Nmap network scanner with streaming output
+- [x] Secure file shredder (multi-pass, SSD-aware)
+- [x] File recovery / carving (53+ signatures)
+- [x] VMware Sandbox Lab with live preview
+- [x] GPU monitoring (NVIDIA + AMD)
+- [x] Security AI Assistant chatbot (Groq-powered)
+- [x] Data Loss Prevention dashboard
 - [x] Theme support (Dark/Light/System) with persistence
-- [x] Nmap integration with 8 specialized scan types
-- [x] Streaming output for network scans
+- [x] Scan history with SQLite + CSV export
 - [x] Settings persistence across restarts
 
 ### 🚧 v1.1.0 (Planned)
 
-- [ ] Enhanced local file scanning
-- [ ] Background threading for all scans
 - [ ] First-run setup wizard
 - [ ] Historical metrics charts
+- [ ] Enhanced DLP with live file monitoring
 - [ ] Automated test suite expansion
+- [ ] Multi-language support (i18n)
 
 ### 🔮 v2.0.0 (Future)
 
-- [ ] Multi-language support (i18n)
 - [ ] Plugin system for custom scanners
-- [ ] Enhanced AI threat detection
 - [ ] Cloud sync (optional, encrypted)
+- [ ] Threat intelligence feed integration
+- [ ] Automated incident response playbooks
 
 <br>
 
@@ -542,7 +628,9 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 | [PySide6](https://doc.qt.io/qtforpython/) | Python bindings for Qt |
 | [psutil](https://github.com/giampaolo/psutil) | System monitoring |
 | [Nmap](https://nmap.org/) | Network scanning |
-| [Anthropic Claude](https://www.anthropic.com/) | AI-powered explanations |
+| [Groq](https://groq.com/) | Free-tier cloud AI inference (default) |
+| [Anthropic Claude](https://www.anthropic.com/) | AI-powered explanations (alternative) |
+| [OpenAI](https://openai.com/) | AI-powered explanations (fallback) |
 
 <br>
 
