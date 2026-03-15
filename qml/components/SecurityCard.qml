@@ -13,9 +13,9 @@ Rectangle {
     property bool isWarning: false  // Yellow warning state
     property bool isNeutral: false  // Gray/neutral state for N/A items
 
-    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+    color: ThemeManager.panel()
     radius: 12
-    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+    border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 180
     implicitHeight: 110
@@ -23,7 +23,7 @@ Rectangle {
     // Status color logic: good (green), warning (yellow/amber), bad (red), neutral (gray)
     readonly property color statusColor: {
         if (card.isNeutral) {
-            return ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            return ThemeManager.muted()
         } else if (card.isGood) {
             return ThemeManager.success
         } else if (card.isWarning) {
@@ -40,7 +40,7 @@ Rectangle {
 
         Text {
             text: card.title
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 11
             font.weight: Font.Medium
             Layout.fillWidth: true
@@ -60,7 +60,7 @@ Rectangle {
         
         Text {
             text: card.subtitle
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 10
             visible: card.subtitle.length > 0
             Layout.fillWidth: true

@@ -11,9 +11,9 @@ Rectangle {
     property string subtitle: ""
     property color accentColor: ThemeManager.accent
 
-    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+    color: ThemeManager.panel()
     radius: 12
-    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+    border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 200
     implicitHeight: 100
@@ -25,7 +25,7 @@ Rectangle {
 
         Text {
             text: card.title
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 11
             font.weight: Font.Medium
         }
@@ -40,7 +40,7 @@ Rectangle {
         Text {
             visible: card.subtitle !== ""
             text: card.subtitle
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 10
             wrapMode: Text.Wrap
         }

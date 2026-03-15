@@ -105,7 +105,7 @@ Item {
     
     Rectangle {
         anchors.fill: parent
-        color: ThemeManager.isDark() ? ThemeManager.darkBg : ThemeManager.lightBg
+        color: ThemeManager.background()
         
         ColumnLayout {
             anchors.fill: parent
@@ -115,7 +115,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 90
-                color: ThemeManager.isDark() ? ThemeManager.darkBg : ThemeManager.lightBg
+                color: ThemeManager.background()
                 
                 RowLayout {
                     anchors.fill: parent
@@ -129,14 +129,14 @@ Item {
                         
                         Text {
                             text: "Welcome to Sentinel"
-                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                            color: ThemeManager.foreground()
                             font.pixelSize: 28
                             font.bold: true
                         }
                         
                         Text {
                             text: "Your Endpoint Security Suite - Protecting what matters most"
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 14
                         }
                     }
@@ -165,7 +165,7 @@ Item {
                         
                         Text {
                             text: Qt.formatDate(new Date(), "dddd, MMMM d, yyyy")
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 12
                             horizontalAlignment: Text.AlignRight
                         }
@@ -202,8 +202,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 520
                             radius: 16
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
                             clip: true
                             
                             ColumnLayout {
@@ -214,7 +214,7 @@ Item {
                                 // Title
                                 Text {
                                     text: "Security Facts You Should Know"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                     Layout.alignment: Qt.AlignHCenter
@@ -269,7 +269,7 @@ Item {
                                                 
                                                 Text {
                                                     text: modelData
-                                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                    color: ThemeManager.foreground()
                                                     font.pixelSize: 13
                                                     Layout.fillWidth: true
                                                     wrapMode: Text.WordWrap
@@ -361,8 +361,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             radius: 16
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
                             
                             ColumnLayout {
                                 anchors.fill: parent
@@ -371,7 +371,7 @@ Item {
                                 
                                 Text {
                                     text: "Quick Actions"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -425,8 +425,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 160
                             radius: 16
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
                             
                             ColumnLayout {
                                 anchors.fill: parent
@@ -438,7 +438,7 @@ Item {
                                     
                                     Text {
                                         text: "System Health"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        color: ThemeManager.foreground()
                                         font.pixelSize: 16
                                         font.bold: true
                                     }
@@ -511,8 +511,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             radius: 16
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
                             
                             ColumnLayout {
                                 anchors.fill: parent
@@ -521,7 +521,7 @@ Item {
                                 
                                 Text {
                                     text: "Security Status"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -575,8 +575,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 130
                             radius: 16
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
                             
                             ColumnLayout {
                                 anchors.fill: parent
@@ -588,7 +588,7 @@ Item {
                                     
                                     Text {
                                         text: "Network Activity"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        color: ThemeManager.foreground()
                                         font.pixelSize: 16
                                         font.bold: true
                                     }
@@ -619,7 +619,7 @@ Item {
                                         spacing: 4
                                         Text {
                                             text: "↑ Upload"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 11
                                         }
                                         Text {
@@ -634,7 +634,7 @@ Item {
                                         spacing: 4
                                         Text {
                                             text: "↓ Download"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 11
                                         }
                                         Text {
@@ -729,8 +729,8 @@ Item {
         id: actionBtn
         height: 46
         radius: 10
-        color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
-        border.color: mouseArea.containsMouse ? ThemeManager.accent : (ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder)
+        color: ThemeManager.elevated()
+        border.color: mouseArea.containsMouse ? ThemeManager.accent : (ThemeManager.border())
         
         property string icon: ""
         property string label: ""
@@ -754,7 +754,7 @@ Item {
             
             Text {
                 text: actionBtn.label
-                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                color: ThemeManager.foreground()
                 font.pixelSize: 12
                 font.weight: Font.Medium
             }
@@ -763,7 +763,7 @@ Item {
             
             Text {
                 text: "→"
-                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                color: ThemeManager.muted()
                 font.pixelSize: 14
             }
         }
@@ -790,7 +790,7 @@ Item {
             
             Text {
                 text: label
-                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                color: ThemeManager.muted()
                 font.pixelSize: 11
             }
             
@@ -841,13 +841,13 @@ Item {
             
             Text {
                 text: label
-                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                color: ThemeManager.muted()
                 font.pixelSize: 10
             }
             
             Text {
                 text: status
-                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                color: ThemeManager.foreground()
                 font.pixelSize: 12
                 font.bold: true
             }

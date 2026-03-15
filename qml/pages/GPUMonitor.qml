@@ -57,7 +57,7 @@ Item {
     
     Rectangle {
         anchors.fill: parent
-        color: ThemeManager.isDark() ? ThemeManager.darkBg : ThemeManager.lightBg
+        color: ThemeManager.background()
         
         ColumnLayout {
             anchors.fill: parent
@@ -67,7 +67,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 70
-                color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                color: ThemeManager.panel()
 
                 RowLayout {
                     anchors.fill: parent
@@ -80,14 +80,14 @@ Item {
                         
                         Text {
                             text: "GPU Monitor"
-                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                            color: ThemeManager.foreground()
                             font.pixelSize: 24
                             font.bold: true
                         }
                         
                         Text {
                             text: "Real-time GPU monitoring like MSI Afterburner"
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 11
                         }
                     }
@@ -99,8 +99,8 @@ Item {
                         width: 300
                         height: 36
                         radius: 6
-                        color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
-                        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                        color: ThemeManager.elevated()
+                        border.color: ThemeManager.border()
                         visible: gpuServiceAvailable && GPUService.gpuCount > 0
                         
                         RowLayout {
@@ -111,7 +111,7 @@ Item {
                             
                             Text {
                                 text: currentGpu ? ("GPU " + selectedGpuIndex + ": " + currentGpu.name) : "No GPU"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                color: ThemeManager.foreground()
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
@@ -181,7 +181,7 @@ Item {
                         
                         Text {
                             text: gpuServiceAvailable ? GPUService.status : "init"
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 11
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -212,9 +212,9 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 90
-                            color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                            color: ThemeManager.panel()
                             radius: 10
-                            border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                            border.color: ThemeManager.border()
                             
                             RowLayout {
                                 anchors.fill: parent
@@ -242,7 +242,7 @@ Item {
                                     
                                     Text {
                                         text: currentGpu ? currentGpu.name : "No GPU Detected"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        color: ThemeManager.foreground()
                                         font.pixelSize: 16
                                         font.bold: true
                                         elide: Text.ElideRight
@@ -251,14 +251,14 @@ Item {
                                     
                                     Text {
                                         text: currentGpu ? (currentGpu.vendor + " | Driver: " + (currentGpu.driverVersion || "N/A")) : ""
-                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                        color: ThemeManager.muted()
                                         font.pixelSize: 11
                                     }
                                     
                                     Text {
                                         text: currentGpu && currentGpu.vendor === "NVIDIA" && currentGpu.cudaVersion ? 
                                               ("CUDA " + currentGpu.cudaVersion + " | " + (currentGpu.perfState || "")) : ""
-                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                        color: ThemeManager.muted()
                                         font.pixelSize: 10
                                         visible: text !== ""
                                     }
@@ -272,7 +272,7 @@ Item {
                                         spacing: 2
                                         Text {
                                             text: "GPU"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                         Text {
@@ -287,7 +287,7 @@ Item {
                                         spacing: 2
                                         Text {
                                             text: "Temp"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                         Text {
@@ -303,7 +303,7 @@ Item {
                                         spacing: 2
                                         Text {
                                             text: "Power"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                         Text {
@@ -318,7 +318,7 @@ Item {
                                         spacing: 2
                                         Text {
                                             text: "VRAM"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                         Text {
@@ -335,7 +335,7 @@ Item {
                         // ===== METRICS GRID =====
                         Text {
                             text: "Detailed Metrics"
-                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                            color: ThemeManager.foreground()
                             font.pixelSize: 14
                             font.bold: true
                             Layout.topMargin: 8
@@ -488,7 +488,7 @@ Item {
                         // ===== CHARTS SECTION =====
                         Text {
                             text: "Real-Time Charts"
-                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                            color: ThemeManager.foreground()
                             font.pixelSize: 14
                             font.bold: true
                             Layout.topMargin: 16
@@ -576,9 +576,9 @@ Item {
     component MetricTile: Rectangle {
         id: tile
         height: 70
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 8
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string value: ""
@@ -593,7 +593,7 @@ Item {
             
             Text {
                 text: tile.title
-                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                color: ThemeManager.muted()
                 font.pixelSize: 10
             }
             
@@ -608,7 +608,7 @@ Item {
                 width: parent.width
                 height: 4
                 radius: 2
-                color: ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                color: ThemeManager.muted()
                 visible: tile.showBar
                 
                 Rectangle {
@@ -626,9 +626,9 @@ Item {
     // ===== CHART CARD COMPONENT =====
     component ChartCard: Rectangle {
         id: chart
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 10
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string currentValue: ""
@@ -646,7 +646,7 @@ Item {
                 
                 Text {
                     text: chart.title
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 12
                     font.bold: true
                 }
@@ -673,7 +673,7 @@ Item {
                     var data = chart.historyData
                     if (!data || data.length < 2) {
                         // Draw empty state
-                        ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                        ctx.strokeStyle = ThemeManager.muted()
                         ctx.lineWidth = 1
                         for (var g = 0; g <= 4; g++) {
                             var gy = (height / 4) * g
@@ -686,7 +686,7 @@ Item {
                     }
                     
                     // Draw grid
-                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.strokeStyle = ThemeManager.muted()
                     ctx.lineWidth = 1
                     for (var i = 0; i <= 4; i++) {
                         var y = (height / 4) * i
@@ -751,9 +751,9 @@ Item {
     // ===== DUAL CHART CARD COMPONENT =====
     component DualChartCard: Rectangle {
         id: dualChart
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 10
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string label1: ""
@@ -777,7 +777,7 @@ Item {
                 
                 Text {
                     text: dualChart.title
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 12
                     font.bold: true
                 }
@@ -807,7 +807,7 @@ Item {
                     ctx.clearRect(0, 0, width, height)
                     
                     // Draw grid
-                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.strokeStyle = ThemeManager.muted()
                     ctx.lineWidth = 1
                     for (var i = 0; i <= 4; i++) {
                         var y = (height / 4) * i
