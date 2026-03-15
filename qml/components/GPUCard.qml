@@ -13,9 +13,9 @@ Rectangle {
     property real temperature: 0
     property bool isActive: true
 
-    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+    color: ThemeManager.panel()
     radius: 12
-    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+    border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 400
     implicitHeight: 140
@@ -35,14 +35,14 @@ Rectangle {
 
                 Text {
                     text: card.gpuName
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 13
                     font.bold: true
                 }
 
                 Text {
                     text: card.isActive ? "Active" : "Inactive"
-                    color: card.isActive ? ThemeManager.success : ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                    color: card.isActive ? ThemeManager.success : ThemeManager.muted()
                     font.pixelSize: 11
                 }
             }
@@ -51,7 +51,7 @@ Rectangle {
                 width: 12
                 height: 12
                 radius: 6
-                color: card.isActive ? ThemeManager.success : (ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted)
+                color: card.isActive ? ThemeManager.success : (ThemeManager.muted())
             }
         }
 
@@ -64,7 +64,7 @@ Rectangle {
             Column {
                 Text {
                     text: "Usage"
-                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                    color: ThemeManager.muted()
                     font.pixelSize: 10
                 }
                 Text {
@@ -78,7 +78,7 @@ Rectangle {
             Column {
                 Text {
                     text: "VRAM"
-                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                    color: ThemeManager.muted()
                     font.pixelSize: 10
                 }
                 Text {
@@ -93,7 +93,7 @@ Rectangle {
             Column {
                 Text {
                     text: "Temp"
-                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                    color: ThemeManager.muted()
                     font.pixelSize: 10
                 }
                 Text {

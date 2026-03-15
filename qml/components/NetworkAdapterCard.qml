@@ -12,9 +12,9 @@ Rectangle {
     property string mac: ""
     property bool isUp: false
 
-    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+    color: ThemeManager.panel()
     radius: 12
-    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+    border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 350
     implicitHeight: 110
@@ -30,7 +30,7 @@ Rectangle {
 
             Text {
                 text: card.adapterName
-                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                color: ThemeManager.foreground()
                 font.pixelSize: 13
                 font.bold: true
                 Layout.fillWidth: true
@@ -40,13 +40,13 @@ Rectangle {
                 width: 10
                 height: 10
                 radius: 5
-                color: card.isUp ? ThemeManager.success : (ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted)
+                color: card.isUp ? ThemeManager.success : (ThemeManager.muted())
             }
         }
 
         Text {
             text: "IPv4: " + (card.ipv4 || "N/A")
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 10
             elide: Text.ElideRight
             Layout.fillWidth: true
@@ -55,7 +55,7 @@ Rectangle {
         Text {
             visible: card.ipv6 !== ""
             text: "IPv6: " + card.ipv6
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 10
             elide: Text.ElideRight
             Layout.fillWidth: true
@@ -63,7 +63,7 @@ Rectangle {
 
         Text {
             text: "MAC: " + (card.mac || "N/A")
-            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+            color: ThemeManager.muted()
             font.pixelSize: 10
             elide: Text.ElideRight
             Layout.fillWidth: true

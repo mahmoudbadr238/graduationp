@@ -3921,6 +3921,32 @@ class BackendBridge(QObject):
         except Exception as e:
             self.toast.emit("error", f"Could not open report: {e}")
 
+    @Slot(str)
+    def exportNmapScanReport(self, scan_id: str) -> None:
+        """Save the current scan output to a text file in the reports directory."""
+        import os
+
+        from ..infra.nmap_cli import get_reports_dir
+
+        if not scan_id:
+            self.toast.emit("error", "No scan to export")
+            return
+
+        try:
+            reports_dir = get_reports_dir()
+            report_path = reports_dir / f"nmap_{scan_id}.txt"
+
+            if report_path.exists():
+                self.toast.emit("info", f"Report already saved: {report_path}")
+                self.openNmapReport(str(report_path))
+            else:
+                self.toast.emit(
+                    "warning",
+                    "Report not found — scan may still be running",
+                )
+        except Exception as e:
+            self.toast.emit("error", f"Export failed: {e}")
+
     # ==================== AI FEATURES (100% LOCAL) ====================
 
     @Slot(result=bool)

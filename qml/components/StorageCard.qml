@@ -12,9 +12,9 @@ Rectangle {
     property real used: 0
     property real percent: 0
 
-    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+    color: ThemeManager.panel()
     radius: 12
-    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+    border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 400
     implicitHeight: 120
@@ -34,14 +34,14 @@ Rectangle {
 
                 Text {
                     text: driveName + " (" + driveLetter + ":)"
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 13
                     font.bold: true
                 }
 
                 Text {
                     text: used.toFixed(1) + " GB / " + total.toFixed(1) + " GB"
-                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                    color: ThemeManager.muted()
                     font.pixelSize: 11
                 }
             }
@@ -59,7 +59,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 8
-            color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
+            color: ThemeManager.elevated()
             radius: 4
 
             Rectangle {

@@ -51,7 +51,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: ThemeManager.isDark() ? ThemeManager.darkBg : ThemeManager.lightBg
+        color: ThemeManager.background()
 
         ColumnLayout {
             anchors.fill: parent
@@ -62,8 +62,8 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
-                color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                color: ThemeManager.panel()
+                border.color: ThemeManager.border()
                 border.width: 1
 
                 RowLayout {
@@ -76,14 +76,14 @@ Item {
 
                         Text {
                             text: "System Snapshot"
-                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                            color: ThemeManager.foreground()
                             font.pixelSize: 26
                             font.bold: true
                         }
 
                         Text {
                             text: "Real-time system metrics and device status"
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 12
                         }
                     }
@@ -102,7 +102,7 @@ Item {
 
                         Text {
                             text: "Live"
-                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                            color: ThemeManager.muted()
                             font.pixelSize: 12
                             font.weight: Font.Medium
                         }
@@ -114,8 +114,8 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 54
-                color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                color: ThemeManager.panel()
+                border.color: ThemeManager.border()
                 border.width: 1
 
                 RowLayout {
@@ -131,13 +131,13 @@ Item {
                         height: 44
                         radius: 8
                         color: root.currentTabIndex === 0 ? ThemeManager.accent : "transparent"
-                        border.color: root.currentTabIndex === 0 ? ThemeManager.accent : (ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder)
+                        border.color: root.currentTabIndex === 0 ? ThemeManager.accent : (ThemeManager.border())
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: "System Overview"
-                            color: root.currentTabIndex === 0 ? "#050814" : (ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText)
+                            color: root.currentTabIndex === 0 ? "#050814" : (ThemeManager.foreground())
                             font.pixelSize: 12
                             font.bold: true
                         }
@@ -154,13 +154,13 @@ Item {
                         height: 44
                         radius: 8
                         color: root.currentTabIndex === 1 ? ThemeManager.accent : "transparent"
-                        border.color: root.currentTabIndex === 1 ? ThemeManager.accent : (ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder)
+                        border.color: root.currentTabIndex === 1 ? ThemeManager.accent : (ThemeManager.border())
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: "GPU"
-                            color: root.currentTabIndex === 1 ? "#050814" : (ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText)
+                            color: root.currentTabIndex === 1 ? "#050814" : (ThemeManager.foreground())
                             font.pixelSize: 12
                             font.bold: true
                         }
@@ -177,13 +177,13 @@ Item {
                         height: 44
                         radius: 8
                         color: root.currentTabIndex === 2 ? ThemeManager.accent : "transparent"
-                        border.color: root.currentTabIndex === 2 ? ThemeManager.accent : (ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder)
+                        border.color: root.currentTabIndex === 2 ? ThemeManager.accent : (ThemeManager.border())
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: "Network"
-                            color: root.currentTabIndex === 2 ? "#050814" : (ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText)
+                            color: root.currentTabIndex === 2 ? "#050814" : (ThemeManager.foreground())
                             font.pixelSize: 12
                             font.bold: true
                         }
@@ -200,13 +200,13 @@ Item {
                         height: 44
                         radius: 8
                         color: root.currentTabIndex === 3 ? ThemeManager.accent : "transparent"
-                        border.color: root.currentTabIndex === 3 ? ThemeManager.accent : (ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder)
+                        border.color: root.currentTabIndex === 3 ? ThemeManager.accent : (ThemeManager.border())
                         border.width: 1
 
                         Text {
                             anchors.centerIn: parent
                             text: "Security"
-                            color: root.currentTabIndex === 3 ? "#050814" : (ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText)
+                            color: root.currentTabIndex === 3 ? "#050814" : (ThemeManager.foreground())
                             font.pixelSize: 12
                             font.bold: true
                         }
@@ -226,7 +226,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: ThemeManager.isDark() ? ThemeManager.darkBg : ThemeManager.lightBg
+                color: ThemeManager.background()
 
                 StackLayout {
                     id: tabBar
@@ -254,7 +254,7 @@ Item {
 
                                 Text {
                                     text: "CPU Metrics"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -311,7 +311,7 @@ Item {
 
                                 Text {
                                     text: "Memory Details"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -372,7 +372,7 @@ Item {
 
                                 Text {
                                     text: "Storage Details"
-                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                    color: ThemeManager.foreground()
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -442,8 +442,8 @@ Item {
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 60
-                                color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                color: ThemeManager.panel()
+                                border.color: ThemeManager.border()
                                 
                                 RowLayout {
                                     anchors.fill: parent
@@ -455,13 +455,13 @@ Item {
                                         spacing: 2
                                         Text {
                                             text: "GPU Monitor"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            color: ThemeManager.foreground()
                                             font.pixelSize: 16
                                             font.bold: true
                                         }
                                         Text {
                                             text: "Real-time GPU monitoring"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                     }
@@ -473,8 +473,8 @@ Item {
                                         width: 280
                                         height: 32
                                         radius: 6
-                                        color: ThemeManager.isDark() ? ThemeManager.darkElevated : ThemeManager.lightElevated
-                                        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                        color: ThemeManager.elevated()
+                                        border.color: ThemeManager.border()
                                         visible: gpuMonitorTab.gpuServiceAvailable && GPUService.gpuCount > 0
                                         
                                         RowLayout {
@@ -485,14 +485,14 @@ Item {
                                             
                                             Text {
                                                 text: "GPU:"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                color: ThemeManager.muted()
                                                 font.pixelSize: 11
                                             }
                                             
                                             Text {
                                                 Layout.fillWidth: true
                                                 text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.name : "No GPU"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                color: ThemeManager.foreground()
                                                 font.pixelSize: 11
                                                 font.bold: true
                                                 elide: Text.ElideRight
@@ -506,12 +506,12 @@ Item {
                                                     width: 22
                                                     height: 22
                                                     radius: 4
-                                                    color: gpuMonitorTab.selectedGpuIndex > 0 ? ThemeManager.accent : (ThemeManager.isDark() ? "#374151" : "#D1D5DB")
+                                                    color: gpuMonitorTab.selectedGpuIndex > 0 ? ThemeManager.accent : (ThemeManager.muted())
                                                     
                                                     Text {
                                                         anchors.centerIn: parent
                                                         text: "◀"
-                                                        color: gpuMonitorTab.selectedGpuIndex > 0 ? "#050814" : (ThemeManager.isDark() ? "#6B7280" : "#9CA3AF")
+                                                        color: gpuMonitorTab.selectedGpuIndex > 0 ? "#050814" : (ThemeManager.muted())
                                                         font.pixelSize: 10
                                                     }
                                                     
@@ -526,12 +526,12 @@ Item {
                                                     width: 22
                                                     height: 22
                                                     radius: 4
-                                                    color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? ThemeManager.accent : (ThemeManager.isDark() ? "#374151" : "#D1D5DB")
+                                                    color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? ThemeManager.accent : (ThemeManager.muted())
                                                     
                                                     Text {
                                                         anchors.centerIn: parent
                                                         text: "▶"
-                                                        color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? "#050814" : (ThemeManager.isDark() ? "#6B7280" : "#9CA3AF")
+                                                        color: gpuMonitorTab.gpuServiceAvailable && gpuMonitorTab.selectedGpuIndex < GPUService.gpuCount - 1 ? "#050814" : (ThemeManager.muted())
                                                         font.pixelSize: 10
                                                     }
                                                     
@@ -556,7 +556,7 @@ Item {
                                         }
                                         Text {
                                             text: gpuMonitorTab.gpuServiceAvailable ? GPUService.status : "N/A"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                         }
                                     }
@@ -587,8 +587,8 @@ Item {
                                         Layout.rightMargin: 16
                                         Layout.preferredHeight: 70
                                         radius: 10
-                                        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                        color: ThemeManager.panel()
+                                        border.color: ThemeManager.border()
                                         
                                         RowLayout {
                                             anchors.fill: parent
@@ -599,13 +599,13 @@ Item {
                                                 spacing: 2
                                                 Text {
                                                     text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.name : "No GPU detected"
-                                                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                                    color: ThemeManager.foreground()
                                                     font.pixelSize: 14
                                                     font.bold: true
                                                 }
                                                 Text {
                                                     text: gpuMonitorTab.currentGpu ? "Driver: " + (gpuMonitorTab.currentGpu.driverVersion || "N/A") : ""
-                                                    color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                    color: ThemeManager.muted()
                                                     font.pixelSize: 10
                                                 }
                                             }
@@ -616,19 +616,19 @@ Item {
                                                 spacing: 24
                                                 
                                                 Column {
-                                                    Text { text: "Usage"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: "Usage"; color: ThemeManager.muted(); font.pixelSize: 9 }
                                                     Text { text: gpuMonitorTab.currentGpu ? gpuMonitorTab.currentGpu.usage.toFixed(1) + "%" : "N/A"; color: ThemeManager.accent; font.pixelSize: 16; font.bold: true }
                                                 }
                                                 Column {
-                                                    Text { text: "Temp"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: "Temp"; color: ThemeManager.muted(); font.pixelSize: 9 }
                                                     Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 0 ? gpuMonitorTab.currentGpu.tempC + "°C" : "N/A"; color: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.tempC > 75 ? ThemeManager.danger : ThemeManager.warning; font.pixelSize: 16; font.bold: true }
                                                 }
                                                 Column {
-                                                    Text { text: "Power"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: "Power"; color: ThemeManager.muted(); font.pixelSize: 9 }
                                                     Text { text: gpuMonitorTab.currentGpu && gpuMonitorTab.currentGpu.powerW > 0 ? gpuMonitorTab.currentGpu.powerW.toFixed(0) + "W" : "N/A"; color: ThemeManager.danger; font.pixelSize: 16; font.bold: true }
                                                 }
                                                 Column {
-                                                    Text { text: "VRAM"; color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted; font.pixelSize: 9 }
+                                                    Text { text: "VRAM"; color: ThemeManager.muted(); font.pixelSize: 9 }
                                                     Text { text: gpuMonitorTab.currentGpu ? (gpuMonitorTab.currentGpu.memUsedMB / 1024).toFixed(1) + " GB" : "N/A"; color: ThemeManager.success; font.pixelSize: 16; font.bold: true }
                                                 }
                                             }
@@ -638,7 +638,7 @@ Item {
                                     // Metrics Section Header
                                     Text {
                                         text: "Real-Time Metrics"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        color: ThemeManager.foreground()
                                         font.pixelSize: 13
                                         font.bold: true
                                         Layout.leftMargin: 16
@@ -801,7 +801,7 @@ Item {
                                     // Charts Section Header
                                     Text {
                                         text: "Real-Time Charts"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                        color: ThemeManager.foreground()
                                         font.pixelSize: 13
                                         font.bold: true
                                         Layout.leftMargin: 16
@@ -913,7 +913,7 @@ Item {
 
                             Text {
                                 text: "Network Throughput"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                color: ThemeManager.foreground()
                                 font.pixelSize: 16
                                 font.bold: true
                             }
@@ -962,7 +962,7 @@ Item {
 
                             Text {
                                 text: "Network Adapters"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                color: ThemeManager.foreground()
                                 font.pixelSize: 16
                                 font.bold: true
                                 Layout.topMargin: 12
@@ -988,16 +988,16 @@ Item {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 80
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    color: ThemeManager.panel()
                                     radius: 12
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    border.color: ThemeManager.border()
                                     border.width: 1
                                     visible: !SnapshotService || SnapshotService.networkInterfaces.length === 0
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "No network adapters detected"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                        color: ThemeManager.muted()
                                         font.pixelSize: 12
                                     }
                                 }
@@ -1046,7 +1046,7 @@ Item {
                                         return root.transparentColor(root.statusColor(false, false), 0.13)
                                     }
                                     // Good or Warning - subtle panel color (notifications handle warnings)
-                                    return ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+                                    return ThemeManager.panel()
                                 }
                                 border.color: {
                                     if (!securityColumn.overall.isGood && !securityColumn.overall.isWarning) {
@@ -1055,7 +1055,7 @@ Item {
                                     if (securityColumn.overall.isGood) {
                                         return root.statusColor(true, false)  // Green for good
                                     }
-                                    return ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    return ThemeManager.border()
                                 }
                                 border.width: securityColumn.overall.isGood ? 1 : 2
 
@@ -1099,7 +1099,7 @@ Item {
 
                                         Text {
                                             text: "Security status"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 12
                                         }
 
@@ -1112,7 +1112,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.overall.detail || "Analyzing your security..."
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 12
                                         }
                                     }
@@ -1123,7 +1123,7 @@ Item {
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: advancedSection.expanded ? "▲" : "▼"
-                                        color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                        color: ThemeManager.muted()
                                         font.pixelSize: 16
                                     }
                                 }
@@ -1168,7 +1168,7 @@ Item {
                                             text: SnapshotService && SnapshotService.isAdmin 
                                                   ? "Administrator Privileges Active" 
                                                   : "Limited Privileges"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            color: ThemeManager.foreground()
                                             font.pixelSize: 13
                                             font.bold: true
                                         }
@@ -1177,7 +1177,7 @@ Item {
                                             text: SnapshotService && SnapshotService.isAdmin 
                                                   ? "All security features available" 
                                                   : "Some features may be limited. Run as administrator for full access."
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 11
                                         }
                                     }
@@ -1187,7 +1187,7 @@ Item {
                             // ===== B. FOUR MAIN PROTECTION CARDS =====
                             Text {
                                 text: "Protection overview"
-                                color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                color: ThemeManager.foreground()
                                 font.pixelSize: 14
                                 font.bold: true
                                 Layout.topMargin: 8
@@ -1217,8 +1217,8 @@ Item {
                                     width: mainCardsFlow.cardWidth
                                     height: 110
                                     radius: 12
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    color: ThemeManager.panel()
+                                    border.color: ThemeManager.border()
 
                                     Column {
                                         anchors.fill: parent
@@ -1233,7 +1233,7 @@ Item {
                                             }
                                             Text {
                                                 text: "Internet protection"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                color: ThemeManager.muted()
                                                 font.pixelSize: 11
                                                 font.weight: Font.Medium
                                             }
@@ -1248,7 +1248,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.internet.detail || ""
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                             wrapMode: Text.WordWrap
                                             width: parent.width
@@ -1270,8 +1270,8 @@ Item {
                                     width: mainCardsFlow.cardWidth
                                     height: 110
                                     radius: 12
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    color: ThemeManager.panel()
+                                    border.color: ThemeManager.border()
 
                                     Column {
                                         anchors.fill: parent
@@ -1286,7 +1286,7 @@ Item {
                                             }
                                             Text {
                                                 text: "Updates"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                color: ThemeManager.muted()
                                                 font.pixelSize: 11
                                                 font.weight: Font.Medium
                                             }
@@ -1301,7 +1301,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.updates.detail || ""
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                             wrapMode: Text.WordWrap
                                             width: parent.width
@@ -1322,8 +1322,8 @@ Item {
                                     width: mainCardsFlow.cardWidth
                                     height: 110
                                     radius: 12
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    color: ThemeManager.panel()
+                                    border.color: ThemeManager.border()
 
                                     Column {
                                         anchors.fill: parent
@@ -1338,7 +1338,7 @@ Item {
                                             }
                                             Text {
                                                 text: "Device protection"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                color: ThemeManager.muted()
                                                 font.pixelSize: 11
                                                 font.weight: Font.Medium
                                             }
@@ -1353,7 +1353,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.device.detail || ""
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                             wrapMode: Text.WordWrap
                                             width: parent.width
@@ -1374,8 +1374,8 @@ Item {
                                     width: mainCardsFlow.cardWidth
                                     height: 110
                                     radius: 12
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    color: ThemeManager.panel()
+                                    border.color: ThemeManager.border()
 
                                     Column {
                                         anchors.fill: parent
@@ -1390,7 +1390,7 @@ Item {
                                             }
                                             Text {
                                                 text: "Remote & apps"
-                                                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                                color: ThemeManager.muted()
                                                 font.pixelSize: 11
                                                 font.weight: Font.Medium
                                             }
@@ -1405,7 +1405,7 @@ Item {
 
                                         Text {
                                             text: securityColumn.remote.detail || ""
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 10
                                             wrapMode: Text.WordWrap
                                             width: parent.width
@@ -1434,8 +1434,8 @@ Item {
                                     width: parent.width
                                     height: 44
                                     radius: 8
-                                    color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
-                                    border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+                                    color: ThemeManager.panel()
+                                    border.color: ThemeManager.border()
 
                                     MouseArea {
                                         anchors.fill: parent
@@ -1451,14 +1451,14 @@ Item {
 
                                         Text {
                                             text: advancedSection.expanded ? "▼" : "▶"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 12
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         Text {
                                             text: "Advanced details"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                                            color: ThemeManager.foreground()
                                             font.pixelSize: 13
                                             font.weight: Font.Medium
                                             anchors.verticalCenter: parent.verticalCenter
@@ -1468,7 +1468,7 @@ Item {
 
                                         Text {
                                             text: "For power users"
-                                            color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                                            color: ThemeManager.muted()
                                             font.pixelSize: 11
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
@@ -1638,9 +1638,9 @@ Item {
     component GPUMetricTile: Rectangle {
         id: tile
         height: 65
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 8
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string value: ""
@@ -1655,7 +1655,7 @@ Item {
             
             Text {
                 text: tile.title
-                color: ThemeManager.isDark() ? ThemeManager.darkMuted : ThemeManager.lightMuted
+                color: ThemeManager.muted()
                 font.pixelSize: 9
             }
             
@@ -1670,7 +1670,7 @@ Item {
                 width: parent.width
                 height: 3
                 radius: 1.5
-                color: ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                color: ThemeManager.muted()
                 visible: tile.showBar
                 
                 Rectangle {
@@ -1688,9 +1688,9 @@ Item {
     // ===== GPU CHART CARD COMPONENT =====
     component GPUChartCard: Rectangle {
         id: chart
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 10
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string currentValue: ""
@@ -1708,7 +1708,7 @@ Item {
                 
                 Text {
                     text: chart.title
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 11
                     font.bold: true
                 }
@@ -1734,7 +1734,7 @@ Item {
                     
                     var data = chart.historyData
                     if (!data || data.length < 2) {
-                        ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                        ctx.strokeStyle = ThemeManager.muted()
                         ctx.lineWidth = 1
                         for (var g = 0; g <= 4; g++) {
                             var gy = (height / 4) * g
@@ -1747,7 +1747,7 @@ Item {
                     }
                     
                     // Draw grid
-                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.strokeStyle = ThemeManager.muted()
                     ctx.lineWidth = 1
                     for (var i = 0; i <= 4; i++) {
                         var y = (height / 4) * i
@@ -1812,9 +1812,9 @@ Item {
     // ===== GPU DUAL CHART CARD COMPONENT =====
     component GPUDualChartCard: Rectangle {
         id: dualChart
-        color: ThemeManager.isDark() ? ThemeManager.darkPanel : ThemeManager.lightPanel
+        color: ThemeManager.panel()
         radius: 10
-        border.color: ThemeManager.isDark() ? ThemeManager.darkBorder : ThemeManager.lightBorder
+        border.color: ThemeManager.border()
         
         property string title: ""
         property string label1: ""
@@ -1838,7 +1838,7 @@ Item {
                 
                 Text {
                     text: dualChart.title
-                    color: ThemeManager.isDark() ? ThemeManager.darkText : ThemeManager.lightText
+                    color: ThemeManager.foreground()
                     font.pixelSize: 11
                     font.bold: true
                 }
@@ -1868,7 +1868,7 @@ Item {
                     ctx.clearRect(0, 0, width, height)
                     
                     // Draw grid
-                    ctx.strokeStyle = ThemeManager.isDark() ? "#1F2937" : "#E5E7EB"
+                    ctx.strokeStyle = ThemeManager.muted()
                     ctx.lineWidth = 1
                     for (var i = 0; i <= 4; i++) {
                         var y = (height / 4) * i

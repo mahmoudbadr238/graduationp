@@ -313,6 +313,7 @@ class YaraEngine:
         for match in matches:
             findings.append(
                 {
+                    "rule_name": match.rule_name,
                     "title": f"YARA: {match.rule_name}",
                     "detail": match.description,
                     "severity": match.severity,
