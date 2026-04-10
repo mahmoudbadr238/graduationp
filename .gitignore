@@ -234,3 +234,5 @@ _diag.py
 _diag.txt
 _diag*.py
 _diag*.txt
+_*.txt
+data/*.bin

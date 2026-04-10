@@ -2,7 +2,7 @@
 # Format: one keyword/pattern per line
 # These trigger increased suspicion score
 
-# Account/credential phishing keywords
+# ── Account/credential phishing keywords ─────────────────────────────────────
 -login-
 -signin-
 -verify-
@@ -16,8 +16,13 @@
 -password-reset
 -credential
 -authenticate
+-reactivate
+-validate-identity
+-confirm-ownership
+-recover-account
+-unlock-account
 
-# Financial scam keywords
+# ── Financial scam keywords ──────────────────────────────────────────────────
 -payment-
 -billing-
 -invoice-
@@ -29,8 +34,13 @@
 -bitcoin-
 -crypto-
 -wallet-
+-wire-transfer
+-direct-deposit
+-tax-refund
+-claim-reward
+-cashback
 
-# Tech support scam keywords
+# ── Tech support scam keywords ──────────────────────────────────────────────
 -virus-detected
 -malware-found
 -computer-infected
@@ -39,14 +49,28 @@
 -microsoft-support
 -apple-support
 -tech-help
+-system-compromised
+-firewall-alert
+-trojan-detected
+-call-now
+-immediate-action
 
-# Generic suspicious patterns
+# ── Social engineering keywords ──────────────────────────────────────────────
 -free-
 -download-now
 -click-here
 -limited-time
 -act-now
 -expires-
+-exclusive-offer
+-congratulations
+-you-have-won
+-claim-now
+-verify-human
+-captcha-verify
+-age-verify
+
+# ── Executable and dangerous file extensions in path ─────────────────────────
 .exe
 .scr
 .bat
@@ -54,3 +78,26 @@
 .ps1
 .vbs
 .js.download
+.msi
+.dll
+.pif
+.com.exe
+.docm
+.xlsm
+.hta
+.wsf
+.cpl
+
+# ── Data exfiltration patterns ───────────────────────────────────────────────
+/wp-admin/
+/wp-includes/
+/wp-content/uploads/
+/.env
+/config.php
+/admin/login
+/.git/
+/phpmyadmin
+/shell.php
+/cmd.php
+/eval.php
+/backdoor

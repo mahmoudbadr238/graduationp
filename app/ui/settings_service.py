@@ -278,6 +278,7 @@ class SettingsService(QObject):
     def resetToDefaults(self):
         """Reset all settings to defaults."""
         self._theme_mode = "dark"
+        self._font_size = "medium"
         self._update_interval_ms = 2000
         self._enable_gpu_monitoring = True
         self._start_minimized = False
@@ -285,8 +286,13 @@ class SettingsService(QObject):
         self._send_error_reports = False
         self._network_unit = "auto"
 
+        # Remove autostart registry entry if present
+        if self._is_windows:
+            self._set_windows_autostart(False)
+
         # Emit all signals
         self.themeModeChanged.emit()
+        self.fontSizeChanged.emit()
         self.updateIntervalMsChanged.emit()
         self.enableGpuMonitoringChanged.emit()
         self.startMinimizedChanged.emit()
@@ -295,3 +301,4 @@ class SettingsService(QObject):
         self.networkUnitChanged.emit()
 
         self._save_settings()
+        print("[Settings] Reset to defaults")

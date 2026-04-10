@@ -198,7 +198,7 @@ class BackendBridge(QObject):
 
         # AI services (100% local, no network calls)
         self._event_explainer = None
-        self._security_chatbot = None
+        self._chatbot_bridge = None  # ChatbotBridge (Groq API)
         self._chat_conversation: list[dict[str, str]] = []
 
         # Cache of loaded events (for AI explanation lookup)
@@ -215,9 +215,6 @@ class BackendBridge(QObject):
 
         # Event summarizer for friendly messages
         self._event_summarizer = None
-
-        # Smart Assistant (new intelligent chatbot with memory and context)
-        self._smart_assistant = None
 
         # Sandbox session for live event streaming
         self._sandbox_session = None
@@ -412,6 +409,13 @@ class BackendBridge(QObject):
             "yara_match_count": None,
             "report_content": "",
             "error": "",
+            # Multi-engine fields
+            "threat_types": [],
+            "engines": {},
+            "engine_count": 0,
+            "engines_flagged": 0,
+            "scoring": {},
+            "scan_duration_sec": 0,
         }
         normalized = {**defaults, **normalized}
 
@@ -675,7 +679,6 @@ class BackendBridge(QObject):
             try:
                 from ..ai.event_explainer_v5 import get_event_explainer_v5
                 from ..ai.providers.groq import is_groq_available
-                from ..ai.security_chatbot_v4 import get_security_chatbot_v4
 
                 # Initialize V5 explainer (Groq + offline KB)
                 self._event_explainer = get_event_explainer_v5(db_repo=self.scan_repo)
@@ -686,22 +689,6 @@ class BackendBridge(QObject):
                 )
                 self._event_explainer.explanationFailed.connect(
                     self._on_v5_explanation_failed
-                )
-
-                # Initialize V4 chatbot (Groq with memory)
-                self._security_chatbot = get_security_chatbot_v4()
-                self._security_chatbot.chatResponseReady.connect(self._on_v4_chat_ready)
-                self._security_chatbot.chatResponseFailed.connect(
-                    self._on_v4_chat_failed
-                )
-
-                # Update chatbot with system context
-                self._security_chatbot.set_system_context(
-                    {
-                        "get_defender_status": self._get_defender_status_for_ai,
-                        "get_firewall_status": self._get_firewall_status_for_ai,
-                        "get_recent_events": lambda: self._loaded_events[:20],
-                    }
                 )
 
                 if is_groq_available():
@@ -715,12 +702,10 @@ class BackendBridge(QObject):
                 # V5 not available - disable AI services
                 logger.warning(f"V5 AI not available: {e}. AI services disabled.")
                 self._event_explainer = None
-                self._security_chatbot = None
 
         except Exception as e:
             logger.warning(f"AI services not available: {e}")
             self._event_explainer = None
-            self._security_chatbot = None
 
     def _on_v5_explanation_ready(self, request_id: str, result_json: str):
         """Handle V5 explainer async completion (Groq AI enhancement)."""
@@ -771,26 +756,14 @@ class BackendBridge(QObject):
         event_index = request_id.replace("explain_", "")
         self.eventExplanationFailed.emit(event_index, error_msg)
 
-    def _on_v4_chat_ready(self, request_id: str, response_json: str):
-        """Handle V4 chatbot async completion."""
-        try:
-            response = json.loads(response_json)
-            answer = response.get("answer", "")
-            # Add to conversation history
-            self._chat_conversation.append({"role": "assistant", "content": answer})
-            # Emit to QML
-            self.chatMessageAdded.emit("assistant", answer)
-        except Exception as e:
-            logger.error(f"Failed to emit V4 chat response: {e}")
-            error_msg = "I encountered an error processing your request."
-            self._chat_conversation.append({"role": "assistant", "content": error_msg})
-            self.chatMessageAdded.emit("assistant", error_msg)
+    def _on_chatbot_message(self, role: str, content: str):
+        """Handle ChatbotBridge response (emitted on main thread)."""
+        self._chat_conversation.append({"role": role, "content": content})
+        self.chatMessageAdded.emit(role, content)
 
-    def _on_v4_chat_failed(self, request_id: str, error_msg: str):
-        """Handle V4 chatbot async failure."""
-        error_response = f"Sorry, I encountered an error: {error_msg}"
-        self._chat_conversation.append({"role": "assistant", "content": error_response})
-        self.chatMessageAdded.emit("assistant", error_response)
+    def _on_chatbot_error(self, error_msg: str):
+        """Handle ChatbotBridge error."""
+        logger.error(f"ChatbotBridge error: {error_msg}")
 
     def _get_defender_status_for_ai(self) -> dict:
         """Get Defender status for AI context."""
@@ -829,101 +802,24 @@ class BackendBridge(QObject):
         return {"domain": True, "private": True, "public": True}
 
     def _init_smart_assistant(self):
-        """Initialize the smart assistant using Groq AI (primary) or Claude/OpenAI (fallback)."""
+        """Initialize the ChatbotBridge (Groq API powered chatbot)."""
         try:
-            # Helper function for recent events
-            def get_recent_events(limit=20, log_name=None):
-                events = []
-                for e in self._loaded_events[:limit] if self._loaded_events else []:
-                    events.append(self._event_to_dict(e))
-                return events
+            from ..ai.security_chatbot_v4 import get_chatbot_bridge
 
-            def get_event_details(record_id=None, event_id=None, log_name=None):
-                for e in self._loaded_events or []:
-                    e_record_id = getattr(
-                        e, "record_id", e.get("record_id") if isinstance(e, dict) else 0
-                    )
-                    e_event_id = getattr(
-                        e, "event_id", e.get("event_id") if isinstance(e, dict) else 0
-                    )
-                    if record_id and e_record_id == record_id:
-                        return self._event_to_dict(e)
-                    if event_id and e_event_id == event_id:
-                        return self._event_to_dict(e)
-                return None
+            self._chatbot_bridge = get_chatbot_bridge()
 
-            def search_events(query, limit=20):
-                query_lower = query.lower()
-                matches = []
-                for e in self._loaded_events or []:
-                    msg = getattr(
-                        e,
-                        "message",
-                        e.get("message", "") if isinstance(e, dict) else "",
-                    )
-                    provider = getattr(
-                        e,
-                        "provider",
-                        e.get("provider", "") if isinstance(e, dict) else "",
-                    )
-                    event_id = str(
-                        getattr(
-                            e,
-                            "event_id",
-                            e.get("event_id", 0) if isinstance(e, dict) else 0,
-                        )
-                    )
+            # Connect bridge signals → backend signals that QML listens to
+            self._chatbot_bridge.message_received.connect(self._on_chatbot_message)
+            self._chatbot_bridge.response_error.connect(self._on_chatbot_error)
 
-                    if (
-                        query_lower in msg.lower()
-                        or query_lower in provider.lower()
-                        or query_lower in event_id
-                    ):
-                        matches.append(self._event_to_dict(e))
-                        if len(matches) >= limit:
-                            break
-                return matches
-
-            tool_callbacks = {
-                "get_defender_status": self._get_defender_status_for_ai,
-                "get_firewall_status": self._get_firewall_status_for_ai,
-                "get_recent_events": get_recent_events,
-                "get_event_details": get_event_details,
-                "search_events": search_events,
-            }
-
-            # Try Groq first (free tier)
-            try:
-                from ..ai.groq_smart_assistant import create_groq_smart_assistant
-                from ..ai.providers.groq import is_groq_available
-
-                if is_groq_available():
-                    self._smart_assistant = create_groq_smart_assistant(
-                        tool_callbacks=tool_callbacks,
-                    )
-                    logger.info("Smart Assistant initialized (Groq AI)")
-                    return
-                logger.info(
-                    "Groq not configured, will use assistant with helpful error messages"
-                )
-
-            except ImportError as e:
-                logger.debug(f"Groq smart assistant not available: {e}")
-
-            # Use Groq assistant - will show helpful error if no API key
-            from ..ai.groq_smart_assistant import create_groq_smart_assistant
-
-            self._smart_assistant = create_groq_smart_assistant(
-                tool_callbacks=tool_callbacks,
-            )
-            logger.info("Smart Assistant initialized (Groq)")
+            logger.info("ChatbotBridge initialized (Groq API)")
 
         except Exception as e:
-            logger.warning(f"Smart Assistant not available: {e}")
+            logger.warning(f"ChatbotBridge not available: {e}")
             import traceback
 
             traceback.print_exc()
-            self._smart_assistant = None
+            self._chatbot_bridge = None
 
     def _start_ai_worker(self):
         """Start the AI worker process."""
@@ -1052,16 +948,9 @@ class BackendBridge(QObject):
         self._current_ai_request = None
 
     def set_snapshot_service(self, snapshot_service):
-        """Set snapshot service for chatbot context (called from application.py)."""
-        if self._security_chatbot:
-            # V2/V3 chatbot uses context builder
-            if hasattr(self._security_chatbot, "_context_builder"):
-                self._security_chatbot._context_builder._snapshot = snapshot_service  # type: ignore[union-attr]
-                logger.info("Snapshot service connected to AI chatbot context builder")
-            # V1 chatbot uses direct service
-            elif hasattr(self._security_chatbot, "_snapshot_service"):
-                self._security_chatbot._snapshot_service = snapshot_service  # type: ignore[union-attr]
-                logger.info("Snapshot service connected to AI chatbot V1")
+        """Set snapshot service (no-op – ChatbotBridge uses conversation context)."""
+        # ChatbotBridge doesn't need a snapshot service reference
+        logger.debug("set_snapshot_service called (no-op with ChatbotBridge)")
 
     @Slot()
     def startLive(self):
@@ -3329,36 +3218,35 @@ class BackendBridge(QObject):
         scan_start_time = datetime.now()
 
         def scan_task(worker):
-            """Background URL scan task."""
-            from app.ai.url_explainer import explain_url_scan, explanation_to_dict
-            from app.scanning.friendly_report import get_friendly_report_generator
-            from app.scanning.url_scanner import UrlScanner
-            from app.scanning.url_scoring import score_url_scan
-
+            """Background URL scan task — uses MultiEngineUrlScanner."""
             worker.signals.heartbeat.emit(worker_id)
 
-            scan_result = None
-            scoring_result = None
-            explanation = None
             report_content = ""
 
-            # Step 1: Run URL scan
-            # Note: Progress updates happen via signals from main thread after task completes
+            # Progress callback that emits UI updates
+            def _progress(stage: str, pct: int):
+                try:
+                    from PySide6.QtCore import QMetaObject, Qt, Q_ARG
+                    QMetaObject.invokeMethod(
+                        self, "_emitUrlScanProgress",
+                        Qt.QueuedConnection,
+                        Q_ARG(str, stage), Q_ARG(int, pct),
+                    )
+                except Exception:
+                    pass
 
+            # Run multi-engine scan (URLChecker + UrlScanner + ext APIs)
             try:
-                scanner = UrlScanner()
+                from app.scanning.url_multi_engine import MultiEngineUrlScanner
 
-                if use_sandbox and self.urlSandboxAvailable():
-                    scan_result = scanner.scan_sandbox(
-                        url,
-                        block_private_ips=block_private_ips,
-                        block_downloads=block_downloads,
-                    )
-                else:
-                    scan_result = scanner.scan_static(
-                        url, block_private_ips=block_private_ips
-                    )
-
+                scanner = MultiEngineUrlScanner(progress_callback=_progress)
+                result = scanner.scan(
+                    url,
+                    use_sandbox=use_sandbox and self.urlSandboxAvailable(),
+                    block_private_ips=block_private_ips,
+                    block_downloads=block_downloads,
+                    run_external_apis=True,
+                )
                 worker.signals.heartbeat.emit(worker_id)
             except Exception as e:
                 logger.error(f"URL scan error: {e}")
@@ -3368,60 +3256,17 @@ class BackendBridge(QObject):
                     "success": False,
                 }
 
-            # Step 2: Score the results
-            try:
-                _score_input = scan_result.to_dict() if hasattr(scan_result, "to_dict") else (scan_result if isinstance(scan_result, dict) else vars(scan_result))
-                scoring_result = score_url_scan(_score_input)
-                # Update scan_result with score and verdict
-                if hasattr(scan_result, 'score'):
-                    scan_result.score = scoring_result.score
-                    scan_result.verdict = scoring_result.verdict
-                else:
-                    scan_result["score"] = scoring_result.score
-                    scan_result["verdict"] = scoring_result.verdict
-                worker.signals.heartbeat.emit(worker_id)
-            except Exception as e:
-                logger.warning(f"URL scoring error: {e}")
-
-            # Step 3: Generate explanation
-            try:
-                explanation = explain_url_scan(scan_result)
-                worker.signals.heartbeat.emit(worker_id)
-            except Exception as e:
-                logger.warning(f"URL explanation error: {e}")
-
-            # Step 4: AI Analysis (optional - Groq-powered)
-            ai_analysis = None
-            try:
-                from ..ai.providers.groq import is_groq_available
-
-                if is_groq_available():
-                    # AI analysis is now handled by the report generator
-                    logger.info("Groq available for enhanced URL report generation")
-                worker.signals.heartbeat.emit(worker_id)
-            except Exception as e:
-                logger.warning(f"AI analysis error: {e}")
-                ai_analysis = None
-
-            # Step 5: Generate friendly report content
+            # Generate friendly report content
             if generate_report:
                 try:
+                    from app.scanning.friendly_report import get_friendly_report_generator
+
                     report_gen = get_friendly_report_generator()
-                    # Build a simple result dict for the friendly report
                     url_result = {
                         "url": url,
-                        "score": scan_result.score if scan_result else 0,
-                        "verdict": scan_result.verdict if scan_result else "unknown",
-                        "reasons": [
-                            {
-                                "title": e.title,
-                                "severity": e.severity,
-                                "detail": e.detail,
-                            }
-                            for e in scan_result.evidence
-                        ]
-                        if scan_result and scan_result.evidence
-                        else [],
+                        "score": result.get("score", 0),
+                        "verdict": result.get("verdict", "unknown"),
+                        "reasons": result.get("evidence", []),
                     }
                     report_content = report_gen.generate_url_report(url, url_result)
                     worker.signals.heartbeat.emit(worker_id)
@@ -3429,104 +3274,16 @@ class BackendBridge(QObject):
                     logger.warning(f"Report generation error: {e}")
                     report_content = f"Error generating report: {e}"
 
-            # Build result dict for QML
-            result = {
-                "success": True,
-                "url": url,
-                "normalized_url": scan_result.normalized_url,
-                "final_url": scan_result.final_url,
-                # Verdict
-                "score": scan_result.score,
-                "verdict": scan_result.verdict,
-                # HTTP info
-                "http_status": scan_result.http.get("status_code")
-                if scan_result.http
-                else None,
-                "http_content_type": scan_result.http.get("content_type", "")
-                if scan_result.http
-                else "",
-                "http_content_length": scan_result.http.get("content_length", 0)
-                if scan_result.http
-                else 0,
-                # Redirects
-                "redirects": scan_result.redirects,
-                "redirect_count": len(scan_result.redirects),
-                # Evidence
-                "evidence": [
-                    {
-                        "title": e.title,
-                        "severity": e.severity,
-                        "detail": e.detail,
-                        "category": e.category,
-                    }
-                    for e in scan_result.evidence
-                ],
-                "evidence_count": len(scan_result.evidence),
-                # IOCs
-                "iocs": scan_result.iocs or {},
-                "has_iocs": bool(scan_result.iocs),
-                # YARA — convert YaraMatch dataclass instances to plain dicts
-                "yara_matches": [
-                    (
-                        {
-                            "rule_name": getattr(m, "rule_name", str(m)),
-                            "description": getattr(m, "description", ""),
-                            "severity": getattr(m, "severity", "high"),
-                            "category": getattr(m, "category", ""),
-                            "matched_strings": list(
-                                getattr(m, "matched_strings", []) or []
-                            ),
-                            "tags": list(getattr(m, "tags", []) or []),
-                        }
-                        if not isinstance(m, dict)
-                        else m
-                    )
-                    for m in (scan_result.yara_matches or [])
-                ],
-                "yara_match_count": len(scan_result.yara_matches)
-                if scan_result.yara_matches
-                else 0,
-                # Signals
-                "signals": scan_result.signals,
-                # Sandbox
-                "has_sandbox": scan_result.sandbox_result is not None,
-                "sandbox_result": (
-                    scan_result.sandbox_result.to_dict()
-                    if hasattr(scan_result.sandbox_result, "to_dict")
-                    else scan_result.sandbox_result
-                )
-                if scan_result.sandbox_result
-                else None,
-                # Explanation
-                "explanation": explanation_to_dict(explanation)
-                if explanation
-                else None,
-                # Report content (for preview dialog)
-                "report_content": report_content,
-                "report_path": "",  # Empty - user chooses to save
-                # AI Analysis (if available)
-                "has_ai_analysis": ai_analysis is not None,
-                "ai_verdict": ai_analysis.get("verdict", "") if ai_analysis else "",
-                "ai_confidence": ai_analysis.get("confidence", "")
-                if ai_analysis
-                else "",
-                "ai_threat_type": ai_analysis.get("threat_type", "")
-                if ai_analysis
-                else "",
-                "ai_summary": ai_analysis.get("summary", "") if ai_analysis else "",
-                "ai_risks": ai_analysis.get("risks", []) if ai_analysis else [],
-                "ai_recommendation": ai_analysis.get("recommendation", "")
-                if ai_analysis
-                else "",
-                # Scoring breakdown
-                "scoring": {
-                    "score": scoring_result.score if scoring_result else 0,
-                    "verdict": scoring_result.verdict if scoring_result else "unknown",
-                    "breakdown": scoring_result.breakdown if scoring_result else {},
-                }
-                if scoring_result
-                else None,
-            }
+            # Augment result with report content and legacy AI fields
+            result["report_content"] = report_content
+            result["report_path"] = ""
+            result.setdefault("has_ai_analysis", False)
+            result.setdefault("ai_verdict", "")
+            result.setdefault("ai_confidence", "")
+            result.setdefault("ai_threat_type", "")
+            result.setdefault("ai_summary", "")
+            result.setdefault("ai_risks", [])
+            result.setdefault("ai_recommendation", "")
 
             return result
 
@@ -4582,6 +4339,7 @@ class BackendBridge(QObject):
     def sendChatMessage(self, user_text: str) -> None:
         """
         Send a message to the security chatbot.
+        Delegates to ChatbotBridge which runs Groq API in a QThread.
 
         Args:
             user_text: User's message text
@@ -4591,44 +4349,27 @@ class BackendBridge(QObject):
 
         user_text = user_text.strip()
 
-        if self._security_chatbot is None:
+        if self._chatbot_bridge is None:
             self.toast.emit("error", "AI chatbot not available")
-            # Still emit user message so UI shows it
             self.chatMessageAdded.emit("user", user_text)
             self.chatMessageAdded.emit(
                 "assistant", "I'm sorry, the AI assistant is not available right now."
             )
             return
 
-        # Add user message to conversation and emit immediately for UI
-        self._chat_conversation.append({"role": "user", "content": user_text})
+        # Emit user message to QML immediately
         self.chatMessageAdded.emit("user", user_text)
 
-        # Use v4 chatbot's ask() method which handles everything via signals
-        # The chatbot creates its own worker and will emit chatResponseReady/Failed
-        # Those signals are connected to _on_v4_chat_ready/_on_v4_chat_failed
-        try:
-            request_id = self._security_chatbot.ask(user_text)
-            logger.debug(
-                f"AI chat message sent: {user_text[:50]}... (request_id={request_id})"
-            )
-        except Exception as e:
-            logger.error(f"Failed to send chat message: {e}")
-            error_response = (
-                "I encountered an error processing your request. Please try again."
-            )
-            self._chat_conversation.append(
-                {"role": "assistant", "content": error_response}
-            )
-            self.chatMessageAdded.emit("assistant", error_response)
+        # Delegate to ChatbotBridge (handles threading + spam protection)
+        self._chatbot_bridge.send_message(user_text)
+        logger.debug(f"Chat message sent via ChatbotBridge: {user_text[:50]}...")
 
     @Slot()
     def clearChatHistory(self) -> None:
         """Clear the chat conversation history."""
         self._chat_conversation.clear()
-        # Also clear smart assistant conversation
-        if self._smart_assistant:
-            self._smart_assistant.clear_conversation()
+        if self._chatbot_bridge:
+            self._chatbot_bridge.clear_history()
         logger.info("Chat history cleared")
 
     # ========================================================================
@@ -4675,17 +4416,17 @@ class BackendBridge(QObject):
             event_summary: Brief summary of the event
         """
         try:
-            if self._security_chatbot and hasattr(
-                self._security_chatbot, "start_resolution_session"
+            if self._chatbot_bridge and hasattr(
+                self._chatbot_bridge, "start_resolution_session"
             ):
-                session_id = self._security_chatbot.start_resolution_session(
+                session_id = self._chatbot_bridge.start_resolution_session(
                     event_id=event_id,
                     event_source=event_source,
                     event_summary=event_summary,
                 )
                 logger.info(f"Started resolution session: {session_id}")
             else:
-                logger.warning("Security chatbot not available for resolution session")
+                logger.warning("ChatbotBridge not available for resolution session")
         except Exception as e:
             logger.error(f"Failed to start resolution session: {e}")
 
@@ -4698,10 +4439,10 @@ class BackendBridge(QObject):
             summary: Summary of what was done
         """
         try:
-            if self._security_chatbot and hasattr(
-                self._security_chatbot, "end_resolution_session"
+            if self._chatbot_bridge and hasattr(
+                self._chatbot_bridge, "end_resolution_session"
             ):
-                session_data = self._security_chatbot.end_resolution_session(summary)
+                session_data = self._chatbot_bridge.end_resolution_session(summary)
                 if session_data:
                     logger.info(
                         f"Ended resolution session with {len(session_data.get('actions', []))} actions"
@@ -4724,11 +4465,7 @@ class BackendBridge(QObject):
         try:
             event_data = json.loads(event_json)
 
-            # Store context for smart assistant
-            if self._smart_assistant and hasattr(
-                self._smart_assistant, "set_selected_event"
-            ):
-                self._smart_assistant.set_selected_event(event_data)
+            # Store context (no-op now — ChatbotBridge doesn't need pre-set context)
 
             # Build initial message to send to chatbot
             event_id = event_data.get("event_id", "Unknown")
@@ -4779,168 +4516,49 @@ class BackendBridge(QObject):
     @Slot(str)
     def sendSmartMessage(self, user_text: str) -> None:
         """
-        Send a message to the smart assistant.
+        Send a message to the Groq-powered chatbot.
 
-        This is the new intelligent chatbot that:
-        - Remembers conversation context
-        - Classifies intent
-        - Uses deterministic tools first
-        - Retrieves from local docs/KB
-        - Formats structured responses
+        Delegates to ChatbotBridge which handles threading, conversation
+        memory, and spam protection via a QThread worker.
 
         Args:
             user_text: User's message text
         """
-        if not user_text or not user_text.strip():
-            return
-
-        user_text = user_text.strip()
-
-        if self._smart_assistant is None:
-            self.smartAssistantError.emit("Smart Assistant not available")
-            # Fall back to regular chatbot
-            self.sendChatMessage(user_text)
-            return
-
-        # Emit user message immediately for UI
-        self.chatMessageAdded.emit("user", user_text)
-
-        worker_id = f"smart-chat-{hash(user_text) % 10000}"
-
-        def smart_chat_task(worker):
-            """Background smart assistant task."""
-            worker.signals.heartbeat.emit(worker_id)
-
-            # Process message through new agent-based smart assistant
-            # Uses ask_structured() which returns full response dict
-            # Has built-in timeout and throttling
-            response = self._smart_assistant.ask_structured(user_text)
-            return response
-
-        def on_success(wid: str, response: dict) -> None:
-            """Smart assistant response ready."""
-            # Emit full response as formatted text
-            display_text = self._format_smart_response(response)
-            self.chatMessageAdded.emit("assistant", display_text)
-
-            self._watchdog.unregister_worker(worker_id)
-            if worker_id in self._active_workers:
-                del self._active_workers[worker_id]
-
-        def on_error(wid: str, error_msg: str) -> None:
-            """Smart assistant failed."""
-            logger.error(f"Smart assistant failed: {error_msg}")
-            self.smartAssistantError.emit(error_msg)
-
-            # Emit error as chat message
-            error_response = f"I encountered an error: {error_msg}"
-            self.chatMessageAdded.emit("assistant", error_response)
-
-            self._watchdog.unregister_worker(worker_id)
-            if worker_id in self._active_workers:
-                del self._active_workers[worker_id]
-
-        # Create and start worker with 30 second timeout
-        worker = CancellableWorker(worker_id, smart_chat_task, timeout_ms=30000)
-        worker.signals.finished.connect(on_success)
-        worker.signals.error.connect(on_error)
-
-        self._active_workers[worker_id] = worker
-        self._watchdog.register_worker(worker_id)
-        self._thread_pool.start(worker)
-
-        logger.debug(f"Smart assistant message sent: {user_text[:50]}...")
-
-    def _format_smart_response(self, response: dict) -> str:
-        """Format smart assistant response for display."""
-        parts = []
-
-        # Answer (main response)
-        if response.get("answer"):
-            parts.append(f"**Answer**\n{response['answer']}")
-
-        # Why it happened
-        why = response.get("why_it_happened", [])
-        if why:
-            parts.append("\n**Why This Happened**")
-            for reason in why[:5]:
-                parts.append(f"• {reason}")
-
-        # What it affects
-        affects = response.get("what_it_affects", [])
-        if affects:
-            parts.append("\n**What This Affects**")
-            for effect in affects[:5]:
-                parts.append(f"• {effect}")
-
-        # What to do now
-        actions = response.get("what_to_do_now", [])
-        if actions:
-            parts.append("\n**What You Should Do**")
-            for action in actions[:5]:
-                parts.append(f"• {action}")
-
-        # Technical details and confidence
-        tech = response.get("technical_details", {})
-        if tech:
-            source = tech.get("source", "mixed")
-            confidence = tech.get("confidence", "medium")
-            conf_emoji = {"high": "🟢", "medium": "🟡", "low": "🟠"}.get(confidence, "")
-            parts.append(
-                f"\n*Source: {source} | Confidence: {conf_emoji} {confidence.title()}*"
-            )
-
-        # Follow-up suggestions (if any)
-        suggestions = response.get("follow_up_suggestions", [])
-        if suggestions and len(suggestions) > 0:
-            parts.append("\n**Ask me about:**")
-            for s in suggestions[:3]:
-                parts.append(f"• {s}")
-
-        return "\n".join(parts)
+        # Delegate to the unified sendChatMessage (which uses ChatbotBridge)
+        self.sendChatMessage(user_text)
 
     @Slot(str)
     def setSelectedEventForAssistant(self, event_json: str) -> None:
         """
-        Set the currently selected event for the smart assistant.
-
-        Args:
-            event_json: JSON string of the selected event
+        Set the currently selected event for the assistant.
+        (No-op — ChatbotBridge uses conversation context instead.)
         """
-        if not self._smart_assistant:
-            return
-
-        try:
-            event = json.loads(event_json)
-            self._smart_assistant.set_selected_event(event)
-            logger.debug(f"Selected event set for assistant: {event.get('event_id')}")
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid event JSON: {e}")
+        logger.debug("setSelectedEventForAssistant called (no-op with ChatbotBridge)")
 
     @Slot()
     def clearSelectedEventForAssistant(self) -> None:
-        """Clear the selected event from the smart assistant."""
-        if self._smart_assistant:
-            self._smart_assistant.clear_selected_event()
+        """Clear the selected event from the assistant (no-op)."""
+        pass
 
     @Slot(result=str)
     def getConversationSummary(self) -> str:
         """Get a summary of the current conversation."""
-        if self._smart_assistant:
-            return self._smart_assistant.get_conversation_summary()
+        if self._chatbot_bridge and self._chatbot_bridge.chat_history:
+            recent = self._chatbot_bridge.chat_history[-6:]
+            lines = []
+            for msg in recent:
+                role = msg.get("role", "user").title()
+                content = msg.get("content", "")[:100]
+                if len(msg.get("content", "")) > 100:
+                    content += "..."
+                lines.append(f"{role}: {content}")
+            return "\n".join(lines)
         return "No conversation history"
 
     @Slot(result=str)
     def getAssistantStats(self) -> str:
         """Get performance and cache statistics as JSON."""
-        if not self._smart_assistant:
-            return "{}"
-
-        stats = {
-            "cache": self._smart_assistant.get_cache_stats(),
-            "performance": self._smart_assistant.get_performance_stats(),
-        }
-        return json.dumps(stats)
+        return "{}"
 
     @Slot(str)
     def explainRecentEvents(self, count_str: str = "5") -> None:

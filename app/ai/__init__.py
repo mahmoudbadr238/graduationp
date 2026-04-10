@@ -7,7 +7,7 @@ Architecture (2025):
 
 V5 (Current - Online with KB fallback):
     - EventExplainerV5: Groq-powered with offline KB fallback
-    - SecurityChatbotV4: Groq-powered with conversation memory
+    - ChatbotBridge: QThread-based Groq chatbot with conversation memory
     - Providers: Groq (primary)
 
 NOTE: All AI modules are lazy-loaded for faster startup.
@@ -15,7 +15,7 @@ NOTE: All AI modules are lazy-loaded for faster startup.
 
 # V5 components (current - Groq-powered)
 _event_explainer_v5 = None
-_security_chatbot_v4 = None
+_chatbot_bridge = None
 
 
 # =============================================================================
@@ -33,14 +33,14 @@ def get_event_explainer_v5(db_repo=None):
     return _event_explainer_v5
 
 
-def get_security_chatbot_v4():
-    """Get SecurityChatbotV4 singleton instance (Groq-powered with memory)."""
-    global _security_chatbot_v4
-    if _security_chatbot_v4 is None:
-        from .security_chatbot_v4 import get_security_chatbot_v4 as _get_v4
+def get_chatbot_bridge():
+    """Get ChatbotBridge singleton instance (Groq API via QThread)."""
+    global _chatbot_bridge
+    if _chatbot_bridge is None:
+        from .security_chatbot_v4 import get_chatbot_bridge as _get_bridge
 
-        _security_chatbot_v4 = _get_v4()
-    return _security_chatbot_v4
+        _chatbot_bridge = _get_bridge()
+    return _chatbot_bridge
 
 
 # For backwards compatibility
@@ -50,15 +50,19 @@ def __getattr__(name):
         from .event_explainer_v5 import EventExplainerV5
 
         return EventExplainerV5
-    if name == "SecurityChatbotV4":
-        from .security_chatbot_v4 import SecurityChatbotV4
+    if name == "ChatbotBridge":
+        from .security_chatbot_v4 import ChatbotBridge
 
-        return SecurityChatbotV4
+        return ChatbotBridge
+    if name == "GroqChatWorker":
+        from .security_chatbot_v4 import GroqChatWorker
+
+        return GroqChatWorker
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
     # V5 (current - Groq-powered with KB fallback)
     "get_event_explainer_v5",
-    "get_security_chatbot_v4",
+    "get_chatbot_bridge",
 ]

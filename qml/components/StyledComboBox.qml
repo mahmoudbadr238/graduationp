@@ -5,6 +5,7 @@ import "../ui"
 ComboBox {
     id: control
 
+    clip: true
     font.pixelSize: ThemeManager.fontSize_body()
 
     leftPadding: 12

@@ -2221,30 +2221,365 @@ Item {
                         ColumnLayout {
                             width: Math.min(800, urlScroll.availableWidth - 32)
                             x: Math.max(16, (urlScroll.availableWidth - width) / 2)
-                            spacing: 12
+                            spacing: 14
 
-                            Item { height: 10 }
+                            Item { height: 8 }
 
-                            // Empty
+                            // ── Empty state ──────────────────────────────────
                             Item {
                                 visible: root.urlResult === null && !root.urlScanning
                                 Layout.fillWidth: true; implicitHeight: 200
                                 ColumnLayout { anchors.centerIn: parent; spacing: 10
                                     Text { text: "🌐"; font.pixelSize: 48; opacity: 0.4; Layout.alignment: Qt.AlignHCenter }
                                     Text { text: "Enter a URL above and click Scan URL"; color: ThemeManager.muted(); font.pixelSize: (ThemeManager.fontSize_body() || 14); Layout.alignment: Qt.AlignHCenter }
-                                    Text { text: "Static analysis is fast and safe by default. Sandbox detonation is optional."; color: ThemeManager.muted(); font.pixelSize: (ThemeManager.fontSize_small() || 12); Layout.alignment: Qt.AlignHCenter }
+                                    Text { text: "Multi-engine analysis: Heuristics + Content + YARA + optional Threat APIs"; color: ThemeManager.muted(); font.pixelSize: (ThemeManager.fontSize_small() || 12); Layout.alignment: Qt.AlignHCenter }
                                 }
                             }
 
-                            // URL details card
+                            // ┌─────────────────────────────────────────────┐
+                            // │  SCORE GAUGE + THREAT BADGES                │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
                                 visible: root.urlResult !== null
-                                Layout.fillWidth: true; implicitHeight: urlMetaCol.implicitHeight + 28
+                                Layout.fillWidth: true
+                                implicitHeight: scoreGaugeRow.implicitHeight + 32
+                                color: ThemeManager.panel(); radius: 12
+                                border.color: root.urlResult ? root.riskColor((root.urlResult.verdict) || "") : ThemeManager.border()
+                                border.width: 2
+                                Behavior on border.color { ColorAnimation { duration: 300 } }
+
+                                RowLayout {
+                                    id: scoreGaugeRow
+                                    anchors.fill: parent; anchors.margins: 16; spacing: 20
+
+                                    // ── Circular score gauge ─────────────
+                                    Item {
+                                        implicitWidth: 110; implicitHeight: 110
+                                        Layout.alignment: Qt.AlignVCenter
+
+                                        // Background arc (grey)
+                                        Canvas {
+                                            id: gaugeArcBg
+                                            anchors.fill: parent
+                                            onPaint: {
+                                                var ctx = getContext("2d")
+                                                ctx.reset()
+                                                var cx = width / 2, cy = height / 2, r = 44
+                                                ctx.lineWidth = 8
+                                                ctx.strokeStyle = ThemeManager.border()
+                                                ctx.lineCap = "round"
+                                                ctx.beginPath()
+                                                ctx.arc(cx, cy, r, 0.75 * Math.PI, 2.25 * Math.PI)
+                                                ctx.stroke()
+                                            }
+                                            Component.onCompleted: requestPaint()
+                                            Connections { target: ThemeManager; function onThemeChanged() { gaugeArcBg.requestPaint() } }
+                                        }
+
+                                        // Foreground arc (colored)
+                                        Canvas {
+                                            id: gaugeArcFg
+                                            anchors.fill: parent
+                                            property int scoreVal: root.urlResult ? ((root.urlResult || {}).score || 0) : 0
+                                            property color arcColor: root.urlResult ? root.riskColor((root.urlResult.verdict) || "") : ThemeManager.success
+                                            onPaint: {
+                                                var ctx = getContext("2d")
+                                                ctx.reset()
+                                                var cx = width / 2, cy = height / 2, r = 44
+                                                var startAngle = 0.75 * Math.PI
+                                                var endAngle = startAngle + (scoreVal / 100) * 1.5 * Math.PI
+                                                ctx.lineWidth = 8
+                                                ctx.strokeStyle = arcColor
+                                                ctx.lineCap = "round"
+                                                ctx.beginPath()
+                                                ctx.arc(cx, cy, r, startAngle, endAngle)
+                                                ctx.stroke()
+                                            }
+                                            onScoreValChanged: requestPaint()
+                                            onArcColorChanged: requestPaint()
+                                            Component.onCompleted: requestPaint()
+                                        }
+
+                                        // Score number
+                                        Text {
+                                            anchors.centerIn: parent; anchors.verticalCenterOffset: -6
+                                            text: root.urlResult ? String((root.urlResult || {}).score || 0) : "0"
+                                            color: root.urlResult ? root.riskColor((root.urlResult.verdict) || "") : ThemeManager.muted()
+                                            font.pixelSize: 28; font.weight: (Font.Bold || 700)
+                                        }
+
+                                        // "/100" label
+                                        Text {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            anchors.bottom: parent.bottom; anchors.bottomMargin: 16
+                                            text: "/ 100"
+                                            color: ThemeManager.muted(); font.pixelSize: 11
+                                        }
+                                    }
+
+                                    // ── Verdict + threat info column ─────
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 8
+
+                                        // Verdict badge
+                                        Rectangle {
+                                            implicitWidth: vrdLbl.implicitWidth + 24; implicitHeight: 28; radius: 14
+                                            color: root.urlResult ? root.riskColor((root.urlResult.verdict) || "") : "transparent"
+                                            Text {
+                                                id: vrdLbl; anchors.centerIn: parent
+                                                text: root.urlResult ? ((root.urlResult.verdict) || "unknown").toUpperCase().replace(/_/g, " ") : ""
+                                                color: "#ffffff"; font.pixelSize: 12; font.weight: (Font.Bold || 700)
+                                            }
+                                        }
+
+                                        // Threat type pills
+                                        Flow {
+                                            Layout.fillWidth: true; spacing: 6
+                                            visible: root.urlResult !== null && ((root.urlResult || {}).threat_types || []).length > 0
+                                            Repeater {
+                                                model: (root.urlResult || {}).threat_types || []
+                                                Rectangle {
+                                                    implicitWidth: ttLbl.implicitWidth + 20; implicitHeight: 22; radius: 11
+                                                    color: {
+                                                        var t = (modelData || "").toLowerCase()
+                                                        if (t === "phishing")   return Qt.rgba(0.9, 0.3, 0.2, 0.15)
+                                                        if (t === "malware")    return Qt.rgba(0.8, 0.1, 0.1, 0.15)
+                                                        if (t === "download risk") return Qt.rgba(0.9, 0.6, 0.1, 0.15)
+                                                        return Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                                                    }
+                                                    Text {
+                                                        id: ttLbl; anchors.centerIn: parent
+                                                        text: {
+                                                            var t = (modelData || "").toLowerCase()
+                                                            if (t === "phishing") return "🎣 Phishing"
+                                                            if (t === "malware") return "🦠 Malware"
+                                                            if (t === "suspicious structure") return "⚠️ Suspicious"
+                                                            if (t === "redirect abuse") return "🔀 Redirect Abuse"
+                                                            if (t === "download risk") return "⬇️ Download Risk"
+                                                            return modelData || ""
+                                                        }
+                                                        color: ThemeManager.foreground(); font.pixelSize: 10; font.weight: (Font.SemiBold || 600)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Engine summary line
+                                        Text {
+                                            visible: root.urlResult !== null
+                                            text: {
+                                                var r = root.urlResult || {}
+                                                var ec = r.engine_count || 0
+                                                var ef = r.engines_flagged || 0
+                                                var dur = r.scan_duration_sec || 0
+                                                return ec + " engine" + (ec !== 1 ? "s" : "") +
+                                                       " • " + ef + " flagged" +
+                                                       " • " + dur.toFixed(1) + "s"
+                                            }
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                        }
+
+                                        // Normalized URL
+                                        Text {
+                                            visible: root.urlResult !== null
+                                            text: root.urlResult ? ((root.urlResult.normalized_url) || "") : ""
+                                            color: ThemeManager.foreground()
+                                            font.pixelSize: 11; font.family: "Consolas"
+                                            elide: Text.ElideRight; Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ┌─────────────────────────────────────────────┐
+                            // │  STRUCTURED EXPLANATION (What / Why / Do)   │
+                            // └─────────────────────────────────────────────┘
+                            Rectangle {
+                                visible: root.urlResult !== null && (root.urlResult || {}).explanation !== null && (root.urlResult || {}).explanation !== undefined
+                                Layout.fillWidth: true; implicitHeight: explainCol.implicitHeight + 28
+                                color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
+
+                                ColumnLayout {
+                                    id: explainCol
+                                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 10
+
+                                    Text { text: "🔍  Analysis"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+
+                                    // What Is This?
+                                    Rectangle {
+                                        Layout.fillWidth: true; implicitHeight: whatCol.implicitHeight + 16
+                                        color: ThemeManager.surface(); radius: 8
+                                        ColumnLayout {
+                                            id: whatCol
+                                            anchors.left: parent.left; anchors.right: parent.right
+                                            anchors.top: parent.top; anchors.margins: 8; spacing: 3
+                                            Text { text: "📋  What Is This?"; color: ThemeManager.accent; font.pixelSize: 11; font.weight: (Font.SemiBold || 600) }
+                                            Text {
+                                                text: ((root.urlResult || {}).explanation || {}).what_it_is || "—"
+                                                color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                                wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                            }
+                                        }
+                                    }
+
+                                    // Why Risky?
+                                    Rectangle {
+                                        Layout.fillWidth: true; implicitHeight: whyCol.implicitHeight + 16
+                                        color: ThemeManager.surface(); radius: 8
+                                        ColumnLayout {
+                                            id: whyCol
+                                            anchors.left: parent.left; anchors.right: parent.right
+                                            anchors.top: parent.top; anchors.margins: 8; spacing: 3
+                                            Text { text: "⚡  Why Risky?"; color: ThemeManager.warning; font.pixelSize: 11; font.weight: (Font.SemiBold || 600) }
+                                            Text {
+                                                text: ((root.urlResult || {}).explanation || {}).why_risky || "—"
+                                                color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                                wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                            }
+                                        }
+                                    }
+
+                                    // What To Do
+                                    Rectangle {
+                                        Layout.fillWidth: true; implicitHeight: doCol.implicitHeight + 16
+                                        color: ThemeManager.surface(); radius: 8
+                                        ColumnLayout {
+                                            id: doCol
+                                            anchors.left: parent.left; anchors.right: parent.right
+                                            anchors.top: parent.top; anchors.margins: 8; spacing: 3
+                                            Text { text: "✅  What To Do"; color: ThemeManager.success; font.pixelSize: 11; font.weight: (Font.SemiBold || 600) }
+                                            Text {
+                                                text: ((root.urlResult || {}).explanation || {}).what_to_do || "—"
+                                                color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                                wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                            }
+                                        }
+                                    }
+
+                                    // Confidence + technical
+                                    RowLayout {
+                                        Layout.fillWidth: true; spacing: 12
+                                        Text {
+                                            text: "Confidence: " + (((root.urlResult || {}).explanation || {}).confidence || "—").toUpperCase()
+                                            color: ThemeManager.muted(); font.pixelSize: 10; font.weight: (Font.SemiBold || 600)
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: ((root.urlResult || {}).explanation || {}).technical_summary || ""
+                                            color: ThemeManager.muted(); font.pixelSize: 10
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ┌─────────────────────────────────────────────┐
+                            // │  MULTI-ENGINE BREAKDOWN                     │
+                            // └─────────────────────────────────────────────┘
+                            Rectangle {
+                                visible: root.urlResult !== null && (root.urlResult || {}).engines !== null && (root.urlResult || {}).engines !== undefined
+                                Layout.fillWidth: true; implicitHeight: engCol.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlMetaCol
+                                    id: engCol
+                                    anchors.left: parent.left; anchors.right: parent.right
+                                    anchors.top: parent.top; anchors.margins: 14; spacing: 8
+
+                                    Text { text: "🔧  Engine Breakdown"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+
+                                    Repeater {
+                                        model: {
+                                            var engines = (root.urlResult || {}).engines || {}
+                                            var list = []
+                                            for (var key in engines) {
+                                                var e = engines[key]
+                                                list.push({
+                                                    name: e.engine_name || key,
+                                                    available: e.available !== false,
+                                                    flagged: e.flagged || false,
+                                                    score: e.score || 0,
+                                                    verdict: e.verdict || "unknown",
+                                                    evidence_count: e.evidence_count || 0,
+                                                    duration_ms: e.duration_ms || 0
+                                                })
+                                            }
+                                            return list
+                                        }
+                                        Rectangle {
+                                            Layout.fillWidth: true; implicitHeight: 44; radius: 8
+                                            color: ThemeManager.surface()
+                                            border.color: modelData.flagged ? root.riskColor(modelData.verdict) : ThemeManager.border()
+                                            border.width: modelData.flagged ? 1.5 : 1
+                                            Behavior on border.color { ColorAnimation { duration: 200 } }
+
+                                            RowLayout {
+                                                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 10
+
+                                                // Status icon
+                                                Text {
+                                                    text: {
+                                                        if (!modelData.available) return "⏸"
+                                                        if (modelData.flagged)    return "🚨"
+                                                        return "✅"
+                                                    }
+                                                    font.pixelSize: 14
+                                                }
+
+                                                // Engine name
+                                                Text {
+                                                    text: modelData.name || "Unknown"
+                                                    color: ThemeManager.foreground()
+                                                    font.pixelSize: (ThemeManager.fontSize_small() || 12)
+                                                    font.weight: (Font.SemiBold || 600)
+                                                    Layout.fillWidth: true
+                                                }
+
+                                                // Evidence count
+                                                Text {
+                                                    visible: modelData.evidence_count > 0
+                                                    text: modelData.evidence_count + " finding" + (modelData.evidence_count !== 1 ? "s" : "")
+                                                    color: ThemeManager.muted(); font.pixelSize: 10
+                                                }
+
+                                                // Score pill
+                                                Rectangle {
+                                                    implicitWidth: engScoreTxt.implicitWidth + 14; implicitHeight: 20; radius: 10
+                                                    color: modelData.flagged
+                                                           ? Qt.rgba(root.riskColor(modelData.verdict).r, root.riskColor(modelData.verdict).g, root.riskColor(modelData.verdict).b, 0.15)
+                                                           : ThemeManager.elevated()
+                                                    Text {
+                                                        id: engScoreTxt; anchors.centerIn: parent
+                                                        text: modelData.available ? String(modelData.score) : "N/A"
+                                                        color: modelData.flagged ? root.riskColor(modelData.verdict) : ThemeManager.muted()
+                                                        font.pixelSize: 10; font.weight: (Font.Bold || 700)
+                                                    }
+                                                }
+
+                                                // Duration
+                                                Text {
+                                                    text: modelData.duration_ms + "ms"
+                                                    color: ThemeManager.muted(); font.pixelSize: 9
+                                                    Layout.preferredWidth: 42
+                                                    horizontalAlignment: Text.AlignRight
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ┌─────────────────────────────────────────────┐
+                            // │  URL DETAILS                                │
+                            // └─────────────────────────────────────────────┘
+                            Rectangle {
+                                visible: root.urlResult !== null
+                                Layout.fillWidth: true; implicitHeight: urlMetaCol2.implicitHeight + 28
+                                color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
+                                ColumnLayout {
+                                    id: urlMetaCol2
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 8
-                                    Text { text: "URL Details"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+                                    Text { text: "📄  URL Details"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
                                     GridLayout {
                                         Layout.fillWidth: true; columns: 2; columnSpacing: 24; rowSpacing: 6
                                         Repeater {
@@ -2265,26 +2600,28 @@ Item {
                                 }
                             }
 
-                            // Evidence / findings
+                            // ┌─────────────────────────────────────────────┐
+                            // │  FINDINGS / EVIDENCE                        │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
                                 visible: root.urlResult !== null && ((root.urlResult || {}).evidence || []).length > 0
-                                Layout.fillWidth: true; implicitHeight: urlEvCol.implicitHeight + 28
+                                Layout.fillWidth: true; implicitHeight: urlEvCol2.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlEvCol
+                                    id: urlEvCol2
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 8
-                                    Text { text: "Findings (" + ((root.urlResult || {}).evidence_count || 0) + ")"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+                                    Text { text: "🔎  Findings (" + ((root.urlResult || {}).evidence_count || 0) + ")"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
                                     Repeater {
                                         model: (root.urlResult || {}).evidence || []
                                         Rectangle {
-                                            Layout.fillWidth: true; implicitHeight: evInner.implicitHeight + 16
+                                            Layout.fillWidth: true; implicitHeight: evInner2.implicitHeight + 16
                                             color: ThemeManager.surface(); radius: 8
                                             ColumnLayout {
-                                                id: evInner
+                                                id: evInner2
                                                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; spacing: 3
                                                 RowLayout { spacing: 8; Layout.fillWidth: true
                                                     Rectangle {
-                                                        implicitWidth: sevLbl.implicitWidth + 12; implicitHeight: 18; radius: 9
+                                                        implicitWidth: sevLbl2.implicitWidth + 12; implicitHeight: 18; radius: 9
                                                         color: {
                                                             var s = (modelData.severity || "").toLowerCase()
                                                             if (s === "high" || s === "critical") return Qt.rgba(ThemeManager.danger.r,  ThemeManager.danger.g,  ThemeManager.danger.b,  0.2)
@@ -2292,7 +2629,7 @@ Item {
                                                             return ThemeManager.surface()
                                                         }
                                                         Text {
-                                                            id: sevLbl; anchors.centerIn: parent
+                                                            id: sevLbl2; anchors.centerIn: parent
                                                             text: (modelData.severity || "info").toUpperCase()
                                                             font.pixelSize: 9; font.weight: (Font.Bold || 700)
                                                             color: {
@@ -2312,15 +2649,17 @@ Item {
                                 }
                             }
 
-                            // Redirect chain
+                            // ┌─────────────────────────────────────────────┐
+                            // │  REDIRECT CHAIN                             │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
                                 visible: root.urlResult !== null && ((root.urlResult || {}).redirects || []).length > 0
-                                Layout.fillWidth: true; implicitHeight: urlRedCol.implicitHeight + 28
+                                Layout.fillWidth: true; implicitHeight: urlRedCol2.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlRedCol
+                                    id: urlRedCol2
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 5
-                                    Text { text: "Redirect Chain"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+                                    Text { text: "🔀  Redirect Chain"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
                                     Repeater {
                                         model: (root.urlResult || {}).redirects || []
                                         RowLayout { spacing: 6; Layout.fillWidth: true
@@ -2331,13 +2670,15 @@ Item {
                                 }
                             }
 
-                            // Sandbox detonation results
+                            // ┌─────────────────────────────────────────────┐
+                            // │  SANDBOX RESULTS                            │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
                                 visible: root.urlResult !== null && (root.urlResult || {}).has_sandbox
-                                Layout.fillWidth: true; implicitHeight: urlSbCol.implicitHeight + 28
+                                Layout.fillWidth: true; implicitHeight: urlSbCol2.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlSbCol
+                                    id: urlSbCol2
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 6
                                     Text { text: "🖥  Sandbox Detonation"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
                                     Text {
@@ -2347,15 +2688,17 @@ Item {
                                 }
                             }
 
-                            // IOCs
+                            // ┌─────────────────────────────────────────────┐
+                            // │  IOCs                                       │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
                                 visible: root.urlResult !== null && (root.urlResult || {}).has_iocs
-                                Layout.fillWidth: true; implicitHeight: urlIocCol.implicitHeight + 28
+                                Layout.fillWidth: true; implicitHeight: urlIocCol2.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlIocCol
+                                    id: urlIocCol2
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 5
-                                    Text { text: "Extracted IOCs"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+                                    Text { text: "🎯  Extracted IOCs"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
                                     Repeater {
                                         model: {
                                             var res = []; var iocs = (root.urlResult || {}).iocs || {}
@@ -2370,19 +2713,62 @@ Item {
                                 }
                             }
 
-                            // Analysis / explanation
+                            // ┌─────────────────────────────────────────────┐
+                            // │  SCORING BREAKDOWN                          │
+                            // └─────────────────────────────────────────────┘
                             Rectangle {
-                                visible: root.urlResult !== null && (root.urlResult || {}).explanation !== null && (root.urlResult || {}).explanation !== undefined
-                                Layout.fillWidth: true; implicitHeight: urlExCol.implicitHeight + 28
+                                visible: root.urlResult !== null && (root.urlResult || {}).scoring !== null && (root.urlResult || {}).scoring !== undefined
+                                Layout.fillWidth: true; implicitHeight: scoreBreakCol.implicitHeight + 28
                                 color: ThemeManager.panel(); radius: 10; border.color: ThemeManager.border(); border.width: 1
                                 ColumnLayout {
-                                    id: urlExCol
-                                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 6
-                                    Text { text: "Analysis"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
-                                    Text {
-                                        text: ((root.urlResult || {}).explanation || {}).summary
-                                              || ((root.urlResult || {}).explanation || {}).text || ""
-                                        color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_small() || 12); wrapMode: Text.WordWrap; Layout.fillWidth: true
+                                    id: scoreBreakCol
+                                    anchors.left: parent.left; anchors.right: parent.right
+                                    anchors.top: parent.top; anchors.margins: 14; spacing: 6
+
+                                    Text { text: "📊  Scoring Breakdown"; color: ThemeManager.foreground(); font.pixelSize: (ThemeManager.fontSize_body() || 14); font.weight: (Font.SemiBold || 600) }
+
+                                    Repeater {
+                                        model: {
+                                            var bd = ((root.urlResult || {}).scoring || {}).breakdown || {}
+                                            var list = []
+                                            for (var k in bd) {
+                                                list.push({ label: k.replace(/_/g, " "), pts: bd[k] })
+                                            }
+                                            // Sort by points descending
+                                            list.sort(function(a, b) { return b.pts - a.pts })
+                                            return list
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 8
+                                            // Bar
+                                            Rectangle {
+                                                Layout.fillWidth: true; implicitHeight: 18; radius: 4
+                                                color: ThemeManager.surface()
+                                                Rectangle {
+                                                    anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                                                    width: Math.max(4, parent.width * Math.min(1, (modelData.pts || 0) / 35))
+                                                    radius: 4
+                                                    color: {
+                                                        var p = modelData.pts || 0
+                                                        if (p >= 25) return ThemeManager.danger
+                                                        if (p >= 15) return ThemeManager.warning
+                                                        return ThemeManager.accent
+                                                    }
+                                                }
+                                                Text {
+                                                    anchors.left: parent.left; anchors.leftMargin: 6
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: (modelData.label || "").charAt(0).toUpperCase() + (modelData.label || "").slice(1)
+                                                    color: ThemeManager.foreground(); font.pixelSize: 10; font.weight: (Font.Medium || 500)
+                                                }
+                                            }
+                                            // Points
+                                            Text {
+                                                text: "+" + (modelData.pts || 0)
+                                                color: ThemeManager.muted(); font.pixelSize: 10; font.weight: (Font.Bold || 700)
+                                                Layout.preferredWidth: 30; horizontalAlignment: Text.AlignRight
+                                            }
+                                        }
                                     }
                                 }
                             }

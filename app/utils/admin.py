@@ -48,7 +48,7 @@ class AdminPrivileges:
                 "runas",  # operation
                 sys.executable,  # file (Python interpreter)
                 f'"{script}" {params}',  # parameters
-                None,  # directory
+                os.path.dirname(script),  # directory — keep original CWD
                 1,  # show command (SW_NORMAL)
             )
 

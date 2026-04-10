@@ -212,6 +212,15 @@ class FileFunctionBridge(QObject):
         self.shred_thread = None
         self.carver_thread = None
 
+    # ── File validation ──────────────────────────────────────────────────
+    @Slot(str, result=bool)
+    def fileExists(self, file_path):
+        """Check if a file path exists and is a regular file."""
+        try:
+            return os.path.isfile(file_path)
+        except (OSError, ValueError):
+            return False
+
     # ── New secure-delete API ───────────────────────────────────────────
     @Slot(str, int, bool, bool, bool)
     def startSecureDelete(self, file_path, passes, rename, verify, log_enabled):

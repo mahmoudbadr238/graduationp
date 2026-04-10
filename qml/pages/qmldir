@@ -3,6 +3,7 @@ EventViewer 1.0 EventViewer.qml
 SystemSnapshot 1.0 SystemSnapshot.qml
 GPUMonitor 1.0 GPUMonitor.qml
 ScanHistory 1.0 ScanHistory.qml
+SystemMonitor 1.0 SystemMonitor.qml
 NetworkScan 1.0 NetworkScan.qml
 NmapScanResultPage 1.0 NmapScanResultPage.qml
 ScanCenter 1.0 ScanCenter.qml

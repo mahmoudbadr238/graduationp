@@ -34,7 +34,6 @@ def _blocked_prefixes() -> list[str]:
             win.lower(),
             pf.lower(),
             pf86.lower(),
-            os.environ.get("SystemDrive", "C:").lower() + "\\",
         ])
     return _BLOCKED_PREFIXES
 
@@ -46,7 +45,7 @@ def validate_target(path: str) -> tuple[bool, str]:
     if not p.exists():
         return False, f"File not found: {path}"
     if not p.is_file():
-        return False, "Target is not a regular file."
+        return False, "Target is not a regular file. Only individual files can be shredded."
     if p.stat().st_size == 0:
         return False, "File is empty (0 bytes). Nothing to shred."
 
@@ -58,12 +57,29 @@ def validate_target(path: str) -> tuple[bool, str]:
 
     for prefix in _blocked_prefixes():
         if resolved.startswith(prefix):
-            return False, f"Blocked: target is inside a protected system directory ({prefix})."
+            # Build a user-friendly message
+            if "windows" in prefix:
+                return False, (
+                    "Blocked: this file is inside the Windows system directory "
+                    f"({prefix}). Deleting system files could make your computer "
+                    "unbootable."
+                )
+            if "program files" in prefix:
+                return False, (
+                    "Blocked: this file is inside the Program Files directory "
+                    f"({prefix}). Uninstall via Settings instead."
+                )
+            return False, (
+                f"Blocked: target is inside a protected system directory ({prefix})."
+            )
 
     # Block the running application's own directory
     cwd = os.getcwd().lower()
     if resolved.startswith(cwd):
-        return False, "Blocked: target is inside the application's working directory."
+        return False, (
+            "Blocked: this file is inside the Sentinel application directory. "
+            "The application cannot shred its own files."
+        )
 
     return True, ""
 

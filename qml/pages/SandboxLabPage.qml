@@ -620,7 +620,6 @@ ScrollView {
 
                 ScrollView {
                     Layout.fillWidth: true; implicitHeight: 64; clip: true
-                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded; ScrollBar.vertical.policy: ScrollBar.AlwaysOff
                     Row {
                         spacing: 6
                         Repeater {

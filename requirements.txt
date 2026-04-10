@@ -1,4 +1,4 @@
-﻿# ═══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # Sentinel - Endpoint Security Suite
 # Python Dependencies
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -29,7 +29,7 @@ aiohttp>=3.9.0                  # Async HTTP client for Groq/AI providers
 # ─────────────────────────────────────────────────────────────────────────────────
 # GPU MONITORING (Optional - gracefully degraded if unavailable)
 # ─────────────────────────────────────────────────────────────────────────────────
-pynvml>=11.0.0                  # NVIDIA GPU monitoring (NVIDIA GPUs)
+nvidia-ml-py>=11.0.0            # NVIDIA GPU monitoring (replaces deprecated pynvml)
 GPUtil>=1.4.0                   # GPU utilities wrapper
 pyadl>=0.1                      # AMD GPU monitoring (AMD GPUs on Windows)
 # Note: amdsmi is installed separately if needed for Linux AMD GPUs
@@ -37,7 +37,7 @@ pyadl>=0.1                      # AMD GPU monitoring (AMD GPUs on Windows)
 # ─────────────────────────────────────────────────────────────────────────────────
 # AI / ONLINE AI (Groq is default free tier, Claude/OpenAI as fallback)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Groq uses standard HTTP API - no special SDK needed
+groq>=1.0.0                     # Groq Cloud AI SDK (primary - llama3 models)
 anthropic>=0.39.0               # Claude AI API client (fallback)
 openai>=1.54.0                  # OpenAI API client (fallback)
 # Configure via environment variables:

@@ -7,6 +7,7 @@ QtObject {
     property string themeMode: "system"  // "dark", "light", "system"
     property string fontSize: "medium"  // "small", "medium", "large"
     property int fontSizeUpdateTrigger: 0  // Trigger for UI updates
+    property int themeModeUpdateTrigger: 0  // Trigger for theme re-render
     property bool _initialized: false
     property int _retryCount: 0
     property int _maxRetries: 10
@@ -59,6 +60,9 @@ QtObject {
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             themeMode = (SettingsService.themeMode || "system").toString().trim().toLowerCase()
         }
+        // Trigger re-render by changing this counter
+        themeModeUpdateTrigger = themeModeUpdateTrigger + 1
+        themeManager.themeModeChanged()
     }
     
     function onFontSizeChanged() {
@@ -76,6 +80,9 @@ QtObject {
         if (typeof SettingsService !== 'undefined' && SettingsService) {
             SettingsService.themeMode = mode
         }
+        // Trigger re-render
+        themeModeUpdateTrigger = themeModeUpdateTrigger + 1
+        themeManager.themeModeChanged()
     }
     
     function setFontSize(size) {
@@ -85,6 +92,7 @@ QtObject {
         }
         // Trigger re-render
         fontSizeUpdateTrigger = fontSizeUpdateTrigger + 1
+        themeManager.fontSizeChanged()
     }
     
     function getFontScale() {

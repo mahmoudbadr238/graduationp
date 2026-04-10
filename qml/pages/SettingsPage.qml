@@ -5,20 +5,49 @@ import "../ui"
 
 Item {
     id: root
-    
+
     property int fontSizeTrigger: ThemeManager.fontSizeUpdateTrigger
+    property int themeTrigger: ThemeManager.themeModeUpdateTrigger
+
+    // ── Reactive sync: when SettingsService signals fire, reload UI ──
+    Connections {
+        target: typeof SettingsService !== "undefined" ? SettingsService : null
+        enabled: target !== null
+
+        function onThemeModeChanged() {
+            themeModeCombo.reloadThemeMode()
+        }
+        function onFontSizeChanged() {
+            fontSizeCombo.reloadFontSize()
+        }
+        function onStartWithSystemChanged() {
+            startupSwitch.reloadFromService()
+        }
+        function onStartMinimizedChanged() {
+            minimizeToTraySwitch.reloadFromService()
+        }
+        function onEnableGpuMonitoringChanged() {
+            gpuSwitch.reloadFromService()
+        }
+        function onSendErrorReportsChanged() {
+            telemetrySwitch.reloadFromService()
+        }
+        function onUpdateIntervalMsChanged() {
+            intervalSpinner.reloadFromService()
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
         color: ThemeManager.background()
-        
+
         Flickable {
             anchors.fill: parent
             anchors.margins: 32
             contentWidth: width
             contentHeight: mainColumn.implicitHeight
             clip: true
-            
+
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             ColumnLayout {
@@ -74,35 +103,34 @@ Item {
                                 model: ["Light", "Dark", "System"]
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: 300
-                                
+
                                 property bool isInitializing: true
-                                
+
                                 Component.onCompleted: {
                                     reloadThemeMode()
                                     isInitializing = false
                                 }
-                                
+
                                 onCurrentIndexChanged: {
-                                    // Don't save during initial load
                                     if (isInitializing) return
-                                    
                                     var modes = ["light", "dark", "system"]
-                                    if (SettingsService && currentIndex >= 0 && currentIndex < modes.length) {
+                                    if (currentIndex >= 0 && currentIndex < modes.length) {
                                         console.log("[SettingsPage] Theme changed to:", modes[currentIndex])
-                                        SettingsService.themeMode = modes[currentIndex]
+                                        ThemeManager.setThemeMode(modes[currentIndex])
                                     }
                                 }
-                                
+
                                 function reloadThemeMode() {
                                     var modes = ["light", "dark", "system"]
                                     var savedMode = SettingsService ? SettingsService.themeMode : "dark"
-                                    console.log("[SettingsPage] Loading theme mode:", savedMode)
                                     var newIndex = modes.indexOf(savedMode)
                                     if (newIndex >= 0) {
+                                        isInitializing = true
                                         currentIndex = newIndex
+                                        isInitializing = false
                                     }
                                 }
-                                
+
                                 background: Rectangle {
                                     color: ThemeManager.surface()
                                     radius: 6
@@ -144,7 +172,7 @@ Item {
                                     }
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
 
@@ -165,38 +193,34 @@ Item {
                                 model: ["Small", "Medium", "Large"]
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: 300
-                                
+
                                 property bool isInitializing: true
-                                
+
                                 Component.onCompleted: {
                                     reloadFontSize()
                                     isInitializing = false
                                 }
-                                
+
                                 onCurrentIndexChanged: {
-                                    // Don't save during initial load
                                     if (isInitializing) return
-                                    
                                     var sizes = ["small", "medium", "large"]
                                     if (currentIndex >= 0 && currentIndex < sizes.length) {
                                         console.log("[SettingsPage] Font size changed to:", sizes[currentIndex])
-                                        if (SettingsService) {
-                                            SettingsService.fontSize = sizes[currentIndex]
-                                        }
                                         ThemeManager.setFontSize(sizes[currentIndex])
                                     }
                                 }
-                                
+
                                 function reloadFontSize() {
                                     var sizes = ["small", "medium", "large"]
                                     var savedSize = SettingsService ? SettingsService.fontSize : "medium"
-                                    console.log("[SettingsPage] Loading font size:", savedSize)
                                     var newIndex = sizes.indexOf(savedSize)
                                     if (newIndex >= 0) {
+                                        isInitializing = true
                                         currentIndex = newIndex
+                                        isInitializing = false
                                     }
                                 }
-                                
+
                                 background: Rectangle {
                                     color: ThemeManager.surface()
                                     radius: 6
@@ -238,7 +262,7 @@ Item {
                                     }
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
                     }
@@ -280,25 +304,21 @@ Item {
                             Switch {
                                 id: liveMonitoringSwitch
                                 checked: true
-                                
+
                                 Component.onCompleted: {
-                                    // Get initial state from Backend if available
                                     if (typeof Backend !== 'undefined' && Backend && Backend.live !== undefined) {
                                         checked = Backend.live
                                     }
                                 }
-                                
+
                                 onCheckedChanged: {
                                     if (typeof Backend !== 'undefined' && Backend) {
-                                        if (checked) {
-                                            Backend.startLive()
-                                        } else {
-                                            Backend.stopLive()
-                                        }
+                                        if (checked) Backend.startLive()
+                                        else Backend.stopLive()
                                     }
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
 
@@ -319,20 +339,30 @@ Item {
                                 to: 60
                                 value: 2
                                 Layout.preferredWidth: 120
-                                
+
+                                property bool isInitializing: true
+
                                 Component.onCompleted: {
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        value = SettingsService.updateIntervalMs / 1000
-                                    }
+                                    reloadFromService()
+                                    isInitializing = false
                                 }
-                                
+
                                 onValueChanged: {
+                                    if (isInitializing) return
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
                                         SettingsService.updateIntervalMs = value * 1000
                                     }
                                 }
+
+                                function reloadFromService() {
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        isInitializing = true
+                                        value = SettingsService.updateIntervalMs / 1000
+                                        isInitializing = false
+                                    }
+                                }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
 
@@ -349,22 +379,32 @@ Item {
 
                             Switch {
                                 id: gpuSwitch
-                                
+
+                                property bool isInitializing: true
+
                                 Component.onCompleted: {
+                                    reloadFromService()
+                                    isInitializing = false
+                                }
+
+                                onCheckedChanged: {
+                                    if (isInitializing) return
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.enableGpuMonitoring = checked
+                                    }
+                                }
+
+                                function reloadFromService() {
+                                    isInitializing = true
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
                                         checked = SettingsService.enableGpuMonitoring
                                     } else {
                                         checked = true
                                     }
-                                }
-                                
-                                onCheckedChanged: {
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.enableGpuMonitoring = checked
-                                    }
+                                    isInitializing = false
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
                     }
@@ -396,31 +436,49 @@ Item {
                             Layout.fillWidth: true
                             spacing: 20
 
-                            Text {
-                                text: "Run on Startup:"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: ThemeManager.fontSize_body()
+                            ColumnLayout {
                                 Layout.preferredWidth: 200
+                                spacing: 2
+                                Text {
+                                    text: "Run on Startup:"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: ThemeManager.fontSize_body()
+                                }
+                                Text {
+                                    text: "Adds Sentinel to Windows startup via Registry"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: ThemeManager.fontSize_small()
+                                }
                             }
 
                             Switch {
                                 id: startupSwitch
-                                
+
+                                property bool isInitializing: true
+
                                 Component.onCompleted: {
+                                    reloadFromService()
+                                    isInitializing = false
+                                }
+
+                                onCheckedChanged: {
+                                    if (isInitializing) return
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.startWithSystem = checked
+                                    }
+                                }
+
+                                function reloadFromService() {
+                                    isInitializing = true
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
                                         checked = SettingsService.startWithSystem
                                     } else {
                                         checked = false
                                     }
-                                }
-                                
-                                onCheckedChanged: {
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.startWithSystem = checked
-                                    }
+                                    isInitializing = false
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
 
@@ -428,31 +486,49 @@ Item {
                             Layout.fillWidth: true
                             spacing: 20
 
-                            Text {
-                                text: "Minimize to Tray:"
-                                color: ThemeManager.foreground()
-                                font.pixelSize: ThemeManager.fontSize_body()
+                            ColumnLayout {
                                 Layout.preferredWidth: 200
+                                spacing: 2
+                                Text {
+                                    text: "Minimize to Tray:"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: ThemeManager.fontSize_body()
+                                }
+                                Text {
+                                    text: "Keep running in the system tray when closed"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: ThemeManager.fontSize_small()
+                                }
                             }
 
                             Switch {
                                 id: minimizeToTraySwitch
-                                
+
+                                property bool isInitializing: true
+
                                 Component.onCompleted: {
+                                    reloadFromService()
+                                    isInitializing = false
+                                }
+
+                                onCheckedChanged: {
+                                    if (isInitializing) return
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.startMinimized = checked
+                                    }
+                                }
+
+                                function reloadFromService() {
+                                    isInitializing = true
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
                                         checked = SettingsService.startMinimized
                                     } else {
                                         checked = true
                                     }
-                                }
-                                
-                                onCheckedChanged: {
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.startMinimized = checked
-                                    }
+                                    isInitializing = false
                                 }
                             }
-                            
+
                             Item { Layout.fillWidth: true }
                         }
                     }
@@ -493,23 +569,111 @@ Item {
 
                             Switch {
                                 id: telemetrySwitch
-                                
+
+                                property bool isInitializing: true
+
                                 Component.onCompleted: {
+                                    reloadFromService()
+                                    isInitializing = false
+                                }
+
+                                onCheckedChanged: {
+                                    if (isInitializing) return
+                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                        SettingsService.sendErrorReports = checked
+                                    }
+                                }
+
+                                function reloadFromService() {
+                                    isInitializing = true
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
                                         checked = SettingsService.sendErrorReports
                                     } else {
                                         checked = false
                                     }
+                                    isInitializing = false
                                 }
-                                
-                                onCheckedChanged: {
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.sendErrorReports = checked
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+                }
+
+                // ===== RESET SECTION =====
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: resetContent.implicitHeight + 48
+                    color: ThemeManager.panel()
+                    radius: 12
+                    border.color: ThemeManager.border()
+                    border.width: 1
+
+                    ColumnLayout {
+                        id: resetContent
+                        anchors.fill: parent
+                        anchors.margins: 24
+                        spacing: 16
+
+                        Text {
+                            text: "Danger Zone"
+                            font.pixelSize: ThemeManager.fontSize_h3()
+                            font.bold: true
+                            color: ThemeManager.danger
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 20
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    text: "Reset All Settings"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: ThemeManager.fontSize_body()
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: "Restore all settings to their original defaults"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: ThemeManager.fontSize_small()
+                                }
+                            }
+
+                            Rectangle {
+                                width: resetBtnText.implicitWidth + 24
+                                height: 34
+                                radius: 8
+                                color: resetMouse.containsMouse
+                                       ? Qt.lighter(ThemeManager.danger, 1.15)
+                                       : ThemeManager.danger
+
+                                Text {
+                                    id: resetBtnText
+                                    anchors.centerIn: parent
+                                    text: "Reset to Defaults"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    color: "#ffffff"
+                                }
+
+                                MouseArea {
+                                    id: resetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (typeof SettingsService !== 'undefined' && SettingsService) {
+                                            SettingsService.resetToDefaults()
+                                            // Sync ThemeManager
+                                            ThemeManager.setThemeMode("dark")
+                                            ThemeManager.setFontSize("medium")
+                                        }
                                     }
                                 }
                             }
-                            
-                            Item { Layout.fillWidth: true }
                         }
                     }
                 }

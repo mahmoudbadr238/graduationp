@@ -2,7 +2,7 @@
 # Format: one domain per line, # for comments
 # This list is checked locally - no network required
 
-# Phishing domains (examples - extend as needed)
+# ── Phishing domains ─────────────────────────────────────────────────────────
 login-microsoft-verify.com
 secure-paypal-update.com
 amazon-account-verify.net
@@ -13,29 +13,71 @@ bank-secure-login.com
 account-verify-now.com
 password-reset-urgent.com
 security-alert-action.com
+signin-outlook-verify.com
+verify-your-identity-now.com
+account-recovery-center.com
+update-payment-method.com
+webmail-login-secure.com
+office365-login-portal.com
+icloud-find-device.com
+dropbox-share-document.com
+linkedin-verify-account.com
+instagram-copyright-appeal.com
+twitter-verify-badge.com
+tiktok-support-verify.com
+whatsapp-web-verify.com
+telegram-verify-account.com
+zoom-meeting-invite.com
+docusign-review-document.com
+chase-account-suspended.com
+wellsfargo-secure-login.com
+bankofamerica-verify.com
+citibank-alert-notice.com
+hsbc-security-update.com
 
-# Known malware distribution domains
+# ── Malware distribution ─────────────────────────────────────────────────────
 malware-download.com
 trojan-server.net
 ransomware-host.com
 botnet-c2.net
 exploit-kit.com
 drive-by-download.net
+payload-delivery.com
+malicious-redirect.net
+info-stealer-panel.com
+keylogger-server.net
+rat-command-server.com
+cryptominer-inject.com
+browser-hijack-install.com
+adware-bundle-download.com
 
-# Cryptocurrency scam domains
+# ── Cryptocurrency scams ─────────────────────────────────────────────────────
 free-bitcoin-generator.com
 crypto-doubler.net
 wallet-verify-eth.com
 mining-reward-claim.com
+ethereum-giveaway.com
+bitcoin-recovery-tool.com
+crypto-airdrop-claim.com
+nft-mint-free.com
+defi-yield-farm.com
+solana-airdrop-official.com
+binance-promo-bonus.com
 
-# Tech support scam domains
+# ── Tech support scams ───────────────────────────────────────────────────────
 microsoft-support-alert.com
 windows-error-fix.net
 computer-virus-detected.com
 security-warning-alert.com
 tech-support-help.net
+your-pc-is-infected.com
+call-microsoft-now.com
+apple-device-locked.com
+virus-removal-tool.com
+system-alert-critical.com
+firewall-breach-detected.com
 
-# Typosquatting examples
+# ── Typosquatting ────────────────────────────────────────────────────────────
 micros0ft.com
 g00gle.com
 amaz0n.com
@@ -43,8 +85,21 @@ paypa1.com
 faceb00k.com
 app1e.com
 netfl1x.com
+goggle.com
+gooogle.com
+micosoft.com
+microsft.com
+amazn.com
+arnazon.com
+paypai.com
+lnstagram.com
+faacebook.com
+twltter.com
+llnkedin.com
+youtuibe.com
+whatsaap.com
 
-# Fake/impersonator domains
+# ── Piracy / fake software ──────────────────────────────────────────────────
 fitgirl-repacks.site
 fitgirl-repacks.co
 fitgirl-repacks.xyz
@@ -55,3 +110,17 @@ igg-games.com
 oceanofgames.com
 skidrow-games.com
 nosteam.ro
+getintopc.com
+filecr.com
+crackingpatching.com
+kmsauto.net
+kmspico.ws
+
+# ── Fake shopping / survey scams ─────────────────────────────────────────────
+amazon-gift-card-free.com
+survey-cash-reward.com
+free-iphone-winner.com
+prize-claim-now.com
+rewards-center-claim.com
+exclusive-deal-today.com
+flash-sale-limited.com

@@ -4,7 +4,8 @@ import os
 import sys
 
 from PySide6.QtCore import QThreadPool
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtQml import QQmlApplicationEngine
 
 from .core.config import get_config
@@ -40,7 +41,7 @@ class DesktopSecurityApplication:
         os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
 
         # Create Qt application
-        self.app = QGuiApplication(sys.argv)
+        self.app = QApplication(sys.argv)
 
         # Set application properties
         self.app.setApplicationName("Sentinel")
@@ -75,6 +76,9 @@ class DesktopSecurityApplication:
         self.notification_service = None
         self.sandbox_lab = None
         self.file_function_service = None
+        self.resource_monitor = None
+        self.rtp_bridge = None
+        self.tray_icon = None
         self._setup_backend()
 
     def _setup_paths(self):
@@ -237,6 +241,19 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] File Function service failed: {e}")
                 self.file_function_service = None
 
+            # IMMEDIATE: Recovery Controller (two-phase scan + selective carve)
+            try:
+                from .filefunction.recovery_controller import RecoveryController
+
+                self.recovery_controller = RecoveryController()
+                self.engine.rootContext().setContextProperty(
+                    "RecoveryService", self.recovery_controller
+                )
+                print("[OK] Recovery controller registered")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] Recovery controller failed: {e}")
+                self.recovery_controller = None
+
             # IMMEDIATE: Notification Service (cross-platform)
             try:
                 self.notification_service = get_notification_service()
@@ -255,6 +272,33 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] Notification service failed: {e}")
                 self.notification_service = None
 
+            # IMMEDIATE: Resource Monitor (live CPU/RAM/Net dashboard)
+            try:
+                from .core.resource_monitor import get_resource_monitor_bridge
+
+                self.resource_monitor = get_resource_monitor_bridge()
+                self.engine.rootContext().setContextProperty(
+                    "ResourceMonitor", self.resource_monitor
+                )
+                self.resource_monitor.start()
+                print("[OK] Resource Monitor registered and started")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] Resource Monitor failed: {e}")
+                self.resource_monitor = None
+
+            # IMMEDIATE: Real-Time Protection Bridge
+            try:
+                from .core.realtime_protection import get_rtp_bridge
+
+                self.rtp_bridge = get_rtp_bridge()
+                self.engine.rootContext().setContextProperty(
+                    "RTPBridge", self.rtp_bridge
+                )
+                print("[OK] RTP Bridge registered (not auto-started)")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] RTP Bridge failed: {e}")
+                self.rtp_bridge = None
+
         except (ImportError, RuntimeError, UnicodeEncodeError) as e:
             print(f"[ERROR] Critical backend setup failed: {e}")
             print("Application will continue with limited functionality")
@@ -272,6 +316,152 @@ class DesktopSecurityApplication:
         if not self.engine.rootObjects():
             raise RuntimeError("Unable to load Sentinel UI (main.qml)")
 
+        # Allow drag-and-drop when running as admin (UIPI bypass)
+        self._allow_drag_drop_elevated()
+
+    @staticmethod
+    def _allow_drag_drop_elevated():
+        """Allow drag-and-drop from non-elevated Explorer to this elevated app.
+
+        Windows UIPI (User Interface Privilege Isolation) blocks drag-and-drop
+        messages from lower-privilege processes (like Explorer) to higher-privilege
+        processes (our app running as Admin). We call ChangeWindowMessageFilter to
+        add WM_DROPFILES, WM_COPYDATA, and WM_COPYGLOBALDATA to the allow list.
+        """
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+
+            # ChangeWindowMessageFilter(UINT message, DWORD dwFlag) -> BOOL
+            # dwFlag: MSGFLT_ADD = 1 (allow), MSGFLT_REMOVE = 2
+            ChangeWindowMessageFilter = user32.ChangeWindowMessageFilter
+            ChangeWindowMessageFilter.argtypes = [wintypes.UINT, wintypes.DWORD]
+            ChangeWindowMessageFilter.restype = wintypes.BOOL
+
+            MSGFLT_ADD = 1
+            WM_DROPFILES = 0x0233
+            WM_COPYDATA = 0x004A
+            WM_COPYGLOBALDATA = 0x0049
+
+            ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD)
+            ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD)
+            ChangeWindowMessageFilter(WM_COPYGLOBALDATA, MSGFLT_ADD)
+
+            print("[OK] Drag-and-drop enabled for elevated process (UIPI bypass)")
+        except Exception as e:
+            print(f"[WARNING] Could not enable drag-and-drop UIPI bypass: {e}")
+
+    def _setup_system_tray(self):
+        """Set up QSystemTrayIcon with context menu and alert forwarding."""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("[WARNING] System tray not available")
+            return
+
+        # Icon — try to load app icon, fall back to built-in
+        icon_path = os.path.join(os.getcwd(), "resources", "sentinel_icon.png")
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
+        else:
+            icon = QIcon.fromTheme("security-high")
+            if icon.isNull():
+                # Fallback — create a simple icon from application style
+                from PySide6.QtGui import QPixmap, QPainter, QColor
+                pixmap = QPixmap(64, 64)
+                pixmap.fill(QColor(0, 0, 0, 0))
+                painter = QPainter(pixmap)
+                painter.setBrush(QColor("#6366f1"))
+                painter.setPen(QColor("#6366f1"))
+                painter.drawEllipse(4, 4, 56, 56)
+                painter.setPen(QColor("white"))
+                font = painter.font()
+                font.setPixelSize(32)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(pixmap.rect(), 0x0084, "S")  # AlignCenter
+                painter.end()
+                icon = QIcon(pixmap)
+
+        self.tray_icon = QSystemTrayIcon(icon, self.app)
+        self.tray_icon.setToolTip("Sentinel — Endpoint Security Suite")
+
+        # Context menu
+        menu = QMenu()
+
+        show_action = menu.addAction("Show Dashboard")
+        show_action.triggered.connect(self._show_main_window)
+
+        menu.addSeparator()
+
+        monitor_action = menu.addAction("System Monitor")
+        monitor_action.triggered.connect(lambda: self._show_and_navigate("system-monitor"))
+
+        menu.addSeparator()
+
+        quit_action = menu.addAction("Quit Sentinel")
+        quit_action.triggered.connect(self._quit_from_tray)
+
+        self.tray_icon.setContextMenu(menu)
+
+        # Double-click tray icon → show window
+        self.tray_icon.activated.connect(self._on_tray_activated)
+
+        # Connect resource alerts → native Windows toasts
+        if self.resource_monitor:
+            self.resource_monitor.alertTriggered.connect(self._show_tray_alert)
+
+        # Connect RTP threats → native Windows toasts
+        if self.rtp_bridge:
+            self.rtp_bridge.threatDetected.connect(
+                lambda msg: self._show_tray_alert("🛡️ Sentinel RTP", msg)
+            )
+
+        self.tray_icon.show()
+        print("[OK] System tray icon active")
+
+    def _on_tray_activated(self, reason):
+        """Handle tray icon activation (double-click, etc.)."""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._show_main_window()
+
+    def _show_main_window(self):
+        """Bring the main QML window to the foreground."""
+        roots = self.engine.rootObjects()
+        if roots:
+            window = roots[0]
+            window.show()
+            window.raise_()
+            window.requestActivate()
+
+    def _show_and_navigate(self, route):
+        """Show the main window and navigate to a specific page."""
+        self._show_main_window()
+        roots = self.engine.rootObjects()
+        if roots:
+            # Call QML's loadRoute function
+            from PySide6.QtQml import QQmlProperty
+            roots[0].setProperty("currentRoute", route)
+
+    def _show_tray_alert(self, title, message):
+        """Show a native Windows Action Center toast notification."""
+        if self.tray_icon and self.tray_icon.isVisible():
+            self.tray_icon.showMessage(
+                title,
+                message[:256],  # Windows truncates long messages
+                QSystemTrayIcon.MessageIcon.Warning,
+                5000,  # 5 seconds
+            )
+
+    def _quit_from_tray(self):
+        """Actually quit the application from the tray menu."""
+        if self.tray_icon:
+            self.tray_icon.hide()
+        self.app.quit()
+
     def _on_app_quit(self):
         """Handle application quit event."""
         print("Application shutting down...")
@@ -279,6 +469,22 @@ class DesktopSecurityApplication:
         # Stop live monitoring if active
         if self.backend:
             self.backend.stopLive()
+
+        # Stop Resource Monitor
+        if self.resource_monitor:
+            try:
+                self.resource_monitor.stop()
+                print("[OK] Resource monitor stopped")
+            except Exception as e:
+                print(f"[WARNING] Resource monitor cleanup failed: {e}")
+
+        # Stop RTP
+        if self.rtp_bridge:
+            try:
+                self.rtp_bridge.disable()
+                print("[OK] RTP stopped")
+            except Exception as e:
+                print(f"[WARNING] RTP cleanup failed: {e}")
 
         # Stop GPU service and cleanup subprocess
         if self.gpu_service:
@@ -304,6 +510,10 @@ class DesktopSecurityApplication:
             except Exception as e:
                 print(f"[WARNING] Sandbox Lab cleanup failed: {e}")
 
+        # Hide tray icon
+        if self.tray_icon:
+            self.tray_icon.hide()
+
     def run(self):
         """Run the application."""
         try:
@@ -319,6 +529,12 @@ class DesktopSecurityApplication:
 
             # Create QML engine and load UI
             self._create_qml_engine()
+            # Set up system tray (AFTER QML loads so the window exists)
+            self._setup_system_tray()
+
+            # Stay alive in tray when window is closed
+            self.app.setQuitOnLastWindowClosed(False)
+
             print("[OK] QML UI loaded successfully")
             print("\n=== Sentinel Desktop Security Suite ===")
             print("Application ready. Entering event loop...\n")

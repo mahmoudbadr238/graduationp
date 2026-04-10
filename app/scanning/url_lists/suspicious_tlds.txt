@@ -2,7 +2,7 @@
 # These TLDs are commonly abused for malicious purposes
 # Higher weight in scoring
 
-# Free/cheap TLDs often abused
+# ── Free/cheap TLDs often abused ─────────────────────────────────────────────
 .tk
 .ml
 .ga
@@ -30,6 +30,8 @@
 .bid
 .cricket
 .faith
+
+# ── High-abuse TLDs ──────────────────────────────────────────────────────────
 .site
 .online
 .icu
@@ -41,8 +43,22 @@
 .monster
 .rest
 .sbs
+.cfd
+.cyou
+.boats
+.hair
+.skin
+.makeup
+.beauty
+.quest
+.bond
+.autos
+.wiki
+.ink
+.bar
+.pics
 
-# Country codes sometimes abused
+# ── Country codes with high abuse rates ──────────────────────────────────────
 .ru
 .cn
 .su
@@ -50,8 +66,21 @@
 .ws
 .to
 .pw
+.tk
+.ng
+.cm
 
-# Newer TLDs to watch
+# ── File-extension TLDs (phishing confusion) ─────────────────────────────────
 .zip
 .mov
+.exe
+.bat
+.cmd
+
+# ── Newer TLDs to watch ──────────────────────────────────────────────────────
 .app
+.dev
+.page
+.how
+.day
+.new

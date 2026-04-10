@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "pages"
@@ -173,11 +173,11 @@ ApplicationWindow {
                 
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "📜"
-                    label: "Scan History"
-                    isActive: currentRoute === "history"
+                    icon: "📡"
+                    label: "System Monitor"
+                    isActive: currentRoute === "system-monitor"
                     expanded: sidebar.sidebarExpanded
-                    onClicked: loadRoute("history")
+                    onClicked: loadRoute("system-monitor")
                 }
                 
                 SidebarItem {
@@ -358,9 +358,9 @@ ApplicationWindow {
                     visible: currentRoute === "snapshot"
                 }
                 
-                ScanHistory {
+                SystemMonitor {
                     anchors.fill: parent
-                    visible: currentRoute === "history"
+                    visible: currentRoute === "system-monitor"
                 }
                 
                 NetworkScan {
