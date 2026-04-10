@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Quick test to verify disk detection in snapshot."""
 
-from app.infra.system_monitor_psutil import PsutilSystemMonitor
+from backend.infra.system_monitor_psutil import PsutilSystemMonitor
 
 m = PsutilSystemMonitor()
 s = m.snapshot()

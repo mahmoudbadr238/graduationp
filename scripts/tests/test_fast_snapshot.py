@@ -3,7 +3,7 @@
 
 import time
 
-from app.infra.system_monitor_psutil import PsutilSystemMonitor
+from backend.infra.system_monitor_psutil import PsutilSystemMonitor
 
 m = PsutilSystemMonitor()
 

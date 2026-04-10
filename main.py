@@ -25,9 +25,9 @@ sys.excepthook = _crash_excepthook
 
 import os
 
-from app.__version__ import APP_FULL_NAME, __version__
-from app.application import run
-from app.utils.admin import AdminPrivileges
+from backend.__version__ import APP_FULL_NAME, __version__
+from backend.application import run
+from backend.utils.admin import AdminPrivileges
 
 if __name__ == "__main__":
     print(f"{APP_FULL_NAME} v{__version__}")

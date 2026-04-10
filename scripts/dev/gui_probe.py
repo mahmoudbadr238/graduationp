@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlEngine, QQmlComponent, QQmlApplicationEngine
-from PySide6.QtCore import Qt, QUrl, QTimer, QSize, QRect, qInstallMessageHandler
-from PySide6.QtGui import QGuiApplication, QScreen
+from PySide6.QtCore import Qt, QUrl, QTimer
+from PySide6.QtGui import QGuiApplication
 import signal
 from PySide6.QtCore import QObject, Slot, Signal
 

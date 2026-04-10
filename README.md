@@ -137,7 +137,7 @@ OPENAI_API_KEY=sk-your-key-here
 
 Without an API key, Sentinel operates in offline mode:
 - ✅ **Event Viewer**: Uses built-in knowledge base for instant explanations
-- ✅ **File Scanner**: Full static analysis (PE parsing, entropy, YARA rules)
+- ✅ **File Scanner**: Full static analysis (PE parsing, entropy, Groq AI NGAV)
 - ✅ **URL Scanner**: Reputation checks and pattern matching
 - ❌ **AI Chat**: Disabled (no cloud connection)
 

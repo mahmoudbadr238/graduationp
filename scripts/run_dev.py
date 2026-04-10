@@ -30,19 +30,19 @@ if __name__ == "__main__":
     try:
         # Check for diagnostic mode FIRST (before any heavy imports)
         if "--diagnose" in sys.argv:
-            from app.utils.diagnostics import run_diagnostics
+            from backend.utils.diagnostics import run_diagnostics
 
             raise SystemExit(run_diagnostics())
 
         logger.info("Starting Sentinel application...")
 
         # Import after logging is configured
-        from app.__version__ import APP_FULL_NAME, __version__
+        from backend.__version__ import APP_FULL_NAME, __version__
 
         logger.info(f"{APP_FULL_NAME} v{__version__}")
 
         # Normal launch
-        from app.application import run
+        from backend.application import run
 
         raise SystemExit(run())
 

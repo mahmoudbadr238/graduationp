@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Test disk calculation matches what UI should show."""
 
-from app.infra.system_monitor_psutil import PsutilSystemMonitor
+from backend.infra.system_monitor_psutil import PsutilSystemMonitor
 
 m = PsutilSystemMonitor()
 s = m.snapshot()
