@@ -146,6 +146,7 @@ class URLScannerWorker(QThread):
             _GSB_ENDPOINT,
             params={"key": api_key},
             json=payload,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             timeout=_REQUEST_TIMEOUT,
         )
         resp.raise_for_status()

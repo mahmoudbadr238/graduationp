@@ -96,8 +96,9 @@ class SandboxLabController(QObject):
     proofMediaChanged = Signal()
     resultSummaryChanged = Signal()
     liveViewStateChanged = Signal()
-    automationVisibleChanged = Signal()          # emitted when UI runner starts/stops
-    uiRunnerStatusChanged = Signal(str)          # informational status from UI runner
+    automationVisibleChanged = Signal()          # deprecated compatibility signal
+    uiRunnerStatusChanged = Signal(str)          # deprecated compatibility signal
+    interactiveSessionChanged = Signal()
 
     diagnosticsFinished = Signal("QVariantList")  # list of check dicts
 
@@ -153,6 +154,19 @@ class SandboxLabController(QObject):
         self._live_view_enabled = False
         self._last_capture_failure_at = 0.0
         self._run_started_at = ""
+        self._interactive_session_active = False
+        self._interactive_session_started_at = 0.0
+        self._interactive_guest_out_dir = r"C:\Sandbox\out"
+        self._interactive_telemetry: dict[str, Any] = {
+            "elapsed_seconds": 0,
+            "new_processes": 0,
+            "files_created": 0,
+            "files_modified": 0,
+            "files_deleted": 0,
+            "registry_changes": 0,
+            "network_connections": 0,
+            "persistence_events": 0,
+        }
         # Thread-safe abort flag: set BEFORE VM stop so the capture timer
         # never fires a captureScreen call against a powered-off VM.
         self._abort_capture = threading.Event()
@@ -171,6 +185,10 @@ class SandboxLabController(QObject):
         self._capture_timer = QTimer(self)
         self._capture_timer.setInterval(self._config.capture_interval_ms)
         self._capture_timer.timeout.connect(self._capture_live_frame)
+
+        self._interactive_poll_timer = QTimer(self)
+        self._interactive_poll_timer.setInterval(2000)
+        self._interactive_poll_timer.timeout.connect(self._poll_interactive_telemetry)
 
         self._refresh_capabilities()
         self._reset_evidence()
@@ -211,14 +229,18 @@ class SandboxLabController(QObject):
     def liveViewState(self) -> str:
         return self._live_view_state
 
+    @Property(bool, notify=interactiveSessionChanged)
+    def interactiveSessionActive(self) -> bool:
+        return self._interactive_session_active
+
     @Property(bool, notify=automationVisibleChanged)
     def automationVisible(self) -> bool:
-        """True while the guest UI runner is actively interacting with the desktop."""
+        """Deprecated compatibility property (always false in interactive-only mode)."""
         return self._automation_visible
 
     @Property(str, notify=uiRunnerStatusChanged)
     def uiRunnerStatus(self) -> str:
-        """Last informational message from the guest UI runner."""
+        """Deprecated compatibility property for legacy QML bindings."""
         return self._ui_runner_status
 
     @Property("QVariantList", notify=stepsModelChanged)
@@ -428,6 +450,45 @@ class SandboxLabController(QObject):
             host_file_path, monitor_seconds, disable_network, kill_on_finish
         )
 
+    @Slot(str, int, bool)
+    def startInteractiveSession(
+        self,
+        host_file_path: str,
+        monitor_seconds: int = 300,
+        disable_network: bool = False,
+    ) -> None:
+        host_path = Path(host_file_path)
+        if not host_file_path or not host_path.exists() or not host_path.is_file():
+            self._set_last_error(f"Selected file was not found: {host_file_path}")
+            return
+        self._interactive_telemetry = {
+            "elapsed_seconds": 0,
+            "new_processes": 0,
+            "files_created": 0,
+            "files_modified": 0,
+            "files_deleted": 0,
+            "registry_changes": 0,
+            "network_connections": 0,
+            "persistence_events": 0,
+        }
+        self._prepare_run_context(
+            "interactive_session",
+            str(host_path),
+            monitor_seconds,
+            disable_network,
+            False,
+            allow_run=True,
+            interactive_gui=True,
+        )
+        self._start_task("Starting Interactive Sandbox Session", self._task_start_interactive_session)
+
+    @Slot()
+    def stopInteractiveSession(self) -> None:
+        if not self._interactive_session_active:
+            self._set_last_error("No active interactive sandbox session to stop.")
+            return
+        self._start_task("Stopping Interactive Sandbox Session", self._task_stop_interactive_session)
+
     @Slot()
     def cancelRun(self) -> None:
         """Abort the current sandbox run (sets _cancel_event; pipeline polls it)."""
@@ -463,211 +524,17 @@ class SandboxLabController(QObject):
         )
         self._start_task("Running URL detonation", self._task_run_url)
 
-    # ── Visual Agent (live interactive execution with HUD) ────────────────
-
     @Slot(str, int)
     def runVisualAgent(self, host_file_path: str, agent_timeout: int = 120) -> None:
-        """Launch the compiled visual-agent payload inside the guest VM.
-
-        The agent EXE is deployed alongside the sample into ``C:\\Sandbox``,
-        then executed **interactively** (Session 1) so the Tkinter HUD and
-        pyautogui mouse movements are visible on the guest desktop.
-
-        While the agent runs, the existing ``SandboxPreviewStream`` captures
-        screenshots every ~0.7 s and pushes them to the QML
-        ``image://sandboxpreview/`` provider — giving the user a real-time
-        live feed of the agent's activity.
-        """
-        host_path = Path(host_file_path)
-        if not host_file_path or not host_path.exists() or not host_path.is_file():
-            self._set_last_error(f"Selected file was not found: {host_file_path}")
-            return
-        self._prepare_run_context(
-            "file",
-            str(host_path),
-            agent_timeout,
-            disable_network=False,
-            kill_on_finish=True,
-            allow_run=True,
-            interactive_gui=True,
+        # Deprecated by policy: Sentinel now supports manual interactive sessions only.
+        self._set_last_error(
+            "Visual agent automation is disabled. Use Start Interactive Session and "
+            "manually operate inside the guest, then Stop Analysis to finalize verdict."
         )
-        self._run_options["agent_timeout"] = agent_timeout
-        self._start_task("Visual Agent detonation", self._task_run_visual_agent)
-
-    def _task_run_visual_agent(self, worker: VmwareTaskWorker) -> dict[str, Any]:
-        """Background task: deploy agent + sample, execute interactively, stream."""
-        assert self._run_dir is not None
-        assert self._frames_dir is not None
-
-        sample_path = Path(self._run_target)
-        agent_timeout = int(self._run_options.get("agent_timeout", 120))
-        guest_dir = r"C:\Sandbox"
-        sample_name = sample_path.name
-        guest_sample = f"{guest_dir}\\{sample_name}"
-        guest_agent = f"{guest_dir}\\sentinel_agent.exe"
-
-        # Locate agent EXE on host (dist/sentinel_agent.exe)
-        _project_root = Path(__file__).parent.parent.parent
-        host_agent = _project_root / "dist" / "sentinel_agent.exe"
-
-        payload: dict[str, Any] = {
-            "success": False,
-            "operation": "visual_agent",
-            "run_dir": str(self._run_dir),
-            "mode": "visual_agent",
-            "target": self._run_target,
-            "error": "",
-            "proof_gif": "",
-            "proof_mp4": "",
-            "mp4_note": "",
-        }
-        error_text = ""
-
-        if not host_agent.exists():
-            error_text = (
-                f"Visual-agent EXE not found: {host_agent}. "
-                "Build it first: python build_agent.py"
-            )
-            worker.emit_step("Failed", error_text)
-            payload["error"] = error_text
-            return payload
-
-        try:
-            self._client.validate_host_requirements()
-            self._client.ensure_guest_credentials()
-
-            # 1. Revert to clean snapshot
-            worker.emit_progress(5)
-            worker.emit_step("Running", "Reverting VM to clean snapshot")
-            try:
-                self._client.stop(hard=True)
-            except VmrunError:
-                pass
-            self._client.revert_to_snapshot()
-            worker.emit_step("OK", "Snapshot restored")
-
-            # 2. Start VM (headless — user watches via live preview feed)
-            worker.emit_progress(15)
-            worker.emit_step("Running", "Starting VM")
-            self._client.start(nogui=True)
-            worker.set_vm_running(True)  # triggers _sync_capture_state → starts preview stream
-            worker.emit_step("OK", "VM started — live preview active")
-
-            # 3. Wait for VMware Tools
-            worker.emit_progress(25)
-            worker.emit_step("Running", "Waiting for VMware Tools…")
-            self._client.wait_for_tools(
-                timeout=180, poll_interval=3, cancel_event=self._cancel_event,
-            )
-            worker.emit_step("OK", "VMware Tools is running — guest ready")
-
-            # 4. Create guest sandbox directory
-            worker.emit_progress(30)
-            worker.emit_step("Running", f"Creating {guest_dir} in guest")
-            self._client.run_program_in_guest(
-                _GUEST_POWERSHELL,
-                ["-ExecutionPolicy", "Bypass", "-Command",
-                 f"New-Item -ItemType Directory -Force -Path '{guest_dir}' | Out-Null"],
-                wait=True, timeout=60,
-            )
-            worker.emit_step("OK", "Guest sandbox directory ready")
-
-            # 5. Copy sample to guest
-            worker.emit_progress(40)
-            worker.emit_step("Running", f"Copying {sample_name} to guest")
-            self._client.copy_file_from_host_to_guest(
-                str(sample_path), guest_sample, timeout=120,
-            )
-            worker.emit_step("OK", f"Sample deployed: {guest_sample}")
-
-            # 6. Copy visual-agent EXE to guest
-            worker.emit_progress(50)
-            worker.emit_step("Running", "Copying sentinel_agent.exe to guest")
-            self._client.copy_file_from_host_to_guest(
-                str(host_agent), guest_agent, timeout=120,
-            )
-            worker.emit_step("OK", f"Agent deployed: {guest_agent}")
-
-            # 7. Launch agent interactively (Session 1 — visible on desktop)
-            #    vmrun flags: -activeWindow -interactive -noWait
-            worker.emit_progress(55)
-            worker.emit_step("Running", "Launching visual agent on guest desktop")
-            self._client.run_program_in_guest(
-                guest_agent,
-                [guest_sample, "--timeout", str(agent_timeout)],
-                wait=False,          # don't block host
-                interactive=True,    # -activeWindow -interactive → Session 1
-                timeout=30,
-            )
-            self._set_automation_visible(True)
-            worker.emit_step("OK", "Visual agent launched — live feed streaming")
-
-            # 8. Wait while agent runs; preview stream captures screenshots
-            #    continuously via _sync_capture_state → SandboxPreviewStream
-            worker.emit_progress(60)
-            total_wait = agent_timeout + 15
-            waited = 0
-            poll_interval = 3
-            while waited < total_wait:
-                if self._cancel_event.is_set():
-                    error_text = "Cancelled by user during agent execution"
-                    worker.emit_step("Failed", error_text)
-                    break
-                remaining = total_wait - waited
-                worker.emit_step(
-                    "Running",
-                    f"Agent active — {remaining}s remaining  (live feed streaming)",
-                )
-                pct = 60 + int(35 * (waited / total_wait))
-                worker.emit_progress(min(pct, 95))
-                time.sleep(poll_interval)
-                waited += poll_interval
-
-            self._set_automation_visible(False)
-            worker.emit_step("OK", "Agent analysis window complete")
-            worker.emit_progress(96)
-            payload["success"] = True
-
-        except VmrunError as exc:
-            error_text = str(exc)
-            worker.emit_step("Failed", error_text)
-        except Exception as exc:
-            error_text = str(exc)
-            worker.emit_step("Failed", f"Unexpected: {error_text}")
-        finally:
-            self._abort_capture.set()
-            worker.set_vm_running(False)  # stops preview stream
-            self._set_automation_visible(False)
-            worker.emit_step("Running", "Resetting VM to clean snapshot")
-            try:
-                try:
-                    self._client.stop(hard=True)
-                except VmrunError:
-                    pass
-                self._client.revert_to_snapshot()
-                worker.emit_step("OK", "Cleanup snapshot restore completed")
-            except Exception as cleanup_exc:
-                cleanup_msg = f"Cleanup failed: {cleanup_exc}"
-                error_text = f"{error_text} | {cleanup_msg}" if error_text else cleanup_msg
-                worker.emit_step("Failed", cleanup_msg)
-
-        time.sleep(0.8)
-
-        # Export captured frames to GIF/MP4 for replay
-        if self._config.capture_enabled and self._frames_dir is not None:
-            export_result = self._export_media(self._frames_dir, self._run_dir, worker)
-        else:
-            export_result = {
-                "proof_gif": "", "proof_mp4": "",
-                "frames_saved": False, "media_exported": False,
-                "mp4_note": "Capture disabled.",
-            }
-        payload.update(export_result)
-        payload["error"] = error_text
-        worker.emit_progress(100)
-        if not error_text:
-            worker.emit_step("OK", "Visual Agent run completed ✅")
-        return payload
+        self._append_step(
+            "Failed",
+            "Visual agent request rejected (automation path deprecated).",
+        )
 
     @Slot()
     def openLastRunFolder(self) -> None:
@@ -856,6 +723,240 @@ class SandboxLabController(QObject):
         worker.emit_step("OK", "Snapshot restored")
         worker.emit_progress(100)
         return {"success": True, "operation": "reset"}
+
+    def _task_start_interactive_session(self, worker: VmwareTaskWorker) -> dict[str, Any]:
+        assert self._run_dir is not None
+
+        sample_path = Path(self._run_target)
+        guest_in_dir = r"C:\Sandbox\in"
+        guest_out_dir = r"C:\Sandbox\out"
+        guest_sample = f"{guest_in_dir}\\{sample_path.name}"
+        guest_script = r"C:\Sandbox\interactive_session.ps1"
+
+        payload: dict[str, Any] = {
+            "success": False,
+            "operation": "interactive_start",
+            "mode": "interactive_session",
+            "run_dir_path": str(self._run_dir),
+            "report_path": str(self._run_dir / "report.json"),
+            "error": "",
+            "live_telemetry": dict(self._interactive_telemetry),
+        }
+
+        try:
+            self._client.validate_host_requirements()
+            self._client.ensure_guest_credentials()
+
+            worker.emit_progress(6)
+            worker.emit_step("Running", "Reverting VM to clean snapshot")
+            try:
+                self._client.stop(hard=True)
+            except VmrunError:
+                pass
+            self._client.revert_to_snapshot()
+            worker.emit_step("OK", "Snapshot restored")
+
+            worker.emit_progress(14)
+            worker.emit_step("Running", "Starting VM")
+            self._client.start(nogui=True)
+            worker.set_vm_running(True)
+            worker.emit_step("OK", "VM started — live preview active")
+
+            worker.emit_progress(22)
+            worker.emit_step("Running", "Waiting for VMware Tools")
+            self._client.wait_for_tools(timeout=180, poll_interval=3, cancel_event=self._cancel_event)
+            worker.emit_step("OK", "Guest ready")
+
+            worker.emit_progress(30)
+            worker.emit_step("Running", "Preparing guest analysis folders")
+            self._client.run_program_in_guest(
+                _GUEST_POWERSHELL,
+                [
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    "New-Item -ItemType Directory -Force -Path 'C:\\Sandbox','C:\\Sandbox\\in','C:\\Sandbox\\out' | Out-Null",
+                ],
+                wait=True,
+                timeout=60,
+            )
+
+            worker.emit_progress(40)
+            worker.emit_step("Running", f"Copying sample to guest: {guest_sample}")
+            self._client.copy_file_from_host_to_guest(sample_path, guest_sample, timeout=120)
+
+            worker.emit_progress(50)
+            worker.emit_step("Running", "Deploying interactive monitor script")
+            host_script = _GUEST_SCRIPTS_DIR / "interactive_session.ps1"
+            self._client.copy_file_from_host_to_guest(host_script, guest_script, timeout=60)
+
+            worker.emit_progress(62)
+            worker.emit_step("Running", "Launching interactive session monitor (no auto-click)")
+            self._client.run_program_in_guest(
+                _GUEST_POWERSHELL,
+                [
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    guest_script,
+                    "-SamplePath",
+                    guest_sample,
+                    "-OutDir",
+                    guest_out_dir,
+                    "-StopFlagPath",
+                    f"{guest_out_dir}\\stop.flag",
+                    "-DisableNetwork",
+                    ("$true" if self._run_options.get("disableNetwork") else "$false"),
+                ],
+                wait=False,
+                interactive=True,
+                timeout=30,
+            )
+
+            worker.emit_progress(75)
+            worker.emit_step("OK", "Interactive Sandbox Session active — user controls execution")
+
+            payload["success"] = True
+            payload["guest_out_dir"] = guest_out_dir
+            payload["summary"] = "Interactive session started. Click Stop Analysis to finalize verdict."
+            payload["verdict"] = "Running"
+            payload["score"] = 0
+            payload["highlights"] = [
+                "No automated interaction is performed.",
+                "Monitoring is live and verdict is deferred until Stop Analysis.",
+            ]
+            return payload
+
+        except Exception as exc:
+            payload["error"] = str(exc)
+            worker.emit_step("Failed", str(exc))
+            try:
+                worker.emit_step("Running", "Cleaning up VM after start failure")
+                self._client.stop(hard=True)
+                self._client.revert_to_snapshot()
+            except Exception:
+                pass
+            worker.set_vm_running(False)
+            return payload
+
+    def _task_stop_interactive_session(self, worker: VmwareTaskWorker) -> dict[str, Any]:
+        assert self._run_dir is not None
+
+        guest_out_dir = self._interactive_guest_out_dir
+        guest_stop_flag = f"{guest_out_dir}\\stop.flag"
+        guest_done_flag = f"{guest_out_dir}\\done.flag"
+        guest_report = f"{guest_out_dir}\\report.json"
+        host_report = self._run_dir / "report.json"
+
+        payload: dict[str, Any] = {
+            "success": False,
+            "operation": "interactive_stop",
+            "mode": "interactive_session",
+            "run_dir_path": str(self._run_dir),
+            "report_path": str(host_report),
+            "error": "",
+        }
+
+        try:
+            worker.emit_progress(10)
+            worker.emit_step("Running", "Signaling guest monitor to stop")
+            self._client.run_program_in_guest(
+                _GUEST_POWERSHELL,
+                [
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    f"New-Item -ItemType File -Force -Path '{guest_stop_flag}' | Out-Null",
+                ],
+                wait=True,
+                timeout=30,
+            )
+
+            worker.emit_progress(30)
+            worker.emit_step("Running", "Waiting for guest to finalize report")
+            done_host = self._run_dir / "done.flag"
+            deadline = time.time() + 120
+            while time.time() < deadline:
+                if self._cancel_event.is_set():
+                    raise VmrunError("Stop operation cancelled")
+                try:
+                    self._client.copy_file_from_guest_to_host(guest_done_flag, done_host, timeout=10)
+                    if done_host.exists():
+                        break
+                except Exception:
+                    pass
+                time.sleep(2)
+
+            worker.emit_progress(45)
+            worker.emit_step("Running", "Collecting final report")
+            self._client.copy_file_from_guest_to_host(guest_report, host_report, timeout=45)
+
+            worker.emit_progress(65)
+            report_json = load_report(host_report)
+            scoring = score_report(report_json)
+
+            payload.update(scoring)
+            payload["report_json"] = report_json
+            payload["success"] = True
+            payload["summary"] = scoring.get("summary", "Interactive session completed")
+            payload["highlights"] = list(scoring.get("highlights", []))
+
+        except Exception as exc:
+            payload["error"] = str(exc)
+            worker.emit_step("Failed", str(exc))
+            payload.update(
+                {
+                    "verdict": "Inconclusive",
+                    "score": 0,
+                    "summary": str(exc),
+                    "highlights": ["Interactive session stopped with errors."],
+                }
+            )
+        finally:
+            worker.emit_progress(80)
+            worker.emit_step("Running", "Reverting VM to clean snapshot")
+            try:
+                self._client.stop(hard=True)
+            except Exception:
+                pass
+            try:
+                self._client.revert_to_snapshot()
+                worker.emit_step("OK", "Cleanup snapshot restore completed")
+            except Exception as cleanup_exc:
+                worker.emit_step("Failed", f"Cleanup revert failed: {cleanup_exc}")
+                if not payload.get("error"):
+                    payload["error"] = str(cleanup_exc)
+            worker.set_vm_running(False)
+
+        worker.emit_progress(100)
+        return payload
+
+    def _poll_interactive_telemetry(self) -> None:
+        if not self._interactive_session_active or self._run_dir is None:
+            return
+
+        guest_path = f"{self._interactive_guest_out_dir}\\telemetry.json"
+        host_path = self._run_dir / "telemetry.json"
+
+        try:
+            self._client.copy_file_from_guest_to_host(guest_path, host_path, timeout=8)
+            if not host_path.exists():
+                return
+            telemetry = json.loads(host_path.read_text(encoding="utf-8-sig"))
+            if isinstance(telemetry, dict):
+                self._interactive_telemetry = telemetry
+                self._result_summary["live_telemetry"] = telemetry
+                self.resultSummaryChanged.emit()
+                elapsed = int(telemetry.get("elapsed_seconds", 0) or 0)
+                self._set_status(
+                    "Interactive session running — "
+                    f"{elapsed}s | proc+{int(telemetry.get('new_processes', 0))} | "
+                    f"file+{int(telemetry.get('files_created', 0))} | "
+                    f"reg+{int(telemetry.get('registry_changes', 0))} | "
+                    f"net+{int(telemetry.get('network_connections', 0))}"
+                )
+        except Exception:
+            return
 
     def _task_run_file(self, worker: VmwareTaskWorker) -> dict[str, Any]:
         from dataclasses import asdict, is_dataclass
@@ -1359,22 +1460,15 @@ class SandboxLabController(QObject):
             )
             worker.emit_step("OK", "Guest automation finished")
 
-            # ── Guest UI Runner: visible interaction in Session 1 ─────────────
-            # Only runs when allowRun=True (execute mode) on file targets.
-            # Non-fatal: failure only emits a warning step.
-            _ui_key_frames: list[str] = []
-            if self._run_mode == "file" and guest_sample_path is not None:
-                _ui_result = self._run_ui_automation(worker, guest_sample_path)
-                _ui_key_frames                = _ui_result.get("frames", [])
-                payload["automation_visible"]  = _ui_result.get("automation_visible", False)
-                payload["ui_steps"]            = _ui_result.get("ui_steps", [])
-                payload["ui_frames_dir"]       = _ui_result.get("frames_dir", "")
-                payload["uac_secure_desktop"]  = _ui_result.get("uac_secure_desktop")
-            else:
-                payload["automation_visible"]  = False
-                payload["ui_steps"]            = []
-                payload["uac_secure_desktop"]  = None
-            payload["ui_key_frames"] = _ui_key_frames
+            # Interactive-only policy: do not execute guest UI automation.
+            payload["automation_visible"] = False
+            payload["ui_steps"] = []
+            payload["uac_secure_desktop"] = None
+            payload["ui_key_frames"] = []
+            worker.emit_step(
+                "OK",
+                "No automated UI interaction performed (interactive-only policy).",
+            )
 
             worker.emit_progress(70)
             worker.emit_step("Running", "Polling for guest report.json")
@@ -1561,150 +1655,10 @@ class SandboxLabController(QObject):
                 payload["guest_error_content"] = _gec
         worker.emit_progress(100)
         if not error_text:
-            worker.emit_step("OK", "Automation Completed ✅")
+            worker.emit_step("OK", "Sandbox run completed")
         return payload
 
-    # ─────────────────────────────────────────── Guest UI Runner integration
-
-    def _run_ui_automation(
-        self,
-        worker: VmwareTaskWorker,
-        guest_sample_path: str,
-    ) -> dict:
-        """Run visible GUI automation in the guest interactive session.
-
-        Only executes when ``allowRun`` is True in the current run options.
-        Non-fatal: any failure emits a warning step and returns an empty dict.
-
-        Returns:
-            dict with keys:
-              frames           – list of host-side key-frame paths (≤ 10)
-              automation_visible – bool: True when frames changed and >0 captured
-              ui_steps         – list[str]: step-marker content from guest
-              frames_dir       – str: host-side frames directory
-        """
-        from .guest_ui_runner import GuestUIRunner, GuestUIRunnerError  # local import
-
-        _empty: dict = {"frames": [], "automation_visible": False, "ui_steps": [], "frames_dir": "", "uac_secure_desktop": None}
-
-        if not self._run_options.get("allowRun"):
-            worker.emit_step(
-                "Running",
-                "[UI-runner] Skipped (inspect-only mode — enable 'Allow execution' to see GUI automation)",
-            )
-            return _empty
-
-        if self._cancel_event.is_set():
-            return _empty
-
-        interactive_gui = bool(self._run_options.get("interactiveGui", True))
-        inspect_only    = not interactive_gui   # inspect_only=True → no button clicks, no visible intent
-
-        job_id         = self._run_dir.name if self._run_dir else f"job_{int(time.time())}"
-        _guest_base    = self._config.guest_in_dir.rsplit("\\", 1)[0].rstrip("\\")
-        guest_job_base = f"{_guest_base}\\jobs\\{job_id}"
-        monitor_secs   = int(self._run_options.get("monitorSeconds", 60))
-
-        ui_runner = GuestUIRunner(
-            self._client,
-            self._config,
-            step_cb=worker.emit_step,
-            cancel_check=lambda: self._cancel_event.is_set(),
-        )
-
-        # ── 1. Preflight ──────────────────────────────────────────────────────
-        try:
-            ui_runner.preflight_check_desktop()
-        except GuestUIRunnerError as exc:
-            first_line = str(exc).splitlines()[0]
-            worker.emit_step("Failed", f"[UI-runner] Preflight: {first_line}")
-            self._set_ui_runner_status(first_line)
-            return _empty
-
-        # ── 2. Deploy runner scripts ──────────────────────────────────────────
-        try:
-            ui_runner.deploy(job_id, guest_job_base)
-            # Also deploy the unified top-level entry-point (ui_runner.ps1)
-            _top_runner_src = _GUEST_SCRIPTS_DIR / "ui_runner.ps1"
-            if _top_runner_src.exists():
-                _guest_top_runner = f"{guest_job_base}\\tools\\ui_runner.ps1"
-                self._client.copy_file_from_host_to_guest(_top_runner_src, _guest_top_runner)
-            # Deploy the AHK detonation helper if present (optional)
-            _ahk_src = _GUEST_SCRIPTS_DIR / "detonate.ahk"
-            if _ahk_src.exists():
-                _guest_ahk = f"{guest_job_base}\\tools\\detonate.ahk"
-                self._client.copy_file_from_host_to_guest(_ahk_src, _guest_ahk)
-                worker.emit_step("OK", "[UI-runner] Deployed detonate.ahk companion")
-            # Deploy the Python visual-agent script if present (optional)
-            _py_agent_src = _GUEST_SCRIPTS_DIR / "detonate.py"
-            if _py_agent_src.exists():
-                _guest_py_agent = f"{guest_job_base}\\tools\\detonate.py"
-                self._client.copy_file_from_host_to_guest(
-                    _py_agent_src, _guest_py_agent
-                )
-                worker.emit_step("OK", "[UI-runner] Deployed detonate.py visual agent")
-        except Exception as exc:
-            worker.emit_step("Failed", f"[UI-runner] Deploy failed: {exc}")
-            return _empty
-
-        # ── 3. Launch in interactive session ─────────────────────────────────
-        self._set_automation_visible(True)
-        mode_label = "interactive GUI" if interactive_gui else "inspect-only"
-        worker.emit_step("Running", f"[UI-runner] Starting {mode_label} session…")
-        try:
-            ui_runner.run(
-                job_id=job_id,
-                guest_job_base=guest_job_base,
-                sample_guest_path=guest_sample_path,
-                monitor_seconds=monitor_secs,
-                inspect_only=inspect_only,
-            )
-        except Exception as exc:
-            worker.emit_step("Failed", f"[UI-runner] Run error: {exc}")
-        finally:
-            self._set_automation_visible(False)
-
-        # ── 4. Collect frames + behavior.json + ui_step markers ───────────────
-        if not self._run_dir:
-            return _empty
-        try:
-            key_frames = ui_runner.collect_output(
-                self._run_dir, job_id, max_frames=10
-            )
-            automation_visible = ui_runner.last_automation_visible
-            ui_steps           = ui_runner.last_ui_steps
-            frames_dir         = ui_runner.last_frames_dir
-            uac_secure_desktop = ui_runner.last_uac_secure_desktop
-
-            if key_frames:
-                worker.emit_step(
-                    "OK",
-                    f"[UI-runner] {len(key_frames)} key frame(s) collected for replay "
-                    f"({'automation visible ✅' if automation_visible else 'no visible changes ⚠'} )",
-                )
-                # Update persistent status so live UI badge reflects reality
-                if not automation_visible:
-                    self._set_ui_runner_status(
-                        "Automation ran in background / no interactive desktop detected"
-                    )
-            else:
-                self._set_ui_runner_status(
-                    "Guest desktop session not active — enable auto-login to see GUI automation"
-                )
-                worker.emit_step(
-                    "Failed",
-                    "[UI-runner] No frames captured — check if interactive desktop is available",
-                )
-            return {
-                "frames":             key_frames,
-                "automation_visible": automation_visible,
-                "ui_steps":           ui_steps,
-                "frames_dir":         frames_dir,
-                "uac_secure_desktop": uac_secure_desktop,
-            }
-        except Exception as exc:
-            worker.emit_step("Failed", f"[UI-runner] Frame collection error: {exc}")
-            return _empty
+    # ─────────────────────────────────────────── Legacy compatibility helpers
 
     def _set_automation_visible(self, visible: bool) -> None:
         if visible != self._automation_visible:
@@ -2033,12 +1987,12 @@ class SandboxLabController(QObject):
     def _on_worker_finished(self, payload: dict[str, Any]) -> None:
         self._busy = False
         self.isBusy.emit(False)
-        self._vm_running = False
-        self._capture_for_run = False
-        self._sync_capture_state()
 
         # Diagnostics path: delegate and return early
         if payload.get("operation") == "diagnostics":
+            self._vm_running = False
+            self._capture_for_run = False
+            self._sync_capture_state()
             cb = getattr(self, "_pending_diag_finish", None)
             if cb:
                 del self._pending_diag_finish
@@ -2047,8 +2001,66 @@ class SandboxLabController(QObject):
 
         operation = payload.get("operation")
         if operation in {"start", "stop", "reset"}:
+            self._vm_running = False
+            self._capture_for_run = False
+            self._sync_capture_state()
             self._set_status(f"VMware action completed: {operation}")
             return
+
+        if operation == "interactive_start" and not payload.get("error"):
+            self._interactive_session_active = True
+            self._interactive_session_started_at = time.time()
+            self._interactive_guest_out_dir = str(
+                payload.get("guest_out_dir", self._interactive_guest_out_dir)
+            )
+            self._vm_running = True
+            self._capture_for_run = True
+            self._sync_capture_state()
+            if not self._interactive_poll_timer.isActive():
+                self._interactive_poll_timer.start()
+
+            self._report_saved = False
+            self._verdict_computed = False
+            self._media_exported = False
+            self.evidenceChanged.emit()
+
+            self._result_summary = {
+                "verdict": "Running",
+                "score": 0,
+                "summary": payload.get(
+                    "summary",
+                    "Interactive session started. Stop Analysis to finalize verdict.",
+                ),
+                "highlights": list(payload.get("highlights", [])),
+                "report_path": "",
+                "run_dir_path": payload.get("run_dir_path", str(self._last_run_folder)),
+                "guest_error_content": "",
+                "proof_gif": "",
+                "proof_mp4": "",
+                "report_json": None,
+                "sentinel_report": None,
+                "sentinel_report_path": "",
+                "live_telemetry": dict(self._interactive_telemetry),
+                "error": "",
+            }
+            self.resultSummaryChanged.emit()
+
+            self._verdict_summary = str(self._result_summary.get("summary", ""))
+            self.verdictSummaryChanged.emit()
+            self._set_status(self._verdict_summary)
+            self.interactiveSessionChanged.emit()
+            return
+
+        self._vm_running = False
+        self._capture_for_run = False
+        self._sync_capture_state()
+
+        if operation == "interactive_stop":
+            if self._interactive_poll_timer.isActive():
+                self._interactive_poll_timer.stop()
+            if self._interactive_session_active:
+                self._interactive_session_active = False
+                self.interactiveSessionChanged.emit()
 
         self._last_report_path = str(payload.get("report_path", ""))
         self._proof_gif_path = str(payload.get("proof_gif", ""))
@@ -2113,7 +2125,7 @@ class SandboxLabController(QObject):
         if self._replay_frames:
             self.setReplayIndex(len(self._replay_frames) - 1)
 
-        # Merge UI runner key frames (captured inside the guest) into replay model
+        # Merge any supplemental replay frames into the replay model
         _ui_key_frames = list(payload.get("ui_key_frames") or [])
         if _ui_key_frames:
             for _kf in _ui_key_frames:
@@ -2121,9 +2133,9 @@ class SandboxLabController(QObject):
                 if _kf_url not in self._replay_frames:
                     self._replay_frames.append(_kf_url)
             self.replayFramesModelChanged.emit()
-            # Seek to first UI frame so user immediately sees the automation
+            # Seek to first supplemental frame for immediate visibility
             self.setReplayIndex(len(self._replay_frames) - len(_ui_key_frames))
-        # Reset automation-visible flag (should already be False from worker)
+        # Keep deprecated compatibility flag in a safe false state.
         if self._automation_visible:
             self._automation_visible = False
             self.automationVisibleChanged.emit()
@@ -2139,6 +2151,11 @@ class SandboxLabController(QObject):
         self._vm_running = False
         self._capture_for_run = False
         self._sync_capture_state()
+        if self._interactive_poll_timer.isActive():
+            self._interactive_poll_timer.stop()
+        if self._interactive_session_active:
+            self._interactive_session_active = False
+            self.interactiveSessionChanged.emit()
         self._append_step("Failed", error_text)
         self._set_last_error(error_text)
         # Try to read guest_error.txt from the run folder if it was already copied

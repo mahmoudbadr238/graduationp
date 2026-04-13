@@ -4,8 +4,10 @@ This folder contains the agent scripts that run **inside** the sandbox VM to per
 
 ## Files
 
-- `agent.py` - Main monitoring agent that tracks processes, files, registry, and network activity
-- `agent_payload.py` - **Visual Agent** — human-like GUI automation with floating HUD overlay (compiled to `agent.exe`)
+- `sentinel_agent.py` - **Primary unified agent** (observe -> classify -> decide -> resolve -> execute -> verify -> record)
+- `agent_payload.py` - Legacy build entrypoint shim that forwards to `sentinel_agent.py`
+- `agent_main.py` - Legacy import/CLI shim that forwards to `sentinel_agent.py`
+- `agent.py` - Legacy process/file/network monitor-only script
 
 ## Installation (Inside VM)
 
@@ -38,35 +40,40 @@ This agent is designed to run **inside an isolated VM only**. Never run it on yo
 
 ---
 
-## Visual Agent (`agent_payload.py`) — Build & Deploy
+## Unified Agent Build & Deploy
 
 ### What it does
 
-A "Computer-Use Agent" that runs inside the guest VM with:
-1. **Floating HUD** — borderless, semi-transparent, always-on-top overlay pinned to top-center showing real-time status
-2. **Human-like mouse & keyboard** — all movements use `pyautogui.easeInOutQuad` with ~1.4 s travel so it looks natural on screen
-3. **Full interaction sequence** — opens Explorer → finds & double-clicks the sample → dismisses UAC → clicks through installer prompts → scrolls & explores the UI → monitors for the configured timeout
+Unified state-aware agent with:
+1. **Observe -> classify -> decide -> resolve -> execute -> verify loop**
+2. **Strict control matching with confidence thresholds**
+3. **Behavioral monitor + JSON report output compatible with host pipeline**
+4. **Optional HUD and anti-evasion environment seeding**
 
 ### Prerequisites (on your HOST machine)
 
 ```bash
-pip install pyautogui pyinstaller pillow opencv-python
+pip install pyautogui pyinstaller psutil wmi pywinauto
 ```
 
-> `pillow` and `opencv-python` are required by `pyautogui.locateOnScreen()` for image-matching confidence.
+This project builds from `agent_payload.py`, which is now a compatibility shim
+that forwards to the primary implementation in `sentinel_agent.py`.
 
 ### Build to standalone EXE
 
-Run from the repo root (or from `tools/sandbox_agent/`):
+Run from the repo root:
 
 ```bash
-pyinstaller --onefile --noconsole --name agent ^
+pyinstaller --onefile --noconsole --name sentinel_agent ^
     --hidden-import tkinter ^
     --hidden-import pyautogui ^
-    tools/sandbox_agent/agent_payload.py
+    --hidden-import psutil ^
+    --hidden-import wmi ^
+    --hidden-import pywinauto ^
+    payload/sandbox_agent/agent_payload.py
 ```
 
-The output will be at `dist/agent.exe` (~15-25 MB standalone).
+The output will be at `dist/sentinel_agent.exe`.
 
 > **`--noconsole`** hides the black console window so only the HUD is visible.
 > If you need debug output during development, remove `--noconsole`.
@@ -76,12 +83,12 @@ The output will be at `dist/agent.exe` (~15-25 MB standalone).
 Your `VMwareRunner` already has `copy_to_guest()` and `run_in_guest()`. Typical flow:
 
 ```python
-runner.copy_to_guest("dist/agent.exe", r"C:\Sentinel\Jobs\<job_id>\agent.exe")
+runner.copy_to_guest("dist/sentinel_agent.exe", r"C:\Sentinel\Jobs\<job_id>\sentinel_agent.exe")
 runner.copy_to_guest(sample_path, rf"C:\Sentinel\Jobs\<job_id>\{sample_name}")
 
 # Run in no-wait mode so the VM keeps executing while host monitors
 runner.run_in_guest(
-    rf"C:\Sentinel\Jobs\<job_id>\agent.exe",
+    rf"C:\Sentinel\Jobs\<job_id>\sentinel_agent.exe",
     [rf"C:\Sentinel\Jobs\<job_id>\{sample_name}", "--timeout", "120"],
     wait=False,
 )
@@ -90,7 +97,7 @@ runner.run_in_guest(
 ### CLI usage (inside the VM)
 
 ```
-agent.exe C:\Sentinel\Jobs\abc123\rufus.exe
+sentinel_agent.exe C:\Sentinel\Jobs\abc123\rufus.exe
 agent.exe C:\Sentinel\Jobs\abc123\rufus.exe --timeout 90
 agent.exe C:\Sentinel\Jobs\abc123\rufus.exe --no-hud
 ```

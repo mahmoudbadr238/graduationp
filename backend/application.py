@@ -19,6 +19,7 @@ from .api.backend_bridge import BackendBridge
 from .api.gpu_service import get_gpu_service
 from .api.notification_service import NotificationService, get_notification_service
 from .api.notification_manager import NotificationManager
+from .api.security_controller import get_security_controller
 from .api.settings_service import SettingsService
 from .api.system_snapshot_service import SystemSnapshotService
 
@@ -78,6 +79,7 @@ class DesktopSecurityApplication:
         self.notification_manager = None
         self.sandbox_lab = None
         self.file_function_service = None
+        self.security_controller = None
         self.resource_monitor = None
         self.rtp_bridge = None
         self.tray_icon = None
@@ -204,6 +206,17 @@ class DesktopSecurityApplication:
             except (ImportError, RuntimeError, OSError) as e:
                 print(f"[WARNING] System Snapshot service failed: {e}")
                 self.snapshot_service = None
+
+            # IMMEDIATE: Security Controller (toggle Firewall/RDP/UAC)
+            try:
+                self.security_controller = get_security_controller()
+                self.engine.rootContext().setContextProperty(
+                    "SecurityController", self.security_controller
+                )
+                print("[OK] Security Controller registered")
+            except (ImportError, RuntimeError, OSError) as e:
+                print(f"[WARNING] Security Controller failed: {e}")
+                self.security_controller = None
 
             # IMMEDIATE: Settings Service (cross-platform)
             try:
@@ -363,14 +376,17 @@ class DesktopSecurityApplication:
         # Allow drag-and-drop when running as admin (UIPI bypass)
         self._allow_drag_drop_elevated()
 
-    @staticmethod
-    def _allow_drag_drop_elevated():
-        """Allow drag-and-drop from non-elevated Explorer to this elevated app.
+        # IMMEDIATE: VMware window embedder (Win32 SetParent integration)
+        self._init_vmware_embedder()
 
-        Windows UIPI (User Interface Privilege Isolation) blocks drag-and-drop
-        messages from lower-privilege processes (like Explorer) to higher-privilege
-        processes (our app running as Admin). We call ChangeWindowMessageFilter to
-        add WM_DROPFILES, WM_COPYDATA, and WM_COPYGLOBALDATA to the allow list.
+    def _allow_drag_drop_elevated(self):
+        """Enable native WM_DROPFILES drag-and-drop for elevated process.
+
+        Qt Quick's DropArea uses OLE drag-and-drop which is blocked by UIPI
+        when running elevated. We use the Win32 WM_DROPFILES pathway instead:
+        1. ChangeWindowMessageFilterEx on the actual HWND
+        2. DragAcceptFiles to opt into WM_DROPFILES
+        3. Native event filter to intercept WM_DROPFILES and forward to QML
         """
         if sys.platform != "win32":
             return
@@ -380,25 +396,76 @@ class DesktopSecurityApplication:
             from ctypes import wintypes
 
             user32 = ctypes.windll.user32
+            shell32 = ctypes.windll.shell32
 
-            # ChangeWindowMessageFilter(UINT message, DWORD dwFlag) -> BOOL
-            # dwFlag: MSGFLT_ADD = 1 (allow), MSGFLT_REMOVE = 2
-            ChangeWindowMessageFilter = user32.ChangeWindowMessageFilter
-            ChangeWindowMessageFilter.argtypes = [wintypes.UINT, wintypes.DWORD]
-            ChangeWindowMessageFilter.restype = wintypes.BOOL
+            # Get the HWND from the root QML window
+            root_objects = self.engine.rootObjects()
+            if not root_objects:
+                return
+            window = root_objects[0]
+            hwnd = int(window.winId())
 
-            MSGFLT_ADD = 1
+            # --- Per-window message filter (more reliable than global) ---
+            ChangeWindowMessageFilterEx = user32.ChangeWindowMessageFilterEx
+            ChangeWindowMessageFilterEx.argtypes = [
+                wintypes.HWND, wintypes.UINT, wintypes.DWORD, wintypes.LPVOID
+            ]
+            ChangeWindowMessageFilterEx.restype = wintypes.BOOL
+
+            MSGFLT_ALLOW = 1
             WM_DROPFILES = 0x0233
             WM_COPYDATA = 0x004A
             WM_COPYGLOBALDATA = 0x0049
 
+            ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, None)
+            ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, None)
+            ChangeWindowMessageFilterEx(hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, None)
+
+            # --- Also set the global filter as fallback ---
+            ChangeWindowMessageFilter = user32.ChangeWindowMessageFilter
+            ChangeWindowMessageFilter.argtypes = [wintypes.UINT, wintypes.DWORD]
+            ChangeWindowMessageFilter.restype = wintypes.BOOL
+            MSGFLT_ADD = 1
             ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD)
             ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD)
             ChangeWindowMessageFilter(WM_COPYGLOBALDATA, MSGFLT_ADD)
 
-            print("[OK] Drag-and-drop enabled for elevated process (UIPI bypass)")
+            # --- Enable WM_DROPFILES on the window ---
+            shell32.DragAcceptFiles.argtypes = [wintypes.HWND, wintypes.BOOL]
+            shell32.DragAcceptFiles(hwnd, True)
+
+            # --- Install native event filter to catch WM_DROPFILES ---
+            from backend.utils.drop_event_filter import DropEventFilter
+            self._drop_filter = DropEventFilter(hwnd, parent=self.app)
+            if hasattr(self, 'file_function_service') and self.file_function_service:
+                self._drop_filter.fileDropped.connect(
+                    self.file_function_service.fileDropped.emit
+                )
+            self.app.installNativeEventFilter(self._drop_filter)
+
+            print("[OK] Drag-and-drop enabled for elevated process (UIPI + WM_DROPFILES)")
         except Exception as e:
             print(f"[WARNING] Could not enable drag-and-drop UIPI bypass: {e}")
+
+    def _init_vmware_embedder(self):
+        """Create the VMware window embedder and wire it to the backend bridge."""
+        if sys.platform != "win32":
+            return
+        try:
+            from .engines.sandbox_vmware.window_embedder import VmwareWindowEmbedder
+
+            self.vmware_embedder = VmwareWindowEmbedder(parent=self.app)
+            self.engine.rootContext().setContextProperty(
+                "VmwareEmbedder", self.vmware_embedder,
+            )
+
+            # Wire embedder into BackendBridge (QML WindowContainer handles parenting)
+            if self.backend is not None:
+                self.backend.set_vmware_embedder(self.vmware_embedder)
+
+            print("[OK] VMware window embedder registered (QWindow.fromWinId mode)")
+        except Exception as e:
+            print(f"[WARNING] VMware window embedder failed: {e}")
 
     def _setup_system_tray(self):
         """Set up QSystemTrayIcon with context menu and alert forwarding."""

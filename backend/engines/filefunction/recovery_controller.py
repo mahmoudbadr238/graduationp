@@ -165,10 +165,11 @@ class _ScanWorker(QThread):
 
     BATCH_INTERVAL = 0.4  # seconds between batch emissions
 
-    def __init__(self, target_type: str, demo: bool = False):
+    def __init__(self, target_type: str, demo: bool = False, target_drive: str = ""):
         super().__init__()
         self.target_type = target_type.lower().strip().lstrip(".")
         self.demo = demo
+        self.target_drive = target_drive.strip().rstrip(":").rstrip("\\") if target_drive else ""
         self._cancel = threading.Event()
         self._pending_batch: list = []
         self._last_batch_time: float = 0.0
@@ -261,16 +262,19 @@ class _ScanWorker(QThread):
     # ── Real volume scan using Win32 CreateFile ──────────────────────
     def _scan_volumes(self, candidates, cid):
         import psutil
-        volumes = []
-        for part in psutil.disk_partitions(all=False):
-            letter = part.device.rstrip("\\").rstrip(":")
-            if len(letter) == 1:
-                volumes.append(letter)
-        if not volumes:
-            volumes = [chr(x) for x in range(67, 91) if os.path.exists(f"{chr(x)}:\\")]
-            if os.path.exists("C:\\"):
-                volumes.insert(0, "C")
-            volumes = list(dict.fromkeys(volumes))
+        if self.target_drive:
+            volumes = [self.target_drive]
+        else:
+            volumes = []
+            for part in psutil.disk_partitions(all=False):
+                letter = part.device.rstrip("\\").rstrip(":")
+                if len(letter) == 1:
+                    volumes.append(letter)
+            if not volumes:
+                volumes = [chr(x) for x in range(67, 91) if os.path.exists(f"{chr(x)}:\\")]
+                if os.path.exists("C:\\"):
+                    volumes.insert(0, "C")
+                volumes = list(dict.fromkeys(volumes))
 
         sigs = self._get_target_sigs()
         total_volumes = len(volumes)
@@ -571,8 +575,24 @@ class RecoveryController(QObject):
         self.recoveryAdminStatus.emit(is_admin)
         return is_admin
 
-    @Slot(str)
-    def startRecoveryScan(self, target_type: str):
+    @Slot(result=str)
+    def getAvailableDrives(self):
+        """Return JSON array of available drive letters."""
+        try:
+            import psutil
+            drives = []
+            for part in psutil.disk_partitions(all=False):
+                letter = part.device.rstrip("\\").rstrip(":")
+                if len(letter) == 1:
+                    drives.append(letter + ":")
+            if not drives:
+                drives = [chr(x) + ":" for x in range(67, 91) if os.path.exists(f"{chr(x)}:\\")]
+            return json.dumps(drives)
+        except Exception:
+            return json.dumps([])
+
+    @Slot(str, str)
+    def startRecoveryScan(self, target_type: str, drive: str = ""):
         if self._scan_worker and self._scan_worker.isRunning():
             self.recoveryScanError.emit("Scan already running.")
             return
@@ -586,7 +606,7 @@ class RecoveryController(QObject):
             return
 
         self._candidates = []
-        self._scan_worker = _ScanWorker(target_type, demo=demo)
+        self._scan_worker = _ScanWorker(target_type, demo=demo, target_drive=drive)
         self._scan_worker.progressChanged.connect(self.recoveryScanProgressChanged.emit)
         self._scan_worker.candidateFound.connect(self._on_candidate_found)
         self._scan_worker.candidateBatch.connect(self._on_candidate_batch)

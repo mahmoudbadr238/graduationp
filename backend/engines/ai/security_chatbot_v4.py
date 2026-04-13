@@ -19,7 +19,7 @@ Thread-safety
 Environment
 ~~~~~~~~~~~
 * ``GROQ_API_KEY`` – **required**.  Pulled via ``os.environ.get``.
-* ``AI_MODEL_CHAT`` – optional override (default ``llama3-8b-8192``).
+* ``AI_MODEL_CHAT`` – optional override (default ``llama-3.3-70b-versatile``).
 """
 
 from __future__ import annotations
@@ -47,15 +47,17 @@ MAX_TOOL_ROUNDS = 5
 
 # System prompt that defines the AI persona
 SYSTEM_PROMPT = (
-    "You are Sentinel AI, an elite cybersecurity assistant integrated "
-    "into an endpoint security suite. You have access to tools that can "
-    "execute real security operations on the user's machine, including "
-    "scanning, quarantining files, network isolation, and auto-remediation "
-    "via Windows Package Manager (winget). "
-    "Be concise, technical, and helpful. When the user asks you to "
-    "perform an action (scan, quarantine, isolate, update, install), use "
-    "the appropriate tool. After a tool executes, summarize the result "
-    "clearly for the user."
+    "You are Sentinel AI, a helpful security assistant integrated into an "
+    "endpoint security suite on the user's Windows machine. "
+    "You can have normal conversations AND access real system information. "
+    "When the user asks about their system (CPU, RAM, disk, processes, "
+    "network, battery, uptime, etc.), use the appropriate tool to fetch "
+    "live data and present it clearly. "
+    "You also have security tools: scan files, quarantine threats, manage "
+    "real-time protection, and install/update software via winget. "
+    "Be concise, friendly, and helpful. Use tools when the user asks for "
+    "real data — don't guess or make up numbers. For general questions, "
+    "just chat normally without calling tools."
 )
 
 
@@ -528,6 +530,205 @@ class SentinelTools:
 
         return "System Health Report:\n" + "\n".join(f"  {c}" for c in checks)
 
+    # ==================================================================
+    # SYSTEM INFORMATION TOOLS
+    # ==================================================================
+
+    @staticmethod
+    def get_system_resources() -> str:
+        """Return a snapshot of CPU, RAM, disk, battery, and uptime."""
+        logger.info("[SentinelTools] get_system_resources invoked")
+        try:
+            import psutil
+            import platform
+            from datetime import timedelta
+
+            lines: list[str] = ["System Resources:"]
+
+            # CPU
+            cpu_pct = psutil.cpu_percent(interval=1)
+            cpu_count = psutil.cpu_count(logical=True)
+            cpu_freq = psutil.cpu_freq()
+            freq_str = f" @ {cpu_freq.current:.0f} MHz" if cpu_freq else ""
+            lines.append(f"  CPU: {cpu_pct}% usage ({cpu_count} cores{freq_str})")
+
+            # RAM
+            mem = psutil.virtual_memory()
+            lines.append(
+                f"  RAM: {mem.percent}% used — "
+                f"{mem.used / (1024**3):.1f} GB / {mem.total / (1024**3):.1f} GB "
+                f"({mem.available / (1024**3):.1f} GB free)"
+            )
+
+            # Disk
+            for part in psutil.disk_partitions(all=False):
+                try:
+                    usage = psutil.disk_usage(part.mountpoint)
+                    lines.append(
+                        f"  Disk {part.device}: {usage.percent}% used — "
+                        f"{usage.used / (1024**3):.1f} GB / "
+                        f"{usage.total / (1024**3):.1f} GB free "
+                        f"({usage.free / (1024**3):.1f} GB)"
+                    )
+                except PermissionError:
+                    pass
+
+            # Battery
+            batt = psutil.sensors_battery()
+            if batt:
+                plug = "plugged in" if batt.power_plugged else "on battery"
+                lines.append(f"  Battery: {batt.percent}% ({plug})")
+
+            # Uptime
+            boot = psutil.boot_time()
+            import time as _time
+            uptime = timedelta(seconds=int(_time.time() - boot))
+            lines.append(f"  Uptime: {uptime}")
+
+            # OS
+            lines.append(
+                f"  OS: {platform.system()} {platform.release()} "
+                f"({platform.version()})"
+            )
+
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception("[SentinelTools] get_system_resources failed")
+            return f"Failed to get system resources: {exc}"
+
+    @staticmethod
+    def get_running_processes(sort_by: str = "cpu") -> str:
+        """Return the top 15 processes sorted by CPU or memory usage."""
+        logger.info("[SentinelTools] get_running_processes invoked (sort=%s)", sort_by)
+        try:
+            import psutil
+
+            procs: list[dict] = []
+            for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info", "status"]):
+                try:
+                    info = p.info
+                    mem_mb = (info["memory_info"].rss / (1024 * 1024)) if info["memory_info"] else 0
+                    procs.append({
+                        "pid": info["pid"],
+                        "name": info["name"],
+                        "cpu": info["cpu_percent"] or 0,
+                        "mem_mb": round(mem_mb, 1),
+                        "status": info["status"],
+                    })
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Sort
+            key = "cpu" if sort_by.lower() == "cpu" else "mem_mb"
+            procs.sort(key=lambda x: x[key], reverse=True)
+            top = procs[:15]
+
+            lines = [f"Top {len(top)} Processes (by {sort_by.upper()}):", ""]
+            lines.append(f"  {'PID':>7}  {'CPU%':>5}  {'RAM MB':>7}  {'Status':>10}  Name")
+            lines.append(f"  {'─'*7}  {'─'*5}  {'─'*7}  {'─'*10}  {'─'*20}")
+            for p in top:
+                lines.append(
+                    f"  {p['pid']:>7}  {p['cpu']:>5.1f}  {p['mem_mb']:>7.1f}  "
+                    f"{p['status']:>10}  {p['name']}"
+                )
+            lines.append(f"\nTotal running processes: {len(procs)}")
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception("[SentinelTools] get_running_processes failed")
+            return f"Failed to get processes: {exc}"
+
+    @staticmethod
+    def get_network_info() -> str:
+        """Return network interfaces and active connections."""
+        logger.info("[SentinelTools] get_network_info invoked")
+        try:
+            import psutil
+
+            lines = ["Network Information:", ""]
+
+            # Interfaces
+            lines.append("Interfaces:")
+            addrs = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+            for iface, addr_list in addrs.items():
+                st = stats.get(iface)
+                status = "UP" if (st and st.isup) else "DOWN"
+                ipv4 = next((a.address for a in addr_list if a.family.name == "AF_INET"), "N/A")
+                lines.append(f"  {iface}: {ipv4} ({status})")
+
+            # IO counters
+            io = psutil.net_io_counters()
+            lines.append(
+                f"\nTraffic: ↑ {io.bytes_sent / (1024**2):.1f} MB sent, "
+                f"↓ {io.bytes_recv / (1024**2):.1f} MB received"
+            )
+
+            # Active connections (established only, limit to 15)
+            conns = [
+                c for c in psutil.net_connections(kind="inet")
+                if c.status == "ESTABLISHED" and c.raddr
+            ]
+            if conns:
+                lines.append(f"\nActive Connections ({len(conns)} established):")
+                for c in conns[:15]:
+                    local = f"{c.laddr.ip}:{c.laddr.port}"
+                    remote = f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else "N/A"
+                    lines.append(f"  {local} → {remote}")
+                if len(conns) > 15:
+                    lines.append(f"  … and {len(conns) - 15} more")
+            else:
+                lines.append("\nNo active outbound connections.")
+
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception("[SentinelTools] get_network_info failed")
+            return f"Failed to get network info: {exc}"
+
+    @staticmethod
+    def get_startup_programs() -> str:
+        """List programs registered to run at startup."""
+        logger.info("[SentinelTools] get_startup_programs invoked")
+        try:
+            import winreg
+
+            locations = [
+                (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", "HKCU\\Run"),
+                (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run", "HKLM\\Run"),
+            ]
+
+            lines = ["Startup Programs:", ""]
+            total = 0
+            for hive, subkey, label in locations:
+                try:
+                    key = winreg.OpenKey(hive, subkey, 0, winreg.KEY_READ)
+                    i = 0
+                    while True:
+                        try:
+                            name, value, _ = winreg.EnumValue(key, i)
+                            lines.append(f"  [{label}] {name}")
+                            lines.append(f"    → {value}")
+                            total += 1
+                            i += 1
+                        except OSError:
+                            break
+                    winreg.CloseKey(key)
+                except OSError:
+                    pass
+
+            if total == 0:
+                lines.append("  No startup entries found.")
+            else:
+                lines.append(f"\nTotal: {total} startup entries")
+
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception("[SentinelTools] get_startup_programs failed")
+            return f"Failed to get startup programs: {exc}"
+
     # Registry of callable tools  (name → callable)
     DISPATCH: dict[str, callable] = {
         "run_quick_scan": lambda **_kw: SentinelTools.run_quick_scan(),
@@ -541,6 +742,10 @@ class SentinelTools:
         "update_software": lambda **kw: SentinelTools.update_software(kw.get("software_id", "")),
         "install_software": lambda **kw: SentinelTools.install_software(kw.get("software_id", "")),
         "run_system_diagnostics": lambda **_kw: SentinelTools.run_system_diagnostics(),
+        "get_system_resources": lambda **_kw: SentinelTools.get_system_resources(),
+        "get_running_processes": lambda **kw: SentinelTools.get_running_processes(kw.get("sort_by", "cpu")),
+        "get_network_info": lambda **_kw: SentinelTools.get_network_info(),
+        "get_startup_programs": lambda **_kw: SentinelTools.get_startup_programs(),
     }
 
 
@@ -785,40 +990,117 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    # ── System Information Tools ──────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_resources",
+            "description": (
+                "Get a live snapshot of the system's hardware resources: "
+                "CPU usage percentage and core count, RAM usage and "
+                "available memory, disk space for all drives, battery "
+                "status (if laptop), system uptime, and OS version. "
+                "Use this when the user asks about system performance, "
+                "resource usage, how much RAM or disk space they have, "
+                "or general system info."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_running_processes",
+            "description": (
+                "List the top 15 running processes sorted by CPU or "
+                "memory usage. Shows PID, CPU%, RAM in MB, status, and "
+                "process name. Also reports total number of processes. "
+                "Use when the user asks what's running, what's using "
+                "CPU/RAM, or wants to see active processes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["cpu", "memory"],
+                        "description": (
+                            "Sort processes by 'cpu' (default) or 'memory' usage."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_network_info",
+            "description": (
+                "Get network information: all network interfaces with "
+                "IP addresses and up/down status, total traffic sent and "
+                "received, and up to 15 active (ESTABLISHED) connections "
+                "with local and remote addresses. Use when the user asks "
+                "about network status, IP address, active connections, "
+                "or network traffic."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_startup_programs",
+            "description": (
+                "List all programs registered to run automatically at "
+                "Windows startup. Reads from HKCU and HKLM Run registry "
+                "keys. Shows the program name and its command/path. "
+                "Use when the user asks about startup items, boot "
+                "programs, or wants to check what runs on login."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ]
 
 
 # ===========================================================================
-# GROQ CHAT WORKER  (QThread) — Agentic Tool-Calling Loop
+# GROQ CHAT WORKER  (QThread) — Simple Chat with System Context
 # ===========================================================================
 
 
 class GroqChatWorker(QThread):
-    """Background worker that runs an agentic Groq tool-calling loop.
+    """Background worker that sends a single Groq chat request.
 
-    Flow
-    ----
-    1. Send user message + tool schemas to Groq.
-    2. If the LLM returns ``tool_calls`` → execute each tool locally,
-       append results as ``role: "tool"`` messages, and loop back to step 1.
-    3. If the LLM returns plain text (no tool calls) → emit
-       ``response_ready`` and exit.
-    4. Safety valve: after ``MAX_TOOL_ROUNDS`` iterations, force-exit.
+    Gathers live system context (CPU, RAM, disk, network, processes)
+    and injects it into the system prompt so the LLM can answer
+    questions about the user's machine without tool-calling.
 
     Signals
     -------
     response_ready(str)
-        Emitted with the final assistant reply text.
-    tool_executed(str)
-        Emitted each time a tool runs, with a short status line for the UI.
+        Emitted with the assistant reply text.
     error_occurred(str)
         Emitted with a human-readable error message on failure.
     """
 
     response_ready = Signal(str)
-    tool_executed = Signal(str)
+    tool_executed = Signal(str)            # kept for API compat (unused)
     error_occurred = Signal(str)
-    scan_progress = Signal(int, str)   # (percent 0-100, status message)
+    scan_progress = Signal(int, str)       # kept for API compat (unused)
 
     def __init__(
         self,
@@ -832,13 +1114,38 @@ class GroqChatWorker(QThread):
         self._chat_history = list(chat_history)          # defensive copy
         self._model = model or os.environ.get("AI_MODEL_CHAT", DEFAULT_MODEL)
 
+    @staticmethod
+    def _gather_system_context() -> str:
+        """Collect live system info to embed in the system prompt."""
+        sections: list[str] = []
+        try:
+            sections.append(SentinelTools.get_system_resources())
+        except Exception:
+            pass
+        try:
+            sections.append(SentinelTools.get_running_processes(sort_by="cpu"))
+        except Exception:
+            pass
+        try:
+            sections.append(SentinelTools.get_network_info())
+        except Exception:
+            pass
+        try:
+            sections.append(SentinelTools.get_startup_programs())
+        except Exception:
+            pass
+        try:
+            sections.append(SentinelTools.run_system_diagnostics())
+        except Exception:
+            pass
+        return "\n\n".join(sections) if sections else "(system info unavailable)"
+
     # ------------------------------------------------------------------
     def run(self) -> None:  # noqa: D401 – QThread override
-        """Execute the agentic Groq tool-calling loop."""
+        """Send a single chat completion request to Groq."""
         try:
             from groq import Groq  # official SDK
 
-            # Ensure .env is loaded (may not have been called yet)
             try:
                 from dotenv import load_dotenv
                 load_dotenv()
@@ -853,127 +1160,48 @@ class GroqChatWorker(QThread):
                 )
                 return
 
-            client = Groq(api_key=api_key)
+            client = Groq(
+                api_key=api_key,
+                default_headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                },
+            )
+
+            # Gather live system snapshot --------------------------------
+            system_context = self._gather_system_context()
+
+            system_message = (
+                f"{SYSTEM_PROMPT}\n\n"
+                "Below is a LIVE snapshot of the user's machine.  "
+                "Reference this data when answering questions about "
+                "system resources, processes, network, or security status.  "
+                "Do NOT make up numbers — only use what's provided here.\n\n"
+                f"--- LIVE SYSTEM SNAPSHOT ---\n{system_context}\n"
+                "--- END SNAPSHOT ---"
+            )
 
             # Build the messages array -----------------------------------
             messages: list[dict] = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_message},
             ]
-            # Append prior conversation context (skip tool/system messages
-            # from previous turns — they confuse the context window)
             for msg in self._chat_history:
                 if msg.get("role") in ("user", "assistant"):
                     messages.append({
                         "role": msg["role"],
                         "content": msg.get("content", ""),
                     })
-            # Append the new user message
             messages.append({"role": "user", "content": self._user_message})
 
-            # ============================================================
-            # AGENTIC LOOP — call Groq, execute tools, repeat
-            # ============================================================
-            for round_num in range(MAX_TOOL_ROUNDS):
-                logger.debug(
-                    "Groq tool-call round %d/%d  (%d messages)",
-                    round_num + 1, MAX_TOOL_ROUNDS, len(messages),
-                )
-
-                completion = client.chat.completions.create(
-                    model=self._model,
-                    messages=messages,
-                    tools=TOOL_SCHEMAS,
-                    tool_choice="auto",
-                    temperature=0.6,
-                    max_tokens=2048,
-                )
-
-                assistant_msg = completion.choices[0].message
-                tool_calls = assistant_msg.tool_calls
-
-                # ------ No tool calls → plain text reply, we're done ----
-                if not tool_calls:
-                    reply = assistant_msg.content or ""
-                    self.response_ready.emit(reply)
-                    return
-
-                # ------ Tool calls present → execute each one -----------
-                # Append the assistant message (with tool_calls metadata)
-                messages.append({
-                    "role": "assistant",
-                    "content": assistant_msg.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in tool_calls
-                    ],
-                })
-
-                for tc in tool_calls:
-                    func_name = tc.function.name
-                    func_args_raw = tc.function.arguments
-
-                    # Parse arguments JSON
-                    try:
-                        func_args = json.loads(func_args_raw) if func_args_raw else {}
-                    except json.JSONDecodeError:
-                        func_args = {}
-
-                    # Dispatch to the local Python function
-                    handler = SentinelTools.DISPATCH.get(func_name)
-                    if handler:
-                        # Install progress callback for scan tools
-                        SentinelTools._progress_callback = (
-                            lambda pct, msg: self.scan_progress.emit(pct, msg)
-                        )
-                        try:
-                            result = handler(**func_args)
-                            logger.info(
-                                "Tool '%s' executed successfully", func_name
-                            )
-                        except Exception as tool_exc:
-                            result = f"Tool error: {tool_exc}"
-                            logger.exception(
-                                "Tool '%s' raised an exception", func_name
-                            )
-                        finally:
-                            SentinelTools._progress_callback = None
-                    else:
-                        result = f"Unknown tool: {func_name}"
-                        logger.warning("LLM requested unknown tool: %s", func_name)
-
-                    # Notify the UI that a tool ran
-                    status = f"🔧 Executed: {func_name}"
-                    if func_args:
-                        status += f"({', '.join(f'{k}={v}' for k, v in func_args.items())})"
-                    self.tool_executed.emit(status)
-
-                    # Append the tool result so the LLM can read it
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result,
-                    })
-
-                # Loop back → the next iteration sends the updated
-                # messages (with tool results) so the LLM can summarize.
-
-            # ============================================================
-            # Safety valve — too many rounds, emit what we have
-            # ============================================================
-            logger.warning(
-                "Agentic loop hit MAX_TOOL_ROUNDS (%d)", MAX_TOOL_ROUNDS
+            # Single Groq call — no tool-calling -------------------------
+            completion = client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                temperature=0.6,
+                max_tokens=2048,
             )
-            self.response_ready.emit(
-                "I executed the requested tools but reached the maximum "
-                "number of action steps.  Please review the results above."
-            )
+
+            reply = completion.choices[0].message.content or ""
+            self.response_ready.emit(reply)
 
         except ImportError:
             self.error_occurred.emit(

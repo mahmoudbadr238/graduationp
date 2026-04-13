@@ -16,10 +16,13 @@ Item {
     property real netRecvMbps: 0
     property real diskPercent: 0
     property bool monitorRunning: false
-    property bool rtpEnabled: false
+    property bool rtpEnabled: true
 
-    // ── Log console model ──
-    property var logEntries: []
+    // ── Log console model (ListModel for efficient prepend) ──
+    ListModel { id: logModel }
+
+    // ── Max log entries ──
+    readonly property int maxLogEntries: 200
 
     // ── Helpers ──
     function statusColor(value) {
@@ -40,10 +43,7 @@ Item {
             ResourceMonitor.start()
             monitorRunning = true
         }
-        // Immediately reflect backend RTP state (may have been auto-started)
-        if (typeof RTPBridge !== "undefined") {
-            rtpEnabled = RTPBridge.getStatus()
-        }
+        // RTP auto-starts on boot; protectionStatusChanged signal keeps UI in sync.
     }
 
     // ── Poll timer (syncs bridge → QML properties) ──
@@ -86,14 +86,20 @@ Item {
         function onProcessScanned(msg) { addLog(msg) }
         function onStatusMessage(msg) { addLog("🛡️ RTP: " + msg) }
         function onProtectionStatusChanged(active) { rtpEnabled = active }
+
+        // Pre-formatted log line from bridge (Allowed / Blocked per process)
+        function onNew_event_log(logLine) {
+            logModel.insert(0, { "entry": logLine })
+            while (logModel.count > maxLogEntries)
+                logModel.remove(logModel.count - 1)
+        }
     }
 
     function addLog(text) {
         var ts = new Date().toLocaleTimeString(Qt.locale(), "HH:mm:ss")
-        var newEntries = logEntries.slice()
-        newEntries.unshift("[" + ts + "] " + text)
-        if (newEntries.length > 200) newEntries = newEntries.slice(0, 200)
-        logEntries = newEntries
+        logModel.insert(0, { "entry": "[" + ts + "] " + text })
+        while (logModel.count > maxLogEntries)
+            logModel.remove(logModel.count - 1)
     }
 
     // ── Main layout ──
@@ -515,7 +521,7 @@ Item {
                                 }
 
                                 Text {
-                                    text: logEntries.length + " entries"
+                                    text: logModel.count + " entries"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     color: ThemeManager.muted()
                                 }
@@ -543,7 +549,7 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: logEntries = []
+                                        onClicked: logModel.clear()
                                     }
                                 }
                             }
@@ -555,7 +561,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            model: logEntries
+                            model: logModel
 
                             delegate: Rectangle {
                                 width: logView.width
@@ -569,15 +575,18 @@ Item {
                                         verticalCenter: parent.verticalCenter
                                         margins: 14
                                     }
-                                    text: modelData
+                                    text: model.entry
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.family: "Consolas, monospace"
                                     color: {
-                                        if (modelData.indexOf("⚠") >= 0 || modelData.indexOf("THREAT") >= 0)
+                                        var t = model.entry || ""
+                                        if (t.indexOf("Blocked") >= 0 || t.indexOf("⚠") >= 0 || t.indexOf("THREAT") >= 0)
                                             return ThemeManager.danger
-                                        if (modelData.indexOf("🛡") >= 0)
+                                        if (t.indexOf("🛡") >= 0)
                                             return ThemeManager.success
-                                        if (modelData.indexOf("🔧") >= 0)
+                                        if (t.indexOf("Allowed") >= 0)
+                                            return ThemeManager.muted()
+                                        if (t.indexOf("🔧") >= 0)
                                             return ThemeManager.accent
                                         return ThemeManager.muted()
                                     }
@@ -588,7 +597,7 @@ Item {
                             // Empty state
                             Rectangle {
                                 anchors.centerIn: parent
-                                visible: logEntries.length === 0
+                                visible: logModel.count === 0
                                 width: emptyText.implicitWidth + 40
                                 height: emptyText.implicitHeight + 20
                                 color: "transparent"

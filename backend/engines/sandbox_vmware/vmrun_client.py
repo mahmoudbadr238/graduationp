@@ -48,7 +48,9 @@ class VmrunClient:
         if not self._config.guest_user or not self._config.guest_pass:
             raise VmrunError(
                 "Sandbox guest credentials are missing. "
-                "Set SANDBOX_GUEST_USER and SANDBOX_GUEST_PASS in .env."
+                "Set SANDBOX_GUEST_USER and SANDBOX_GUEST_PASS in .env "
+                "or configure guest_username / guest_password in config/vmware.json. "
+                f"Current guest_user={self._config.guest_user!r}"
             )
 
     def _run(
@@ -87,25 +89,36 @@ class VmrunClient:
                 creationflags=_SUBPROCESS_FLAGS,
             )
         except FileNotFoundError as exc:
+            print(f"[vmrun] ERROR: vmrun.exe not found at: {self._config.vmrun_path}")
             raise VmrunError(
                 "VMware Workstation vmrun.exe could not be launched. "
                 f"Expected: {self._config.vmrun_path}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
+            print(f"[vmrun] ERROR: Timed out after {timeout}s on: {args[0]}")
             raise VmrunError(
                 f"vmrun timed out after {timeout}s while running: {args[0]}"
             ) from exc
 
         if result.returncode != 0:
-            stderr = (result.stderr or result.stdout or "").strip()
-            message = stderr or f"vmrun failed with exit code {result.returncode}"
+            stderr = (result.stderr or "").strip()
+            stdout = (result.stdout or "").strip()
+            # Combine stderr and stdout for maximum diagnostic detail
+            detail_parts = []
+            if stderr:
+                detail_parts.append(f"stderr: {stderr}")
+            if stdout:
+                detail_parts.append(f"stdout: {stdout}")
+            detail = "; ".join(detail_parts) if detail_parts else f"exit code {result.returncode}"
+            message = f"vmrun {args[0]} failed (rc={result.returncode}): {detail}"
             lower_message = message.lower()
             if "authentication" in lower_message or "login" in lower_message:
                 message = (
-                    f"{message} Check SANDBOX_GUEST_USER / SANDBOX_GUEST_PASS "
+                    f"{message}. Check SANDBOX_GUEST_USER / SANDBOX_GUEST_PASS "
                     "and confirm VMware Tools is installed in the guest."
                 )
-            logger.debug("vmrun failed (rc=%d): %s", result.returncode, message)
+            print(f"[vmrun] ERROR: {message}")
+            logger.warning("vmrun failed: %s", message)
             raise VmrunError(message)
         return result
 
@@ -142,10 +155,14 @@ class VmrunClient:
             ) from exc
 
     def start(self, *, nogui: bool = True, timeout: int = 180) -> None:
-        """Start the VM."""
+        """Start the VM.
+
+        Args:
+            nogui: If True, start headless (``nogui``).
+                   If False, start with visible GUI (``gui``).
+        """
         args = ["start", self._config.vmx_path]
-        if nogui:
-            args.append("nogui")
+        args.append("nogui" if nogui else "gui")
         self._run(args, timeout=timeout)
 
     def stop(self, *, hard: bool = True, timeout: int = 90) -> None:

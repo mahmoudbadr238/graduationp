@@ -217,16 +217,49 @@ class VMwareRunner:
         retries: int = 10,
         retry_delay: float = 6.0,
         test_cmd: str = "echo sentinel_ready",
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """
         Wait until VMware Tools + guest auth is responsive.
-        Polls by running a no-op command in the guest.
-        Raises VmrunError after all retries are exhausted.
+
+        Strategy:
+          1. Poll ``vmrun checkToolsState`` until it reports "running".
+          2. Then verify guest auth by running a test command via
+             ``runProgramInGuest``.
+
+        Raises VmrunError after all retries are exhausted, with the exact
+        VMware error message so the UI can display it.
         """
         self._running("Waiting for guest OS + VMware Tools to become ready")
-        time.sleep(self._boot_wait)
-        last_exc: Exception = VmrunError("Guest never became ready")
-        for attempt in range(1, retries + 1):
+
+        # ── Phase 1: Wait for VMware Tools to report "running" ────────────
+        tools_timeout = int(self._boot_wait + retry_delay * retries)
+        self._running(
+            f"Phase 1: Polling checkToolsState (boot_wait={self._boot_wait}s, "
+            f"timeout={tools_timeout}s)"
+        )
+        try:
+            self._client.wait_for_tools(
+                timeout=tools_timeout,
+                poll_interval=3,
+                cancel_event=cancel_event,
+            )
+            self._ok("VMware Tools is running in the guest")
+        except VmrunError as exc:
+            error_msg = str(exc)
+            self._fail(f"VMware Tools did not start: {error_msg}")
+            raise VmrunError(
+                f"VMware Tools failed to start within {tools_timeout}s. "
+                f"VMware error: {error_msg}. "
+                "Check: VMware Tools installed in guest? Guest OS booted? "
+                "Snapshot has Tools pre-installed?"
+            ) from exc
+
+        # ── Phase 2: Verify guest authentication works ────────────────────
+        self._running("Phase 2: Verifying guest authentication (runProgramInGuest)")
+        last_exc: Exception = VmrunError("Guest auth probe never ran")
+        max_auth_retries = min(retries, 5)
+        for attempt in range(1, max_auth_retries + 1):
             try:
                 self._client.run_program_in_guest(
                     _PS,
@@ -234,20 +267,27 @@ class VMwareRunner:
                     wait=True,
                     timeout=30,
                 )
-                self._ok(f"Guest ready (attempt {attempt}/{retries})")
+                self._ok(
+                    f"Guest ready — Tools running + auth OK (attempt {attempt}/{max_auth_retries})"
+                )
                 return
             except VmrunError as exc:
                 last_exc = exc
+                error_detail = str(exc)
                 self._running(
-                    f"Guest not responsive yet ({attempt}/{retries}): {str(exc)[:80]}"
+                    f"Guest auth probe {attempt}/{max_auth_retries} failed: "
+                    f"{error_detail[:120]}"
                 )
-                if attempt < retries:
+                if attempt < max_auth_retries:
                     time.sleep(retry_delay)
+
+        error_msg = str(last_exc)
+        self._fail(f"Guest authentication failed: {error_msg}")
         raise VmrunError(
-            f"Guest did not become ready after {retries} attempts. "
-            f"Last error: {last_exc}. "
-            "Check: VMware Tools installed? Guest auto-login configured? "
-            "Correct SANDBOX_GUEST_USER + SANDBOX_GUEST_PASS?"
+            f"Guest did not become ready after {max_auth_retries} auth attempts. "
+            f"VMware error: {error_msg}. "
+            "Check: Correct SANDBOX_GUEST_USER + SANDBOX_GUEST_PASS? "
+            "Guest auto-login configured? VMware Tools installed?"
         )
 
     def ensure_guest_workdir(self, job_id: str) -> str:
@@ -510,9 +550,18 @@ class VMwareRunner:
 
         if host_agent_path is None:
             # Default: dist/sentinel_agent.exe relative to project root
-            host_agent_path = (
-                Path(__file__).parent.parent.parent / "dist" / "sentinel_agent.exe"
-            )
+            _backend_root = Path(__file__).parent.parent.parent   # → backend/
+            _workspace_root = _backend_root.parent                # → project root
+            # build_agent.py outputs to <workspace>/dist/sentinel_agent.exe
+            for _candidate in (
+                _workspace_root / "dist" / "sentinel_agent.exe",
+                _backend_root / "dist" / "sentinel_agent.exe",
+            ):
+                if _candidate.exists():
+                    host_agent_path = _candidate
+                    break
+            else:
+                host_agent_path = _workspace_root / "dist" / "sentinel_agent.exe"
         agent_path = Path(host_agent_path)
         if not agent_path.exists():
             result["errors"].append(

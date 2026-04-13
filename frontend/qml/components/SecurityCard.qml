@@ -13,6 +13,11 @@ Rectangle {
     property bool isWarning: false  // Yellow warning state
     property bool isNeutral: false  // Gray/neutral state for N/A items
 
+    // Interactive toggle support
+    property bool toggleable: false          // Show a switch
+    property bool toggleChecked: false       // Bound to switch state
+    signal toggleRequested(bool newState)    // Emitted when user flips the switch
+
     color: ThemeManager.panel()
     radius: 12
     border.color: ThemeManager.border()
@@ -38,13 +43,35 @@ Rectangle {
         anchors.margins: 14
         spacing: 6
 
-        Text {
-            text: card.title
-            color: ThemeManager.muted()
-            font.pixelSize: ThemeManager.fontSize_small
-            font.weight: Font.Medium
+        // Title row with optional switch
+        RowLayout {
             Layout.fillWidth: true
-            elide: Text.ElideRight
+            spacing: 4
+
+            Text {
+                text: card.title
+                color: ThemeManager.muted()
+                font.pixelSize: ThemeManager.fontSize_small
+                font.weight: Font.Medium
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+
+            Switch {
+                id: cardSwitch
+                visible: card.toggleable
+                checked: card.toggleChecked
+                scale: 0.65
+                Layout.alignment: Qt.AlignVCenter
+
+                // Intercept: do NOT auto-commit. Emit signal and let parent decide.
+                onClicked: {
+                    // Revert visual state immediately; the parent will set
+                    // toggleChecked after the confirmation dialog is accepted.
+                    checked = card.toggleChecked
+                    card.toggleRequested(!card.toggleChecked)
+                }
+            }
         }
 
         Text {

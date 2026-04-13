@@ -35,6 +35,7 @@ StatCard 1.0 StatCard.qml
 StorageCard 1.0 StorageCard.qml
 NetworkAdapterCard 1.0 NetworkAdapterCard.qml
 SecurityCard 1.0 SecurityCard.qml
+RiskConfirmDialog 1.0 RiskConfirmDialog.qml
 SecurityTriangle 1.0 SecurityTriangle.qml
 SidebarItem 1.0 SidebarItem.qml
 NotificationCenter 1.0 NotificationCenter.qml

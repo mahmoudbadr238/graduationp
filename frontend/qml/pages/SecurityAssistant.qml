@@ -114,7 +114,7 @@ Item {
     Component.onCompleted: {
         chatModel.append({
             "role": "assistant",
-            "content": "**Hello! I'm Sentinel, your local security assistant.** 🛡️\n\nThink of me as a junior security analyst sitting on your machine. I can:\n\n• **Check your security status** - Defender, Firewall, real-time protection\n• **Explain Windows events** - What happened, why, and should you worry\n• **Answer security questions** - Best practices, threats, how to stay safe\n• **Guide you through the app** - How to use any Sentinel feature\n\nI remember our conversation, so ask follow-up questions anytime.\n\n*Everything I do is 100% local - I never connect to the internet.*",
+            "content": "**Hey! I'm Sentinel AI, your security assistant.** 🛡️\n\nI'm powered by Groq and can help you with pretty much anything on your machine:\n\n• **System info** — \"Show my CPU and RAM usage\", \"What's eating my memory?\"\n• **Network** — \"Show active connections\", \"What's my IP?\"\n• **Processes** — \"What's running right now?\", \"Top processes by RAM\"\n• **Security** — Scan files, quarantine threats, manage real-time protection\n• **Software** — Install or update apps via winget\n• **General chat** — Ask me anything, I'm here to help\n\nJust type what you need — I'll fetch live data when needed.",
             "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
             "hasStructuredData": false,
             "structuredData": ""
@@ -147,7 +147,7 @@ Item {
                 }
 
                 Text {
-                    text: "Context-Aware • Memory • Local-Only"
+                    text: "Groq AI • Conversation Memory • System Access"
                     font.pixelSize: ThemeManager.fontSize_small
                     color: ThemeManager.muted()
                 }
@@ -537,10 +537,12 @@ Item {
 
                     Repeater {
                         model: [
+                            "Show my system resources",
+                            "What's using the most RAM?",
+                            "Show active network connections",
+                            "Run a quick security scan",
                             "What's my security status?",
-                            "Explain recent events",
-                            "Is my firewall enabled?",
-                            "Any security concerns?"
+                            "List startup programs"
                         ]
 
                         Rectangle {

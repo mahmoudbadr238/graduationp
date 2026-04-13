@@ -18,8 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-SOURCE = PROJECT_ROOT / "tools" / "sandbox_agent" / "agent_payload.py"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SOURCE = PROJECT_ROOT / "payload" / "sandbox_agent" / "agent_payload.py"
 DIST_DIR = PROJECT_ROOT / "dist"
 EXE_NAME = "sentinel_agent"
 FINAL_EXE = DIST_DIR / f"{EXE_NAME}.exe"
@@ -39,6 +39,9 @@ def main() -> int:
         "--name", EXE_NAME,
         "--hidden-import", "pyautogui",
         "--hidden-import", "tkinter",
+        "--hidden-import", "psutil",
+        "--hidden-import", "wmi",
+        "--hidden-import", "pywinauto",
         "--distpath", str(DIST_DIR),
         "--workpath", str(PROJECT_ROOT / "build" / EXE_NAME),
         "--specpath", str(PROJECT_ROOT),

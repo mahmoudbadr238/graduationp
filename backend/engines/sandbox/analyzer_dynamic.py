@@ -56,6 +56,7 @@ _AGENT_AHK = _TOOLS_DIR / "ui.ahk"  # legacy
 _INSTALL_PS1 = _TOOLS_DIR / "install_agent.ps1"
 
 _GUEST_IN_DIR = r"C:\Sandbox\in"  # simple sample drop directory in guest
+_GUEST_PAYLOAD = r"C:\Users\Public\Downloads\payload.exe"  # hardcoded detonation path
 
 # ── Artifact filenames written by the guest agent ─────────────────────────────
 _ARTIFACT_FILES = [
@@ -306,7 +307,7 @@ def run_file_analysis(
         # ── Step 6: Ensure guest ready ────────────────────────────────────────
         _progress(28)
         emit_step("Running", "[6/14] Waiting for guest OS + VMware Tools + auth")
-        runner.ensure_guest_ready(retries=12, retry_delay=5.0)
+        runner.ensure_guest_ready(retries=12, retry_delay=5.0, cancel_event=_cancel)
         _milestone("tools_ready")
         if _aborted():
             raise InterruptedError("Cancelled after step 6.")
@@ -338,11 +339,12 @@ def run_file_analysis(
         if _aborted():
             raise InterruptedError("Cancelled after step 7.")
 
-        # ── Step 8: Copy sample to C:\Sandbox\in\ ─────────────────────────────
+        # ── Step 8: Copy sample to hardcoded guest detonation path ──────────
         _progress(42)
-        guest_in_sample = _GUEST_IN_DIR + "\\" + sample.name
+        guest_in_sample = _GUEST_PAYLOAD
         emit_step("Running", f"[8/14] Copying sample to guest: {guest_in_sample}")
         runner.copy_to_guest(sample, guest_in_sample, timeout=120)
+        print(f"[Sandbox] Copied {sample.name} → {guest_in_sample}")
         _milestone("copy_sample_done", f"{sample.name} → guest {guest_in_sample}")
         if _aborted():
             raise InterruptedError("Cancelled after step 8.")

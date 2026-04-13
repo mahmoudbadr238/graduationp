@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import re
 import sys
 import threading
 from datetime import datetime
@@ -120,12 +121,11 @@ class BackendBridge(QObject):
     )  # JSON string of structured response (safer for QML)
     smartAssistantError = Signal(str)  # Error message
 
-    # Resolution Report signals
-    resolutionSessionsLoaded = Signal(str)  # JSON string of sessions array
-
     # ScanCenter signals — market-ready file scanner (v3 report pipeline)
     scanCenterProgress = Signal(int, str)       # percent 0-100, stage label
     scanCenterFinished = Signal(dict)           # V3Report.to_dict() — full report
+    scanCenterAiBrief   = Signal(str)            # Groq AI 1-sentence brief
+    scanCenterAiDetailed = Signal(str)           # Groq AI detailed multi-paragraph report
     scanCenterFailed   = Signal(str)            # error message
     scanCenterHistoryLoaded = Signal(list)      # list[dict] history rows
     scanCenterExplainFinished = Signal(dict)    # AiExplanation.to_dict()
@@ -137,6 +137,7 @@ class BackendBridge(QObject):
 
     # Navigation signal (for cross-page navigation)
     navigateTo = Signal(str)  # route name (e.g., "ai-assistant")
+    sandboxHandoffRequested = Signal(str)  # absolute host file path for Sandbox Lab
 
     # Internal signals for thread-safe communication (background thread -> main thread)
     _eventsLoadedInternal = Signal(list)
@@ -240,6 +241,8 @@ class BackendBridge(QObject):
 
         # ScanCenter pipeline state
         self._scancenter_controller = None   # ScanController while a scan is running
+        self._scancenter_orchestrator = None  # ScannerOrchestrator (QThread) for interactive sandbox
+        self._vmware_embedder = None   # VmwareWindowEmbedder (set by application.py)
         self._scancenter_cancel = threading.Event()
         self._scancenter_current_report: dict | None = None  # last finished V3 report
 
@@ -443,6 +446,17 @@ class BackendBridge(QObject):
         normalized["report_content"] = str(normalized.get("report_content") or "")
 
         return normalized
+
+    @staticmethod
+    def _normalize_ai_report_text(text: str | None) -> str:
+        """Normalize AI output so the QML report page renders predictably."""
+        if not text:
+            return ""
+        normalized = str(text).replace("\r\n", "\n").replace("\r", "\n")
+        normalized = re.sub(r"(?m)^\s*\*\*(.+?)\*\*\s*$", r"\1", normalized)
+        normalized = normalized.replace("•", "- ")
+        normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+        return normalized.strip()
 
     # ==================== AGENT STEP TRACKING ====================
 
@@ -4368,84 +4382,6 @@ class BackendBridge(QObject):
             self._chatbot_bridge.clear_history()
         logger.info("Chat history cleared")
 
-    # ========================================================================
-    # RESOLUTION REPORTS - Track what AI did during help sessions
-    # ========================================================================
-
-    @Slot()
-    def getResolutionSessions(self) -> None:
-        """
-        Get all resolution sessions for the Resolution Report page.
-
-        Emits resolutionSessionsLoaded signal with JSON array of sessions.
-        """
-        try:
-            from backend.engines.ai.action_record import get_action_log
-
-            action_log = get_action_log()
-            sessions = action_log.get_all_sessions()
-
-            # Convert to JSON-serializable list
-            sessions_data = [s.to_dict() for s in sessions]
-
-            # Sort by started_at descending (newest first)
-            sessions_data.sort(key=lambda x: x.get("started_at", ""), reverse=True)
-
-            sessions_json = json.dumps(sessions_data)
-            self.resolutionSessionsLoaded.emit(sessions_json)
-            logger.debug(f"Loaded {len(sessions_data)} resolution sessions")
-
-        except Exception as e:
-            logger.error(f"Failed to get resolution sessions: {e}")
-            self.resolutionSessionsLoaded.emit("[]")
-
-    @Slot(int, str, str)
-    def startResolutionSession(
-        self, event_id: int, event_source: str, event_summary: str
-    ) -> None:
-        """
-        Start a new resolution session when user asks chatbot to help resolve.
-
-        Args:
-            event_id: Event ID being resolved
-            event_source: Source of the event
-            event_summary: Brief summary of the event
-        """
-        try:
-            if self._chatbot_bridge and hasattr(
-                self._chatbot_bridge, "start_resolution_session"
-            ):
-                session_id = self._chatbot_bridge.start_resolution_session(
-                    event_id=event_id,
-                    event_source=event_source,
-                    event_summary=event_summary,
-                )
-                logger.info(f"Started resolution session: {session_id}")
-            else:
-                logger.warning("ChatbotBridge not available for resolution session")
-        except Exception as e:
-            logger.error(f"Failed to start resolution session: {e}")
-
-    @Slot(str)
-    def endResolutionSession(self, summary: str) -> None:
-        """
-        End the current resolution session.
-
-        Args:
-            summary: Summary of what was done
-        """
-        try:
-            if self._chatbot_bridge and hasattr(
-                self._chatbot_bridge, "end_resolution_session"
-            ):
-                session_data = self._chatbot_bridge.end_resolution_session(summary)
-                if session_data:
-                    logger.info(
-                        f"Ended resolution session with {len(session_data.get('actions', []))} actions"
-                    )
-        except Exception as e:
-            logger.error(f"Failed to end resolution session: {e}")
-
     @Slot(str)
     def setEventContextForChat(self, event_json: str) -> None:
         """
@@ -4471,15 +4407,6 @@ class BackendBridge(QObject):
             # Get explanation summary if available
             explanation = event_data.get("explanation", {})
             summary = explanation.get("summary") or explanation.get("what_happened", "")
-
-            # Start a resolution session for audit logging
-            try:
-                event_id_int = int(event_id) if str(event_id).isdigit() else 0
-                self.startResolutionSession(
-                    event_id_int, str(provider), str(summary)[:200]
-                )
-            except Exception as e:
-                logger.debug(f"Could not start resolution session: {e}")
 
             # Create a help request message
             help_message = "I need help resolving this Windows event:\n\n"
@@ -4867,6 +4794,25 @@ class BackendBridge(QObject):
             visible_gui=True if _use_sandbox else bool(raw.get("use_visible_gui", False)),
         )
 
+        # ── Interactive Sandbox path: use ScannerOrchestrator (QThread) ──
+        if _use_sandbox:
+            from backend.engines.scancenter.scanner_orchestrator import ScannerOrchestrator
+
+            orch = ScannerOrchestrator(
+                file_path=file_path,
+                monitor_seconds=opts.monitor_seconds,
+                parent=self,
+            )
+            self._scancenter_orchestrator = orch
+
+            orch.progress_updated.connect(self.scanCenterProgress.emit)
+            orch.request_ui_change.connect(self._forward_navigate)
+            orch.scan_complete.connect(self._on_orchestrator_complete)
+            orch.vmware_window_ready.connect(self._on_embed_vmware)
+            orch.request_release_embed.connect(self._on_release_embed)
+            orch.start()
+            return
+
         self._scancenter_controller = ScanController()
 
         def _on_progress(pct: int, label: str) -> None:
@@ -4882,7 +4828,7 @@ class BackendBridge(QObject):
                     "phase": _ph, "status": "pending", "summary": "", "score": -1, "pct": 0
                 }))
 
-            _nav_switched_to_sandbox = False  # track whether we switched tabs
+            _nav_switched_to_sandbox = False  # track one-time sandbox handoff
 
             def _on_agent_step(step: dict) -> None:
                 """Forward a pipeline step dict to the QML Agent Timeline
@@ -4913,14 +4859,16 @@ class BackendBridge(QObject):
                         "pct": 0,
                     }))
 
-                # ── Theater Mode: auto-navigate to Sandbox Lab when Phase 4 starts,
-                #    and back to File Scan when it finishes. ───────────────────────
-                if _stage == "sandbox" and _status_raw == "running" and not _nav_switched_to_sandbox:
+                # ── Theater Mode: one-way handoff to Sandbox Lab.
+                # Do not bounce back to ScanCenter automatically, otherwise the user
+                # misses the interactive workflow entry point.
+                if (
+                    _stage == "sandbox"
+                    and _status_raw in {"running", "warn"}
+                    and not _nav_switched_to_sandbox
+                ):
                     _nav_switched_to_sandbox = True
                     self.navigateTo.emit("sandbox-lab")
-                elif _stage == "sandbox" and _status_raw != "running" and _nav_switched_to_sandbox:
-                    _nav_switched_to_sandbox = False
-                    self.navigateTo.emit("scan-tool")
 
             try:
                 # ── Start live preview stream when sandbox is requested ───────
@@ -4981,6 +4929,8 @@ class BackendBridge(QObject):
                 self.scanCenterFinished.emit(self._scancenter_current_report)
 
                 # ── Auto-trigger AI explanation after pipeline completes ──────
+                _brief = ""
+                _detailed = ""
                 try:
                     from backend.engines.scancenter.groq_explainer import explain_report as _ai_explain
                     _ai_result = _ai_explain(report)
@@ -4992,8 +4942,51 @@ class BackendBridge(QObject):
                         if _ai_dict:
                             self.scanCenterExplainFinished.emit(_ai_dict)
                             logger.info("Auto-AI explanation generated successfully")
+
+                        # Also populate the AI brief/detailed signals so the
+                        # brief box shows for non-sandbox (controller) scans too.
+                        _brief = getattr(_ai_result, "one_line_summary", "") or ""
+                        _reasons = getattr(_ai_result, "top_reasons", []) or []
+                        _actions = getattr(_ai_result, "what_to_do", []) or []
+                        _risk = getattr(_ai_result, "risk_level", "") or ""
+                        _fp_note = getattr(_ai_result, "false_positive_note", "") or ""
+                        _exec_note = getattr(_ai_result, "executed_note", "") or ""
+
+                        # Build a human-readable detailed report from structured fields
+                        _detail_parts = []
+                        if _risk:
+                            _detail_parts.append(f"Risk Level: {_risk}")
+                        if _reasons:
+                            _detail_parts.append("\nKey Findings:")
+                            for _r in _reasons:
+                                _detail_parts.append(f"  • {_r}")
+                        if _actions:
+                            _detail_parts.append("\nRecommended Actions:")
+                            for _a in _actions:
+                                _detail_parts.append(f"  • {_a}")
+                        if _exec_note:
+                            _detail_parts.append(f"\nSandbox Note: {_exec_note}")
+                        if _fp_note:
+                            _detail_parts.append(f"\nFalse Positive Note: {_fp_note}")
+                        _detailed = "\n".join(_detail_parts)
                 except Exception as _ai_exc:
-                    logger.debug("Auto-AI explanation skipped: %s", _ai_exc)
+                    print(f"[Bridge] Controller AI explanation error: {_ai_exc}")
+                    logger.debug("Auto-AI explanation failed: %s", _ai_exc)
+
+                # Always emit AI brief/detailed — use fallback from report if AI failed
+                if not _brief.strip():
+                    _v = report.verdict
+                    _score = _v.score if _v else 0
+                    _risk_str = _v.risk if _v else "Unknown"
+                    _label = _v.label if _v else ""
+                    _brief = f"Scan complete — Risk: {_risk_str} (Score {_score}/100). {_label}".strip()
+                    _detailed = _detailed or _brief
+                    print(f"[Bridge] Controller path: using fallback brief: {_brief!r}")
+                _brief = self._normalize_ai_report_text(_brief)
+                _detailed = self._normalize_ai_report_text(_detailed)
+                print(f"[Bridge] Controller path: emitting AI brief ({len(_brief)} chars) + detailed ({len(_detailed)} chars)")
+                self.scanCenterAiBrief.emit(_brief)
+                self.scanCenterAiDetailed.emit(_detailed)
 
                 # ── Emit final verdict phase as done ──────────────────────────
                 self.scanCenterPhaseUpdate.emit(json.dumps({
@@ -5053,6 +5046,89 @@ class BackendBridge(QObject):
 
         _t.Thread(target=_run, daemon=True, name="scancenter-scan").start()
 
+    # ── VMware embed helpers (main-thread) ─────────────────────────────
+
+    @Slot(str)
+    def _forward_navigate(self, route: str) -> None:
+        """Forward a route request to QML on the main thread.
+
+        Using a proper @Slot ensures the auto-connection from the
+        QThread is queued rather than direct, which avoids the
+        signal-to-signal cross-thread pitfall.
+        """
+        self.navigateTo.emit(route)
+
+    @Slot(int)
+    def _on_embed_vmware(self, vmware_hwnd: int) -> None:
+        """Embed the VMware window via QWindow.fromWinId() for QML WindowContainer."""
+        if self._vmware_embedder is None:
+            logger.warning("_on_embed_vmware: no embedder registered")
+            return
+        logger.info("Embedding VMware HWND=%#x via QWindow.fromWinId", vmware_hwnd)
+        self._vmware_embedder.embed(vmware_hwnd)
+
+    @Slot()
+    def _on_release_embed(self) -> None:
+        """Release the embedded VMware window (called before VM revert)."""
+        if self._vmware_embedder is not None:
+            self._vmware_embedder.release()
+
+    def set_vmware_embedder(self, embedder: object) -> None:
+        """Called from application.py to wire the VMware embedder."""
+        self._vmware_embedder = embedder
+
+    @Slot()
+    def finishInteractiveSession(self) -> None:
+        """Called by QML when analyst clicks 'Finish Interactive Session'.
+
+        Unblocks the ScannerOrchestrator's interactive_event.wait() so
+        the pipeline can proceed to Phase 4 (teardown + scoring).
+        """
+        orch = self._scancenter_orchestrator
+        if orch is not None:
+            orch.finish_interactive_session()
+            logger.info("finishInteractiveSession: orchestrator unblocked")
+        else:
+            logger.warning("finishInteractiveSession: no active orchestrator")
+
+    def _on_orchestrator_complete(self, report_dict: dict, brief: str, detailed: str) -> None:
+        """Handle ScannerOrchestrator scan_complete signal."""
+        print(f"[Bridge] _on_orchestrator_complete: brief={len(brief)} chars, detailed={len(detailed)} chars")
+        print(f"[Bridge] brief preview: {brief[:120]!r}")
+        self._scancenter_current_report = report_dict
+        self._scancenter_orchestrator = None
+
+        # Fallback: if the orchestrator didn't produce an AI brief, build one
+        # from the report dict so the UI always shows something.
+        if not brief.strip():
+            verdict = report_dict.get("verdict", {})
+            score = verdict.get("score", 0)
+            risk = verdict.get("risk", "Unknown")
+            label = verdict.get("label", "")
+            brief = f"Scan complete — Risk: {risk} (Score {score}/100). {label}".strip()
+            detailed = detailed or brief
+            print(f"[Bridge] Using fallback brief: {brief!r}")
+        brief = self._normalize_ai_report_text(brief)
+        detailed = self._normalize_ai_report_text(detailed)
+
+        # Navigate back to ScanCenter FIRST so the page is visible
+        # when the signals arrive (Phase 2 redirected to sandbox-lab).
+        self.navigateTo.emit("scan-tool")
+
+        self.scanCenterFinished.emit(report_dict)
+        self.scanCenterAiBrief.emit(brief)
+        self.scanCenterAiDetailed.emit(detailed)
+        print(f"[Bridge] All AI signals emitted (brief={len(brief)}, detailed={len(detailed)})")
+
+        # Emit final verdict phase update
+        verdict = report_dict.get("verdict", {})
+        self.scanCenterPhaseUpdate.emit(json.dumps({
+            "phase": "verdict", "status": "done",
+            "summary": f"Score: {verdict.get('score', 0)}/100 — {verdict.get('risk', 'Unknown')}",
+            "score": verdict.get("score", 0),
+            "pct": 100,
+        }))
+
     @Slot()
     def cancelScanCenter(self) -> None:
         """Cancel the currently running scan gracefully."""
@@ -5060,6 +5136,27 @@ class BackendBridge(QObject):
         if ctrl is not None:
             ctrl.cancel()
         self.toast.emit("info", "Scan cancelled.")
+
+    @Slot(str)
+    def exportAiLog(self, text: str) -> None:
+        """Write the AI detailed report to a file via native Save dialog."""
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getSaveFileName(
+            None,
+            "Export AI Report",
+            str(Path.home() / "Downloads" / "AI_Report.txt"),
+            "Text Files (*.txt);;All Files (*)",
+        )
+        if not path:
+            return  # user cancelled
+        try:
+            Path(path).write_text(text, encoding="utf-8")
+            print(f"[Bridge] AI report exported to {path}")
+            self.toast.emit("success", f"AI report exported → {path}")
+        except OSError as exc:
+            print(f"[Bridge] AI report export failed: {exc}")
+            self.toast.emit("error", f"Export failed: {exc}")
 
     @Slot()
     def openVmWindowInScanCenter(self) -> None:
@@ -5185,7 +5282,6 @@ class BackendBridge(QObject):
     def openScanCenterRunDir(self) -> None:
         """Open the run folder of the most recent ScanCenter report in Explorer."""
         import subprocess as _sp
-
         try:
             report = self._scancenter_current_report
             if not report:
@@ -5206,3 +5302,38 @@ class BackendBridge(QObject):
         except Exception as exc:
             logger.warning("openScanCenterRunDir: %s", exc)
             self.toast.emit("warning", f"Could not open run folder: {exc}")
+
+    @Slot(str)
+    def openSandboxLabForFile(self, file_path: str) -> None:
+        """Navigate to Sandbox Lab and prefill the sample path for interactive testing."""
+        try:
+            p = Path((file_path or "").strip())
+            if not p.exists() or not p.is_file():
+                self.toast.emit("warning", "Selected file is not available for Sandbox Lab handoff.")
+                return
+            normalized = str(p)
+            self.sandboxHandoffRequested.emit(normalized)
+            self.navigateTo.emit("sandbox-lab")
+            self.toast.emit("info", "Redirected to Sandbox Lab. Click Start Analysis to copy and run in VM.")
+        except Exception as exc:
+            logger.warning("openSandboxLabForFile failed: %s", exc)
+            self.toast.emit("error", f"Could not open Sandbox Lab: {exc}")
+
+    @Slot(str)
+    def openFileParentFolder(self, file_path: str) -> None:
+        """Open the parent folder of *file_path* in Explorer."""
+        import subprocess as _sp
+
+        try:
+            p = Path((file_path or "").strip())
+            if not p.exists():
+                self.toast.emit("warning", "File path not found.")
+                return
+            target = p.parent if p.is_file() else p
+            _sp.Popen(
+                ["explorer", str(target)],
+                creationflags=0x00000008,  # DETACHED_PROCESS
+            )
+        except Exception as exc:
+            logger.warning("openFileParentFolder failed: %s", exc)
+            self.toast.emit("error", f"Could not open folder: {exc}")

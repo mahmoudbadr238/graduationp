@@ -203,6 +203,9 @@ class FileFunctionBridge(QObject):
     shredderFinished = Signal(str)          # JSON result dict (success)
     shredderFailed = Signal(str)            # JSON result dict (failure)
 
+    # ── Drag-and-drop signal (native WM_DROPFILES fallback) ─────────────
+    fileDropped = Signal(str)               # file path from native drag-drop
+
     # ── Legacy / Carver signals ─────────────────────────────────────────
     shredProgressUpdated = Signal(int)
     carverLogUpdated = Signal(str)

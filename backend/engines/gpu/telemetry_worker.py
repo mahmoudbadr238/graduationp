@@ -891,6 +891,126 @@ def collect_intel_metrics(wmi_enabled: bool) -> list[dict[str, Any]]:
     return gpus
 
 
+def collect_wmic_fallback() -> list[dict[str, Any]]:
+    """
+    Last-resort fallback: use WMIC to get GPU names so the UI never says 'No GPU detected'.
+    This only returns the GPU name(s) with zeroed metrics, but it prevents the empty state.
+    """
+    import subprocess as _sp
+
+    gpus = []
+    try:
+        result = _sp.run(
+            ["wmic", "path", "win32_VideoController", "get", "name,AdapterRAM,DriverVersion"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000),
+        )
+        if result.returncode != 0:
+            return []
+
+        lines = [ln.strip() for ln in result.stdout.strip().splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return []
+
+        # Skip header row
+        for idx, line in enumerate(lines[1:]):
+            parts = line.split()
+            if not parts:
+                continue
+            # WMIC output is whitespace-separated; AdapterRAM comes first, then DriverVersion, then Name tokens
+            # The format varies, so we parse the raw line heuristically
+            adapter_ram = 0
+            driver_version = "Unknown"
+            name = line  # default: entire line as name
+
+            # Try to extract AdapterRAM (a large integer at the start)
+            tokens = line.split()
+            numeric_prefix = []
+            name_tokens = []
+            driver_tok = ""
+            for tok in tokens:
+                if not numeric_prefix and tok.isdigit() and int(tok) > 1000:
+                    numeric_prefix.append(tok)
+                elif not driver_tok and "." in tok and any(c.isdigit() for c in tok):
+                    driver_tok = tok
+                else:
+                    name_tokens.append(tok)
+
+            if numeric_prefix:
+                try:
+                    adapter_ram = int(numeric_prefix[0]) // (1024 ** 2)
+                except (ValueError, OverflowError):
+                    pass
+            if driver_tok:
+                driver_version = driver_tok
+            if name_tokens:
+                name = " ".join(name_tokens)
+
+            if not name or name.lower() in ("name", ""):
+                continue
+
+            # Determine vendor from name
+            upper = name.upper()
+            if "NVIDIA" in upper or "GEFORCE" in upper or "RTX" in upper or "GTX" in upper:
+                vendor = "NVIDIA"
+            elif "AMD" in upper or "RADEON" in upper or "ATI" in upper:
+                vendor = "AMD"
+            elif "INTEL" in upper:
+                vendor = "Intel"
+            else:
+                vendor = "Unknown"
+
+            gpus.append(
+                {
+                    "id": idx,
+                    "name": name,
+                    "vendor": vendor,
+                    "source": "WMIC-fallback",
+                    "usage": 0.0,
+                    "memControllerUtil": 0.0,
+                    "encoderUtil": 0,
+                    "decoderUtil": 0,
+                    "memUsedMB": 0,
+                    "memTotalMB": adapter_ram,
+                    "memFreeMB": adapter_ram,
+                    "memPercent": 0.0,
+                    "tempC": 0,
+                    "tempHotspot": 0,
+                    "tempMemory": 0,
+                    "clockMHz": 0,
+                    "clockMemMHz": 0,
+                    "clockSMMHz": 0,
+                    "clockVideoMHz": 0,
+                    "maxClockMHz": 0,
+                    "maxClockMemMHz": 0,
+                    "powerW": 0.0,
+                    "powerLimitW": 0.0,
+                    "powerDefaultW": 0.0,
+                    "powerMinW": 0.0,
+                    "powerMaxW": 0.0,
+                    "powerPercent": 0.0,
+                    "fanPercent": 0,
+                    "fanRPM": 0,
+                    "fanCount": 0,
+                    "pcieGen": 0,
+                    "pcieWidth": 0,
+                    "pcieTxKBs": 0,
+                    "pcieRxKBs": 0,
+                    "driverVersion": driver_version,
+                    "cudaVersion": "N/A",
+                    "vbiosVersion": "Unknown",
+                    "pciBus": "",
+                    "perfState": "Unknown",
+                }
+            )
+    except Exception:
+        pass  # Never crash on fallback
+
+    return gpus
+
+
 def main():
     """Main worker loop"""
     # Emit startup
@@ -971,6 +1091,16 @@ def main():
             # Re-assign IDs
             for idx, gpu in enumerate(all_gpus):
                 gpu["id"] = idx
+
+            # WMIC fallback: if no GPUs found by any vendor driver, use WMIC
+            # to at least report GPU name(s) so the UI doesn't say "No GPU detected"
+            if not all_gpus:
+                try:
+                    all_gpus = collect_wmic_fallback()
+                    for idx, gpu in enumerate(all_gpus):
+                        gpu["id"] = idx
+                except Exception:
+                    pass  # Never crash on fallback
 
             # Emit metrics
             emit(

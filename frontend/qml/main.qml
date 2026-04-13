@@ -200,15 +200,6 @@ ApplicationWindow {
 
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🛡️"
-                    label: "Data Loss Prevention"
-                    isActive: currentRoute === "dlp"
-                    expanded: sidebar.sidebarExpanded
-                    onClicked: loadRoute("dlp")
-                }
-
-                SidebarItem {
-                    Layout.fillWidth: true
                     icon: "🗂️"
                     label: "File Function"
                     isActive: currentRoute === "file-function"
@@ -233,15 +224,6 @@ ApplicationWindow {
                     isActive: currentRoute === "ai-assistant"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("ai-assistant")
-                }
-                
-                SidebarItem {
-                    Layout.fillWidth: true
-                    icon: "📋"
-                    label: "Resolution Reports"
-                    isActive: currentRoute === "resolution-report"
-                    expanded: sidebar.sidebarExpanded
-                    onClicked: loadRoute("resolution-report")
                 }
                 
                 SidebarItem {
@@ -375,13 +357,16 @@ ApplicationWindow {
                 }
                 
                 ScanCenter {
+                    id: scanCenterPage
                     anchors.fill: parent
                     visible: currentRoute === "scan-tool"
                 }
 
-                DataLossPrevention {
+                AiReport {
                     anchors.fill: parent
-                    visible: currentRoute === "dlp"
+                    visible: currentRoute === "ai-report"
+                    briefText: scanCenterPage.aiBriefText
+                    detailedText: scanCenterPage.aiDetailedText
                 }
 
                 FileFunction {
@@ -397,11 +382,6 @@ ApplicationWindow {
                 SecurityAssistant {
                     anchors.fill: parent
                     visible: currentRoute === "ai-assistant"
-                }
-                
-                ResolutionReport {
-                    anchors.fill: parent
-                    visible: currentRoute === "resolution-report"
                 }
                 
                 SettingsPage {

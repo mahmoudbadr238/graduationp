@@ -27,9 +27,13 @@ Item {
     property bool   optClamAV:   true
     property bool   optSandbox:  false
     property bool   optExec:     false
-    property bool   optGuiAuto:  false   // "Visible GUI automation" toggle
+    property bool   optGuiAuto:  false   // deprecated: kept for payload compatibility
     property bool   optNet:      true
     property var    explainData: null
+
+    // ── AI Security Analyst Summary (from Groq via orchestrator) ──
+    property string aiBriefText: ""
+    property string aiDetailedText: ""
 
     // ── URL-scan state ─────────────────────────────────────────────────────
     property string urlInput:         ""
@@ -60,6 +64,23 @@ Item {
         if (b < 1048576) return (b / 1024).toFixed(1) + " KB"
         return (b / 1048576).toFixed(2) + " MB"
     }
+    function hasSandboxWarnPhase() {
+        for (var i = 0; i < phaseModel.count; i++) {
+            var row = phaseModel.get(i)
+            if (row.phase === "sandbox" && row.status === "warn") return true
+        }
+        return false
+    }
+    function resetReportScrolls() {
+        var views = [ovScroll, engScroll, behScroll, iocScroll, exScroll]
+        for (var i = 0; i < views.length; i++) {
+            var view = views[i]
+            if (!view || !view.contentItem)
+                continue
+            view.contentItem.contentY = 0
+            view.contentItem.contentX = 0
+        }
+    }
 
     // ── Backend connections ────────────────────────────────────────────────
     Connections {
@@ -71,8 +92,30 @@ Item {
             root.filePct = pct; root.fileStage = stage
         }
         function onScanCenterFinished(r) {
+            console.log("[ScanCenter] onScanCenterFinished received")
             root.fileReport = r; root.fileScanning = false
             fileSubBar.currentIndex = 0
+            Qt.callLater(function() { root.resetReportScrolls() })
+            // Safety net: if AI brief hasn't been set yet, generate a
+            // basic summary from the report so the box always appears.
+            Qt.callLater(function() {
+                if (root.aiBriefText === "" && root.fileReport !== null) {
+                    var v = (root.fileReport.verdict || {})
+                    var fallback = "Scan complete — Risk: " + (v.risk || "Unknown")
+                                 + " (Score " + (v.score || 0) + "/100). "
+                                 + (v.label || "")
+                    console.log("[ScanCenter] Using QML fallback brief: " + fallback)
+                    root.aiBriefText = fallback.trim()
+                }
+            })
+        }
+        function onScanCenterAiBrief(text) {
+            console.log("[ScanCenter] onScanCenterAiBrief received, len=" + (text || "").length + " text=" + (text || "").substring(0, 80))
+            root.aiBriefText = text || ""
+        }
+        function onScanCenterAiDetailed(text) {
+            console.log("[ScanCenter] onScanCenterAiDetailed received, len=" + (text || "").length)
+            root.aiDetailedText = text || ""
         }
         function onScanCenterFailed(msg) {
             root.fileScanning = false
@@ -228,6 +271,10 @@ Item {
             root.fileReport = null
             root.filePct    = 0
             root.explainData = null
+            root.aiBriefText = ""
+            root.aiDetailedText = ""
+            fileSubBar.currentIndex = 0
+            Qt.callLater(function() { root.resetReportScrolls() })
         }
     }
 
@@ -357,6 +404,8 @@ Item {
                                             root.fileReport = null
                                             root.filePct    = 0
                                             root.explainData = null
+                                            root.aiBriefText = ""
+                                            root.aiDetailedText = ""
                                         }
                                     }
                                 }
@@ -424,6 +473,8 @@ Item {
                                     root.filePct = 0
                                     root.fileStage = "Preparing…"
                                     root.explainData = null
+                                    root.aiBriefText = ""
+                                    root.aiDetailedText = ""
                                     if (typeof Backend !== "undefined")
                                         Backend.startScanCenter(root.filePath,
                                             JSON.stringify({
@@ -431,7 +482,7 @@ Item {
                                                 allow_execution: root.optExec,
                                                 disable_network: root.optNet,
                                                 run_clamav:      root.optClamAV,
-                                                use_visible_gui: root.optGuiAuto
+                                                use_visible_gui: false
                                             }))
                                 }
                             }
@@ -510,9 +561,9 @@ Item {
                                     if (root.fileScanning) return
                                     root.optSandbox = checked
                                     if (checked) {
-                                        // Sandbox always implies execution + visual agent
+                                        // Sandbox option now points to interactive session workflow.
                                         root.optExec = true
-                                        root.optGuiAuto = true
+                                        root.optGuiAuto = false
                                     } else {
                                         root.optExec = false
                                         root.optGuiAuto = false
@@ -630,13 +681,13 @@ Item {
                             Item { Layout.fillWidth: true }
                         } // Row 2b
 
-                        // ── Row 2c: Visual Agent indicator (auto-enabled with sandbox) ──
+                        // ── Row 2c: Interactive session guidance ──
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            Layout.preferredHeight: root.optSandbox ? 32 : 0
-                            visible: root.optSandbox
+                            Layout.preferredHeight: 0
+                            visible: false
                             spacing: 24
                             clip: true
                             Behavior on Layout.preferredHeight { NumberAnimation { duration: 160 } }
@@ -646,7 +697,7 @@ Item {
                                 implicitWidth: ckGuiAutoLabel.implicitWidth + 24
                                 implicitHeight: 28
                                 checked: root.optGuiAuto
-                                enabled: false  // always auto-set when sandbox is on
+                                enabled: false
                                 opacity: root.optSandbox ? 0.7 : 0.4
                                 indicator: Rectangle {
                                     width: 16; height: 16
@@ -666,7 +717,7 @@ Item {
                                 contentItem: Text {
                                     id: ckGuiAutoLabel
                                     leftPadding: 24
-                                    text: "Visual Agent Detonation (Phase 4 — auto)"
+                                    text: "Auto detonation disabled. Use Sandbox Lab Interactive Session."
                                     color: ThemeManager.foreground()
                                     font.pixelSize: ThemeManager.fontSize_body
                                     verticalAlignment: Text.AlignVCenter
@@ -715,7 +766,7 @@ Item {
                     // 4 mini-cards showing live status of each pipeline phase
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: phaseModel.count > 0 ? phaseRow.implicitHeight + 20 : 0
+                        implicitHeight: phaseModel.count > 0 ? (root.hasSandboxWarnPhase() ? 112 : phaseRow.implicitHeight + 20) : 0
                         visible: phaseModel.count > 0
                         color: ThemeManager.panel(); clip: true
                         Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -731,7 +782,7 @@ Item {
                                 model: phaseModel
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
-                                    implicitHeight: 58
+                                    implicitHeight: (model.phase === "sandbox" && model.status === "warn") ? 86 : 58
                                     radius: 8
                                     color: ThemeManager.surface()
                                     border.width: 1
@@ -790,6 +841,34 @@ Item {
                                             font.pixelSize: ThemeManager.fontSize_caption
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
+                                        }
+
+                                        RowLayout {
+                                            visible: model.phase === "sandbox" && model.status === "warn"
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            Button {
+                                                text: "Open Sandbox Lab"
+                                                implicitHeight: 24
+                                                onClicked: {
+                                                    if (typeof Backend !== "undefined") {
+                                                        Backend.openSandboxLabForFile(root.filePath)
+                                                    }
+                                                }
+                                            }
+
+                                            Button {
+                                                text: "Open File Folder"
+                                                implicitHeight: 24
+                                                onClicked: {
+                                                    if (typeof Backend !== "undefined") {
+                                                        Backend.openFileParentFolder(root.filePath)
+                                                    }
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
                                         }
                                     }
 
@@ -1134,62 +1213,78 @@ Item {
                                     }
                                 }
 
-                                // ── AI Summary (auto-populated on Overview) ──
+                                // ── AI Brief (1-sentence Groq summary + Show More) ─
                                 Rectangle {
-                                    visible: root.explainData !== null && (root.explainData || {}).one_line_summary
+                                    visible: root.aiBriefText !== ""
                                     Layout.fillWidth: true
-                                    implicitHeight: aiSumCol.implicitHeight + 24
-                                    color: Qt.rgba(ThemeManager.accent.r || 0.2, ThemeManager.accent.g || 0.5, ThemeManager.accent.b || 1.0, 0.07)
-                                    radius: 10
-                                    border.width: 1
-                                    border.color: Qt.rgba(ThemeManager.accent.r || 0.2, ThemeManager.accent.g || 0.5, ThemeManager.accent.b || 1.0, 0.25)
+                                    implicitHeight: aiBriefCol.implicitHeight + 28
+                                    radius: 12
+                                    color: Qt.rgba(ThemeManager.accent.r || 0.2,
+                                                   ThemeManager.accent.g || 0.5,
+                                                   ThemeManager.accent.b || 1.0, 0.06)
+                                    border.width: 1.5
+                                    border.color: Qt.rgba(ThemeManager.accent.r || 0.2,
+                                                          ThemeManager.accent.g || 0.5,
+                                                          ThemeManager.accent.b || 1.0, 0.35)
 
                                     ColumnLayout {
-                                        id: aiSumCol
+                                        id: aiBriefCol
                                         anchors.left: parent.left; anchors.right: parent.right
-                                        anchors.top: parent.top; anchors.margins: 12
-                                        spacing: 6
+                                        anchors.top: parent.top; anchors.margins: 14
+                                        spacing: 8
 
                                         RowLayout {
-                                            spacing: 6
-                                            Text { text: "🤖"; font.pixelSize: 14 }
+                                            spacing: 8
+                                            Text { text: "🛡️"; font.pixelSize: 18 }
                                             Text {
-                                                text: "AI Analysis"
+                                                text: "AI Security Analyst Summary"
                                                 color: ThemeManager.foreground()
-                                                font.pixelSize: 12; font.weight: (Font.SemiBold || 600)
+                                                font.pixelSize: ThemeManager.fontSize_body
+                                                font.weight: (Font.Bold || 700)
                                             }
                                         }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            implicitHeight: 1
+                                            color: Qt.rgba(ThemeManager.accent.r || 0.2,
+                                                           ThemeManager.accent.g || 0.5,
+                                                           ThemeManager.accent.b || 1.0, 0.2)
+                                        }
+
                                         Text {
-                                            text: (root.explainData || {}).one_line_summary || ""
+                                            text: root.aiBriefText
                                             color: ThemeManager.foreground()
-                                            font.pixelSize: ThemeManager.fontSize_small
+                                            font.pixelSize: ThemeManager.fontSize_body
+                                            lineHeight: 1.5
                                             wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
                                         }
-                                        // Quick reasons
-                                        Repeater {
-                                            model: {
-                                                var r = (root.explainData || {}).top_reasons || []
-                                                return r.length > 3 ? r.slice(0, 3) : r
+
+                                        Button {
+                                            visible: root.aiDetailedText !== ""
+                                            text: "Show More  →"
+                                            flat: true
+                                            Layout.alignment: Qt.AlignRight
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: ThemeManager.accent
+                                                font.pixelSize: ThemeManager.fontSize_small
+                                                font.weight: (Font.SemiBold || 600)
                                             }
-                                            RowLayout {
-                                                spacing: 6; Layout.fillWidth: true
-                                                Text { text: "•"; color: ThemeManager.accent; font.pixelSize: 12 }
-                                                Text { text: modelData; color: ThemeManager.foreground(); font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                            background: Rectangle {
+                                                color: parent.hovered ? ThemeManager.surface() : "transparent"
+                                                radius: 6
                                             }
-                                        }
-                                        Text {
-                                            visible: ((root.explainData || {}).top_reasons || []).length > 3
-                                            text: "View full explanation →"
-                                            color: ThemeManager.accent
-                                            font.pixelSize: ThemeManager.fontSize_caption
-                                            MouseArea {
-                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                                onClicked: fileSubBar.currentIndex = 4 // switch to Explanation tab
+                                            onClicked: {
+                                                if (typeof loadRoute === "function")
+                                                    loadRoute("ai-report")
                                             }
                                         }
                                     }
                                 }
+                                Item { height: 18 }
+
 
                                 // Score Breakdown card
                                 Rectangle {
@@ -1228,8 +1323,8 @@ Item {
                                         Repeater {
                                             model: {
                                                 var bd = (((root.fileReport || {}).verdict || {}).breakdown) || {}
-                                                var order = ["defender", "clamav", "groq_ai", "sandbox"]
-                                                var nice  = { defender: "Windows Defender", clamav: "ClamAV", groq_ai: "Groq AI Analysis", sandbox: "Sandbox" }
+                                                var order = ["clamav", "sandbox"]
+                                                var nice  = { clamav: "ClamAV (Static)", sandbox: "Sandbox (Dynamic)" }
                                                 var out = []
                                                 for (var i = 0; i < order.length; i++) {
                                                     var k = order[i]
@@ -1365,43 +1460,6 @@ Item {
                                             Text { text: modelData.score !== undefined ? modelData.score.toFixed(0) : "—"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; Layout.preferredWidth: 58 }
                                             Text { text: modelData.details || "—"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; elide: Text.ElideRight; Layout.fillWidth: true }
                                             Text { text: modelData.time_ms !== undefined ? modelData.time_ms + "" : "—"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight }
-                                        }
-                                    }
-                                }
-
-                                // Groq AI analysis card
-                                Rectangle {
-                                    visible: root.fileReport !== null
-                                    Layout.fillWidth: true
-                                    implicitHeight: groqCol.implicitHeight + 28
-                                    color: ThemeManager.panel(); radius: 10
-                                    border.color: ThemeManager.border(); border.width: 1
-
-                                    ColumnLayout {
-                                        id: groqCol
-                                        anchors.left: parent.left; anchors.right: parent.right
-                                        anchors.top: parent.top; anchors.margins: 14
-                                        spacing: 6
-
-                                        Text { text: "Groq AI Analysis"; color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_body; font.weight: (Font.SemiBold || 600) }
-                                        Text {
-                                            text: {
-                                                var g = root.fileReport ? (((root.fileReport.static) || {}).groq_analysis || {}) : {}
-                                                var score = g.score !== undefined ? g.score : 0
-                                                var verdict = g.verdict || "Unknown"
-                                                return "Verdict: " + verdict + "  •  Score: " + score + "/100"
-                                            }
-                                            color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_small
-                                            wrapMode: Text.WrapAnywhere; Layout.fillWidth: true
-                                        }
-                                        Text {
-                                            text: {
-                                                var g = root.fileReport ? (((root.fileReport.static) || {}).groq_analysis || {}) : {}
-                                                return g.explanation || "No Groq AI explanation available."
-                                            }
-                                            color: ThemeManager.muted
-                                            font.pixelSize: ThemeManager.fontSize_small
-                                            wrapMode: Text.WrapAnywhere; Layout.fillWidth: true
                                         }
                                     }
                                 }

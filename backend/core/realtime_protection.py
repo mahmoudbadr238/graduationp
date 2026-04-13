@@ -145,6 +145,9 @@ class RealTimeProtectionWorker(QThread):
 
     Signals
     -------
+    process_detected(str, str, str)
+        Emitted for every new non-whitelisted process:
+        (timestamp "HH:MM:SS", process_name, pid_as_string).
     threat_detected(str)
         JSON-serialisable string describing the threat event.
     process_scanned(str)
@@ -155,6 +158,7 @@ class RealTimeProtectionWorker(QThread):
         (total_scanned, threats_found, threats_killed) — periodic stats.
     """
 
+    process_detected = Signal(str, str, str)
     threat_detected = Signal(str)
     process_scanned = Signal(str)
     status_changed = Signal(str)
@@ -270,12 +274,18 @@ class RealTimeProtectionWorker(QThread):
                 if not exe_path or not Path(exe_path).exists():
                     continue
 
+                # Timestamp used for all signals related to this process
+                ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+
                 # ── Check scan cache ──
                 if exe_path.lower() in self._scan_cache:
                     was_malicious = self._scan_cache[exe_path.lower()]
                     if was_malicious:
                         self._kill_process(pid, name, exe_path, psutil,
                                            cached=True)
+                        self.process_detected.emit(ts, name, str(pid))
+                    else:
+                        self.process_detected.emit(ts, name, str(pid))
                     continue
 
                 # ── Scan the executable ──
@@ -325,6 +335,9 @@ class RealTimeProtectionWorker(QThread):
                         threat_score=threat_score,
                         sha256=sha256,
                     )
+
+                # ── Emit process detection AFTER scan verdict is known ──
+                self.process_detected.emit(ts, name, str(pid))
 
                 # ── Periodic stats ──
                 if self._total_scanned % 10 == 0:
@@ -448,6 +461,7 @@ class RealTimeProtectionBridge(QObject):
     processScanned = Signal(str)
     statusMessage = Signal(str)
     statsUpdated = Signal(int, int, int)
+    new_event_log = Signal(str)  # Pre-formatted log line for QML console
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -455,13 +469,13 @@ class RealTimeProtectionBridge(QObject):
         self._enabled = False
         self._lock = threading.Lock()
         self._threat_log: list[str] = []
+        self._blocked_pids: set[str] = set()  # PIDs recently blocked, for log formatting
 
-        # Restore persisted state (default: enabled)
-        from PySide6.QtCore import QSettings
-        qs = QSettings("SentinelSecurity", "SentinelApp")
-        saved = qs.value("rtpEnabled", True, type=bool)
-        if saved:
-            self.enable()
+        # Secure-by-default: always auto-start RTP on boot.
+        # Defer the actual enable() to the event loop so the QThread
+        # starts after Qt is fully initialised.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.enable)
 
     # ── Properties ──
 
@@ -486,6 +500,7 @@ class RealTimeProtectionBridge(QObject):
         self._worker = RealTimeProtectionWorker(parent=self)
         self._worker.threat_detected.connect(self._on_threat)
         self._worker.process_scanned.connect(self.processScanned)
+        self._worker.process_detected.connect(self._on_process_detected)
         self._worker.status_changed.connect(self._on_status)
         self._worker.stats_updated.connect(self.statsUpdated)
         self._worker.start()
@@ -548,6 +563,25 @@ class RealTimeProtectionBridge(QObject):
         """Handle a threat event from the worker."""
         self._threat_log.append(message)
         self.threatDetected.emit(message)
+        # Track the PID so _on_process_detected knows it was blocked
+        # (extract PID from output like "PID 1234")
+        try:
+            # ThreatEvent.to_display_string contains "PID <num>"
+            for part in message.split():
+                if part.rstrip(")").isdigit() and "PID" in message:
+                    self._blocked_pids.add(part.rstrip(")"))
+                    break
+        except Exception:
+            pass
+
+    def _on_process_detected(self, timestamp: str, name: str, pid: str) -> None:
+        """Format and emit a log line for every detected process."""
+        if pid in self._blocked_pids:
+            self._blocked_pids.discard(pid)
+            log_line = f"[{timestamp}] RTP: Blocked {name} (PID: {pid})"
+        else:
+            log_line = f"[{timestamp}] RTP: Allowed {name} (PID: {pid})"
+        self.new_event_log.emit(log_line)
 
     def _on_status(self, status: str) -> None:
         """Handle worker lifecycle status changes."""

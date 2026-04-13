@@ -1015,6 +1015,59 @@ Item {
                         contentHeight: securityColumn.implicitHeight
                         ScrollBar.vertical: ScrollBar { }
 
+                        // Risk confirmation dialog (lives inside Flickable so anchors resolve)
+                        RiskConfirmDialog {
+                            id: riskDialog
+                            parent: Overlay.overlay  // render above everything
+
+                            onAccepted: function(featureId, newState) {
+                                // Commit the change via Python backend
+                                if (typeof SecurityController !== 'undefined' && SecurityController) {
+                                    SecurityController.toggle_security_feature(featureId, newState)
+                                } else {
+                                    console.warn("[Security] SecurityController not available")
+                                }
+                            }
+                            // Rejection requires no action - toggle was never visually committed
+                        }
+
+                        // Listen for backend confirmation to refresh security data
+                        Connections {
+                            target: (typeof SecurityController !== 'undefined' && SecurityController) ? SecurityController : null
+
+                            // Immediate UI update – set local overrides so cards react instantly
+                            function onFeature_state_updated(featureId, state) {
+                                console.log("[Security] State confirmed:", featureId, "→", state)
+                                if (featureId === "firewall") {
+                                    securityColumn.firewallOverride = state
+                                } else if (featureId === "rdp") {
+                                    securityColumn.rdpOverride = state
+                                } else if (featureId === "uac") {
+                                    securityColumn.uacOverride = state
+                                }
+                            }
+
+                            function onFeatureToggled(featureId, enabled, message) {
+                                console.log("[Security] Feature toggled:", featureId, enabled, message)
+                                // Also kick off a full refresh so the backend data converges
+                                securityRefreshTimer.start()
+                            }
+                            function onFeatureError(featureId, message) {
+                                console.warn("[Security] Toggle failed:", featureId, message)
+                            }
+                        }
+
+                        Timer {
+                            id: securityRefreshTimer
+                            interval: 1500
+                            repeat: false
+                            onTriggered: {
+                                if (typeof SnapshotService !== 'undefined' && SnapshotService) {
+                                    SnapshotService.refreshSecurityInfo()
+                                }
+                            }
+                        }
+
                         ColumnLayout {
                             id: securityColumn
                             width: securityFlickable.width
@@ -1031,6 +1084,32 @@ Item {
                             property var remote: (simplified && simplified.remoteAndApps) ? simplified.remoteAndApps : {status: "Checking", isGood: false, isWarning: true}
                             property var raw: (simplified && simplified.raw) ? simplified.raw : {}
                             property var tpmData: (simplified && simplified.tpm) ? simplified.tpm : {}
+
+                            // Optimistic local overrides – set instantly by feature_state_updated
+                            // before the full SnapshotService refresh completes.
+                            // null = no override (use raw backend value)
+                            property var firewallOverride: null
+                            property var rdpOverride: null
+                            property var uacOverride: null
+
+                            // Effective state helpers that prefer override > backend
+                            readonly property bool effectiveFirewall: firewallOverride !== null
+                                ? firewallOverride
+                                : (raw.firewallEnabled === true)
+                            readonly property bool effectiveRdp: rdpOverride !== null
+                                ? rdpOverride
+                                : (raw.remoteDesktopEnabled === true)
+                            readonly property bool effectiveUacOn: uacOverride !== null
+                                ? uacOverride
+                                : (raw.uacLevel === "High" || raw.uacLevel === "Medium")
+
+                            // Clear overrides when SnapshotService delivers a fresh payload
+                            // so the UI falls back to the real queried state.
+                            onRawChanged: {
+                                firewallOverride = null
+                                rdpOverride = null
+                                uacOverride = null
+                            }
 
                             // ===== A. OVERALL SECURITY STATUS CARD =====
                             // Only show prominent banner for errors, subtle for warnings/good
@@ -1494,13 +1573,18 @@ Item {
                                         return Math.min(maxCardWidth, Math.max(minCardWidth, calculatedWidth))
                                     }
 
-                                    // Firewall
+                                    // Firewall (toggleable)
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: "Firewall"
-                                        value: securityColumn.raw.firewallEnabled ? "On" : "Off"
+                                        value: securityColumn.effectiveFirewall ? "On" : "Off"
                                         subtitle: securityColumn.raw.firewallName || ""
-                                        isGood: securityColumn.raw.firewallEnabled === true
+                                        isGood: securityColumn.effectiveFirewall
+                                        toggleable: true
+                                        toggleChecked: securityColumn.effectiveFirewall
+                                        onToggleRequested: function(newState) {
+                                            riskDialog.show("firewall", newState)
+                                        }
                                     }
 
                                     // Antivirus
@@ -1580,15 +1664,21 @@ Item {
                                                    securityColumn.raw.windowsUpdateStatus === "RestartRequired"
                                     }
 
-                                    // Remote Desktop
+                                    // Remote Desktop (toggleable)
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: "Remote Desktop"
-                                        value: (securityColumn.raw.remoteDesktopEnabled === true) ? "On" : "Off"
-                                        subtitle: (securityColumn.raw.remoteDesktopEnabled === true) ? 
-                                                  ((securityColumn.raw.remoteDesktopNla === true) ? "NLA enabled" : "NLA off") : ""
-                                        isGood: (securityColumn.raw.remoteDesktopEnabled !== true)
-                                        isWarning: (securityColumn.raw.remoteDesktopEnabled === true) && (securityColumn.raw.remoteDesktopNla === true)
+                                        value: securityColumn.effectiveRdp ? "On" : "Off"
+                                        subtitle: securityColumn.effectiveRdp
+                                                  ? ((securityColumn.raw.remoteDesktopNla === true) ? "NLA enabled" : "NLA off")
+                                                  : ""
+                                        isGood: !securityColumn.effectiveRdp
+                                        isWarning: securityColumn.effectiveRdp && (securityColumn.raw.remoteDesktopNla === true)
+                                        toggleable: true
+                                        toggleChecked: securityColumn.effectiveRdp
+                                        onToggleRequested: function(newState) {
+                                            riskDialog.show("rdp", newState)
+                                        }
                                     }
 
                                     // Local Admins
@@ -1600,13 +1690,20 @@ Item {
                                         isWarning: securityColumn.raw.adminAccountCount === 3
                                     }
 
-                                    // UAC
+                                    // UAC (toggleable)
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: "UAC Level"
-                                        value: securityColumn.raw.uacLevel || "Unknown"
-                                        isGood: securityColumn.raw.uacLevel === "High" || securityColumn.raw.uacLevel === "Medium"
-                                        isWarning: securityColumn.raw.uacLevel === "Low"
+                                        value: securityColumn.effectiveUacOn
+                                               ? (securityColumn.raw.uacLevel || "High")
+                                               : "Disabled"
+                                        isGood: securityColumn.effectiveUacOn
+                                        isWarning: !securityColumn.effectiveUacOn
+                                        toggleable: true
+                                        toggleChecked: securityColumn.effectiveUacOn
+                                        onToggleRequested: function(newState) {
+                                            riskDialog.show("uac", newState)
+                                        }
                                     }
 
                                     // SmartScreen

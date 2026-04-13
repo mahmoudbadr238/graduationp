@@ -31,8 +31,19 @@ STRICT RULES:
 - If sandbox execution happened, clearly note "The file ran inside an isolated sandbox."
 - Maximum 6 bullet points in what_to_do.
 - If confidence is below 40, include a false_positive_note.
-- Reference the 4-source breakdown scores (Defender, ClamAV, Groq AI, Sandbox) in your
+- Reference the score breakdown (ClamAV, Groq AI, Sandbox) in your
   top_reasons when relevant.
+
+CRITICAL – ANTIVIRUS RECONCILIATION:
+- If ANY static antivirus engine flags this file as malicious
+  or detected, your risk_level MUST be "High" or "Critical". NEVER call a file "Low" risk
+  if an AV engine has already flagged it.
+- If the static engines flag the file as malicious, your analysis MUST reconcile with
+  that detection. Explain WHY the AV flagged it, do not dismiss or contradict the AV
+  finding based solely on PE header metadata (e.g. UPX packing is not proof of safety).
+- Packing (UPX, Themida, etc.) is a common malware obfuscation technique. If a file is
+  packed AND flagged by an AV engine, treat it as strong evidence of malicious intent.
+
 - END your response with ONLY valid JSON (no markdown fences).
 
 OUTPUT FORMAT (JSON only, no trailing text outside the JSON):
@@ -62,16 +73,15 @@ def _build_prompt(report: V3Report) -> str:
     else:
         exec_ctx = "Analysis: static-only (no sandbox)"
 
-    # 4-source score breakdown
+    # Score breakdown
     bd = v.breakdown or {}
     _src_nice = {
-        "defender": "Defender",
         "clamav": "ClamAV",
         "groq_ai": "Groq AI",
         "sandbox": "Sandbox",
     }
     breakdown_lines: list[str] = []
-    for key in ["defender", "clamav", "groq_ai", "sandbox"]:
+    for key in ["clamav", "groq_ai", "sandbox"]:
         src = bd.get(key, {})
         if isinstance(src, dict):
             if src.get("available", False):
@@ -112,6 +122,19 @@ def _build_prompt(report: V3Report) -> str:
     eng_lines = detections if detections else ["  (no detections)"]
     ioc_part  = ioc_lines if ioc_lines else ["  none"]
 
+    # Build AV reconciliation warning if any engine flagged the file
+    av_flagged = [d for d in detections if "DETECTED" in d]
+    av_warning_lines: list[str] = []
+    if av_flagged:
+        av_warning_lines = [
+            "",
+            "⚠ IMPORTANT — ANTIVIRUS DETECTION CONTEXT:",
+            f"  {len(av_flagged)} static AV engine(s) flagged this file as malicious.",
+            "  You MUST reconcile your analysis with these detections.",
+            "  Do NOT dismiss the AV findings based solely on PE headers or packing.",
+            "  If an AV engine detected a threat, your risk_level must be 'High' or 'Critical'.",
+        ]
+
     lines = [
         f"File: {f.name} ({f.file_type or f.mime_type}, {f.size_bytes} bytes)",
         f"SHA-256: {f.sha256[:16]}...",
@@ -126,7 +149,7 @@ def _build_prompt(report: V3Report) -> str:
     ] + (breakdown_lines or ["  (no breakdown available)"]) + [
         "",
         "Engine results:",
-    ] + eng_lines + [
+    ] + eng_lines + av_warning_lines + [
         "",
         "Groq AI analysis: " + groq_line,
         "",
@@ -150,6 +173,13 @@ def explain_report(report: V3Report) -> AiExplanation:
 
     Returns an AiExplanation (never raises; falls back to a template on error).
     """
+    # Ensure .env is loaded (GROQ_API_KEY may live there)
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not api_key:
         return _fallback_explanation(report, note="Groq API key not configured")
@@ -183,6 +213,7 @@ def _call_groq_sync(api_key: str, system: str, user: str) -> str:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
     )
     try:
@@ -221,9 +252,29 @@ def _parse_response(raw: str, report: V3Report) -> AiExplanation:
         else:
             return _fallback_explanation(report, raw=raw)
 
+    # ── Post-LLM guard: enforce minimum risk when AV engines flagged the file ──
+    av_detected = any(
+        eng.status == "detected" for eng in report.static.engines
+    )
+    risk_level = str(data.get("risk_level", report.verdict.risk))
+    if av_detected and risk_level in ("Low", "Medium"):
+        logger.warning(
+            "LLM returned risk_level=%r but AV engines flagged the file "
+            "— overriding to 'High'",
+            risk_level,
+        )
+        risk_level = "High"
+        reasons = list(data.get("top_reasons", []))
+        reasons.insert(
+            0,
+            "One or more antivirus engines detected this file as malicious "
+            "(risk level elevated from LLM suggestion).",
+        )
+        data["top_reasons"] = reasons
+
     return AiExplanation(
         one_line_summary=str(data.get("one_line_summary", "")),
-        risk_level=str(data.get("risk_level", report.verdict.risk)),
+        risk_level=risk_level,
         top_reasons=list(data.get("top_reasons", [])),
         what_to_do=list(data.get("what_to_do", [])),
         false_positive_note=str(data.get("false_positive_note", "")),

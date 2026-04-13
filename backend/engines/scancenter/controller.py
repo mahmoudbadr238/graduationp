@@ -8,9 +8,8 @@ Pipeline steps
    3a PE analysis (if applicable)
    3b Strings extraction
     3c Groq AI NGAV analysis
-   3d Windows Defender (MpCmdRun)
-   3e ClamAV (if installed)
-   3f Signature verification
+    3d ClamAV (if installed)
+    3e Signature verification
 4  IOC extraction (strict validators)
 5  Verdict scoring (deterministic, no LLM)
 6  Optional VMware sandbox
@@ -213,14 +212,30 @@ def _extract_iocs(content: bytes) -> IocSection:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Verdict scoring – deterministic 4-source weighted model
+def _safe_int(value: object, default: int = 0) -> int:
+    """Convert *value* to int, returning *default* for non-numeric values
+    like ``'N/A'``, ``'Error'``, ``None``, etc."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            print(f"[Scoring] WARNING: non-integer score value ignored: {value!r}")
+            return default
+    print(f"[Scoring] WARNING: unexpected score type {type(value).__name__}: {value!r}")
+    return default
+
+
+# Verdict scoring – deterministic weighted model
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Default weights (must sum to 1.0).  Unavailable sources are redistributed.
 _DEFAULT_WEIGHTS: dict[str, float] = {
-    "defender": 0.30,
-    "clamav":   0.25,
-    "groq_ai":  0.15,
+    "clamav":   0.40,
+    "groq_ai":  0.30,
     "sandbox":  0.30,
 }
 
@@ -232,43 +247,39 @@ def _compute_source_scores(
 ) -> tuple[dict[str, int], dict[str, bool]]:
     """Return per-source raw scores (0-100) and availability flags."""
     scores: dict[str, int] = {
-        "defender": 0,
         "clamav": 0,
         "groq_ai": 0,
         "sandbox": 0,
     }
     avail: dict[str, bool] = {
-        "defender": False,
         "clamav": False,
         "groq_ai": False,
         "sandbox": False,
     }
 
+    _INACTIVE_STATUSES = {"unavailable", "skipped", "not_installed", "error", "n/a"}
+
     for eng in engines:
         name_lo = eng.name.lower().replace(" ", "_")
-        if "defender" in name_lo:
-            avail["defender"] = eng.status not in ("unavailable", "skipped")
-            if eng.status == "detected":
-                scores["defender"] = 98
-            elif eng.status == "clean":
-                scores["defender"] = 0
-        elif "clamav" in name_lo:
-            avail["clamav"] = eng.status not in ("unavailable", "skipped")
-            if eng.status == "detected":
+        status_lo = str(eng.status).lower().strip()
+        if "clamav" in name_lo:
+            avail["clamav"] = status_lo not in _INACTIVE_STATUSES
+            if status_lo in ("detected", "malicious"):
                 scores["clamav"] = 80
-            elif eng.status == "clean":
+            elif status_lo == "clean":
                 scores["clamav"] = 0
 
     # Groq AI NGAV source
     groq = static.groq_analysis or {}
     if groq:
         avail["groq_ai"] = True
-        scores["groq_ai"] = max(0, min(100, int(groq.get("score", 0))))
+        raw_score = groq.get("score", 0)
+        scores["groq_ai"] = max(0, min(100, _safe_int(raw_score, 0)))
 
-    # Sandbox
+    # Sandbox — mark unavailable if it errored or didn't execute
     if sandbox and sandbox.enabled:
-        avail["sandbox"] = True
         if sandbox.executed:
+            avail["sandbox"] = True
             sb = 0
             if getattr(sandbox, "persistence_indicators", []):
                 sb += 25   # Run keys / startup / scheduled tasks / services
@@ -300,6 +311,7 @@ def _score_and_verdict(
     static: StaticSection,
     iocs: IocSection,
     sandbox: SandboxSection | None,
+    file_info: FileInfo | None = None,
 ) -> VerdictSection:
     """Deterministic 4-source weighted scoring with transparent breakdown."""
     source_scores, avail = _compute_source_scores(engines, static, sandbox)
@@ -321,7 +333,7 @@ def _score_and_verdict(
     total_w = sum(weights.values())
     weights = {k: v / total_w for k, v in weights.items()}
 
-    # Weighted total from 4 sources
+    # Weighted total from available sources
     total_score = sum(
         weights.get(k, 0) * source_scores.get(k, 0)
         for k in active_keys
@@ -340,12 +352,24 @@ def _score_and_verdict(
     # IOC bonus (up to +8)
     ioc_bonus = min(len(iocs.ips) * 2 + len(iocs.urls) * 2, 8)
 
-    total_score = max(0, min(100, int(total_score + pe_bonus + ioc_bonus)))
+    # Signed-binary discount: a verified digital signature is strong evidence
+    # of legitimacy.  Reduce score by up to 30 points.  This prevents known
+    # signed tools (Rufus, Process Hacker, etc.) from being scored as
+    # Critical solely because Defender's heuristics flag raw-disk access or
+    # because UPX compression triggers PE-based heuristics.
+    sig_discount = 0
+    if file_info and file_info.signed is True:
+        sig_discount = 30
+        if file_info.publisher:
+            sig_discount = 35  # known publisher → stronger discount
+
+    raw = total_score + pe_bonus + ioc_bonus - sig_discount
+    total_score = max(0, min(100, int(raw)))
 
     # Build human-readable reasons
     reasons: list[str] = []
     for eng in engines:
-        if eng.status == "detected":
+        if eng.status in ("detected", "malicious"):
             reasons.append(f"{eng.name} detected: {eng.details or 'threat found'}")
     if static.groq_analysis:
         gv = static.groq_analysis.get("verdict", "Unknown")
@@ -358,6 +382,9 @@ def _score_and_verdict(
         reasons.append(f"{len(static.pe.suspicious_imports)} suspicious PE imports")
     if static.pe and static.pe.rwx_sections:
         reasons.append("Read-Write-Execute memory section found")
+    if sig_discount > 0:
+        pub = file_info.publisher if file_info and file_info.publisher else "unknown"
+        reasons.append(f"Digitally signed (publisher: {pub}) — score reduced by {sig_discount}")
     sb_persist = getattr(sandbox, "persistence_indicators", []) if sandbox else []
     sb_tamper  = getattr(sandbox, "security_tampering", []) if sandbox else []
     if sb_persist:
@@ -394,19 +421,18 @@ def _score_and_verdict(
             "available": avail[k],
             "weight":    round(weights.get(k, 0), 3),
         }
-        for k in ["defender", "clamav", "groq_ai", "sandbox"]
+        for k in ["clamav", "groq_ai", "sandbox"]
     }
 
     # Coverage summary (human-readable list)
     _nice = {
-        "defender": "Windows Defender",
         "clamav": "ClamAV",
         "groq_ai": "Groq AI Analysis",
         "sandbox": "Sandbox",
     }
     coverage = [
         f"{_nice[k]}: {source_scores[k]}/100 (weight {weights.get(k,0):.0%})"
-        for k in ["defender", "clamav", "groq_ai", "sandbox"]
+        for k in ["clamav", "groq_ai", "sandbox"]
         if avail.get(k)
     ]
 
@@ -559,7 +585,7 @@ class ScanController:
             )
             static = self._run_static(path, content, opts, emit)
             report.static = static
-            _groq_score = int((static.groq_analysis or {}).get("score", 0))
+            _groq_score = _safe_int((static.groq_analysis or {}).get("score", 0))
             _eng_hits = [e.name for e in (static.engines or []) if e.status == "detected"]
             emit_step(
                 "static",
@@ -593,11 +619,16 @@ class ScanController:
                     path, opts, emit, report.file, emit_step=emit_step
                 )
                 _sb = report.sandbox
-                _sb_status = "ok" if not _sb.errors else "warn"
+                if _sb.mode == "interactive_session" and not _sb.executed:
+                    _sb_status = "warn"
+                    _sb_result = "interactive session required (open Sandbox Lab and press Stop Analysis to finalize dynamic verdict)"
+                else:
+                    _sb_status = "ok" if not _sb.errors else "warn"
+                    _sb_result = f"executed={_sb.executed}  processes={len(_sb.process_diff or [])}  errors={len(_sb.errors or [])}"
                 emit_step(
                     "sandbox",
-                    "Sandbox run finished",
-                    f"executed={_sb.executed}  processes={len(_sb.process_diff or [])}  errors={len(_sb.errors or [])}",
+                    "Sandbox phase",
+                    _sb_result,
                     _sb_status,
                 )
             else:
@@ -610,7 +641,8 @@ class ScanController:
             emit(90, "Scoring verdict")
             emit_step("verdict", "Scoring verdict", "", "running")
             report.verdict = _score_and_verdict(
-                static.engines, static, report.iocs, report.sandbox
+                static.engines, static, report.iocs, report.sandbox,
+                file_info=report.file,
             )
             report.recommendations = self._recommendations(report)
             _vr = report.verdict
@@ -763,14 +795,6 @@ class ScanController:
             )
             t_ms = 0
 
-        # ── Windows Defender ───────────────────────────────────────────────
-        if self._cancelled():
-            engines.insert(0, EngineResult(name="Windows Defender", status="skipped"))
-        else:
-            emit(50, "Windows Defender scan")
-            defender_result = self._run_defender(path)
-            engines.insert(0, defender_result)
-
         # Patch file_type / signed from static analysis
         static.engines = engines
         return static
@@ -841,83 +865,28 @@ class ScanController:
         file_info: FileInfo,
         emit_step: Any = None,
     ) -> SandboxSection:
-        """Delegate to VMwareRunner and map output to SandboxSection."""
+        """Interactive-only sandbox placeholder for manual Start/Stop flow.
+
+        Auto detonation is intentionally removed from ScanCenter pipeline.
+        Users must run Interactive Sandbox Session from Sandbox Lab and stop
+        analysis manually before verdicting dynamic behavior.
+        """
         _emit_step = emit_step or (lambda *_a, **_kw: None)
         sb = SandboxSection(
             enabled=True,
-            mode="visual_agent",
+            mode="interactive_session",
         )
-        try:
-            from backend.engines.sandbox.vmware_runner import VMwareRunner, load_runner_config
-
-            cfg, extras = load_runner_config()
-            runner = VMwareRunner(config=cfg, extras=extras)
-
-            def _step(status: str, msg: str) -> None:
-                pct_map = {"Starting": 72, "Copying": 74, "Running": 80, "Collecting": 88}
-                pct = pct_map.get(status, 75)
-                emit(pct, msg)
-                # Forward to Agent Timeline
-                _s = (
-                    "ok"   if status in ("OK", "Success")  else
-                    "fail" if "fail" in status.lower() or "error" in status.lower() else
-                    "running"
-                )
-                _emit_step("sandbox", msg, "", _s)
-
-            # Phase 4: Visual Agent Detonation
-            # Copies dist/sentinel_agent.exe + sample to C:\Sandbox\
-            # and executes interactively (-activeWindow -interactive)
-            runner._step_cb = _step
-            result = runner.execute_with_visual_agent(
-                host_malware_path=str(path),
-                agent_timeout=opts.monitor_seconds,
-                cancel_event=self._cancel_event,
-            )
-
-            # Map VMware result → SandboxSection
-            r = result if isinstance(result, dict) else {}
-            sb.executed = bool(r.get("executed", False))
-            sb.duration_sec = float(r.get("duration_sec", 0))
-            sb.exit_code = r.get("exit_code")
-            sb.process_diff = r.get("new_processes", [])
-            sb.file_diff = r.get("new_files", []) + r.get("modified_files", [])
-            sb.network_attempts = r.get("new_connections", [])
-            sb.errors = r.get("errors", [])
-            sb.highlights = r.get("alerts", [])
-            sb.screenshot_path = r.get("screenshot_path", "")
-
-            sb.registry_diff = r.get("registry_changes", []) or r.get("registry_diff", [])
-
-            # DNS queries from connections
-            sb.dns_queries = [
-                c.get("remote_addr", "") for c in sb.network_attempts
-                if c.get("remote_addr")
-            ]
-
-            # GUI automation fields
-            sb.automation_visible = bool(r.get("automation_visible", True))
-            sb.uac_secure_desktop = r.get("uac_secure_desktop")
-            sb.frames_dir         = r.get("ui_frames_dir", "")
-            sb.frames_paths       = r.get("ui_key_frames", r.get("frames", []))
-
-            # Classify highlights → persistence / security-tampering buckets
-            _persist_kw = ("run key", "startup", "scheduled task", "service",
-                           "persist", "autorun", "boot", "logon")
-            _tamper_kw  = ("defender", "antivirus", "firewall", "security",
-                           "disable", "tamper", "amsi", "wdav")
-            sb.persistence_indicators = [
-                h for h in sb.highlights
-                if any(kw in h.lower() for kw in _persist_kw)
-            ]
-            sb.security_tampering = [
-                h for h in sb.highlights
-                if any(kw in h.lower() for kw in _tamper_kw)
-            ]
-
-        except Exception as exc:
-            logger.exception("Sandbox run error: %s", exc)
-            sb.errors.append(str(exc))
+        emit(72, "Interactive sandbox session required")
+        _emit_step(
+            "sandbox",
+            "Auto detonation removed. Use Sandbox Lab Interactive Session and click Stop Analysis to finalize dynamic verdict.",
+            "",
+            "warn",
+        )
+        sb.executed = False
+        sb.highlights = [
+            "Dynamic verdict is generated only after user-triggered Stop Analysis in Interactive Sandbox Session."
+        ]
 
         return sb
 
@@ -927,7 +896,7 @@ class ScanController:
         if risk in ("High", "Critical"):
             recs += [
                 "Quarantine or delete the file immediately.",
-                "Run a full system scan with Windows Defender.",
+                "Run a full system scan with your endpoint antivirus.",
                 "Check recently created processes and scheduled tasks.",
                 "Consider restoring from a clean backup if the file was executed.",
             ]
@@ -940,7 +909,7 @@ class ScanController:
         else:
             recs += [
                 "No action required.",
-                "Keep Windows Defender and Sentinel AI models up to date.",
+                "Keep endpoint protection and Sentinel AI models up to date.",
             ]
         return recs
 

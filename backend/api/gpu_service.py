@@ -46,7 +46,7 @@ class GPUServiceBridge(QObject):
         # Process management
         self._proc = QProcess(self)
         self._proc.setProgram(sys.executable)
-        self._proc.setArguments(["-u", "-m", "app.gpu.telemetry_worker"])
+        self._proc.setArguments(["-u", "-m", "backend.engines.gpu.telemetry_worker"])
         self._proc.readyReadStandardOutput.connect(self._on_stdout)
         self._proc.readyReadStandardError.connect(self._on_stderr)
         self._proc.started.connect(self._on_started)
@@ -163,7 +163,7 @@ class GPUServiceBridge(QObject):
 
         # Update worker arguments with interval
         self._proc.setArguments(
-            ["-u", "-m", "app.gpu.telemetry_worker", str(interval_ms)]
+            ["-u", "-m", "backend.engines.gpu.telemetry_worker", str(interval_ms)]
         )
 
         logger.info(f"Starting GPU worker (interval={interval_ms}ms)")

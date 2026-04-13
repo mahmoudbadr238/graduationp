@@ -44,6 +44,7 @@ class PsutilSystemMonitor(ISystemMonitor):
         self._nvml_initialized = False
         self._wmi_cache = None  # Cache WMI connection for better performance
         self._pnp_to_phys_cache = None  # Cache PNP to physical GPU index mapping
+        self._wmi_gpu_warning_emitted = False
         self._security_cache = None  # Cache security info (updates every 30s)
         self._security_cache_time = 0
         self._security_loading = False  # Flag to prevent multiple concurrent loads
@@ -72,9 +73,19 @@ class PsutilSystemMonitor(ISystemMonitor):
                     pnp_id = wmi_gpu.PNPDeviceID or ""
                     if pnp_id:
                         self._pnp_to_phys_cache[pnp_id] = phys_idx
-            except (ImportError, RuntimeError, OSError):
-                self._wmi_cache = None
-                self._pnp_to_phys_cache = None
+            except Exception as e:
+                self._disable_wmi_gpu_cache(e)
+
+    def _disable_wmi_gpu_cache(self, reason: Exception | None = None) -> None:
+        """Disable cached WMI GPU state when WMI is unavailable or access is denied."""
+        self._wmi_cache = None
+        self._pnp_to_phys_cache = None
+        if reason is not None and not self._wmi_gpu_warning_emitted:
+            logger.warning(
+                "WMI GPU discovery unavailable; continuing without WMI-backed GPU data: %s",
+                reason,
+            )
+            self._wmi_gpu_warning_emitted = True
 
     def snapshot(self) -> dict[str, Any]:
         """Return current system metrics snapshot (GPU excluded - use GPUService instead)."""
@@ -270,7 +281,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                         except (ValueError, IndexError, AttributeError):
                             # Performance counter parsing failed
                             pass
-            except (ImportError, OSError, AttributeError):
+            except Exception:
                 # WMI or performance counters not available
                 pass  # Use cached PNP to physical index mapping
             if self._pnp_to_phys_cache:
@@ -340,10 +351,10 @@ class PsutilSystemMonitor(ISystemMonitor):
                     "status": gpu.Status or "Unknown",
                     "pnp_device_id": gpu.PNPDeviceID or "Unknown",
                 }
-            detected_gpus.append(gpu_data)
-        except (ImportError, OSError, AttributeError):
+                detected_gpus.append(gpu_data)
+        except Exception as e:
             # WMI GPU enumeration failed
-            pass  # Sort GPUs by PCI bus order to match Windows Task Manager
+            self._disable_wmi_gpu_cache(e)
 
         def get_pci_order(gpu_info):
             pnp_id = gpu_info.get("pnp_device_id", "")

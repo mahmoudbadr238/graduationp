@@ -75,7 +75,13 @@ class ClamAVAdapter:
                     logger.info(f"ClamAV detected at: {path}")
                     return
 
-        logger.debug("ClamAV not detected - optional integration disabled")
+        env_path = os.environ.get("PATH", "<not set>")
+        logger.warning(
+            "ClamAV not detected after checking PATH and common install dirs. "
+            "System PATH:\n%s",
+            env_path,
+        )
+        print(f"[ClamAVAdapter] ClamAV NOT FOUND. System PATH:\n{env_path}")
 
     @property
     def is_available(self) -> bool:

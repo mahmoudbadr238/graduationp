@@ -85,6 +85,7 @@ def google_safe_browsing(url: str) -> ExternalCheckResult:
             _GSB_ENDPOINT,
             params={"key": api_key},
             json=body,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             timeout=5,
         )
         result.available = True
@@ -124,7 +125,11 @@ def virustotal_lookup(url: str) -> ExternalCheckResult:
     try:
         # VT uses base64-encoded URL (no padding) as the resource ID
         url_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
-        headers = {"x-apikey": api_key, "Accept": "application/json"}
+        headers = {
+            "x-apikey": api_key,
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
 
         resp = requests.get(
             f"{_VT_URL_ENDPOINT}/{url_id}",

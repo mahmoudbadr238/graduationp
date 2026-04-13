@@ -53,6 +53,15 @@ def test_url_scan_contract_normalization_mapping() -> None:
     assert result["explanation"]["confidence"] == ""
 
 
+def test_ai_report_text_normalization_cleans_markdown_and_crlf() -> None:
+    bridge = _bridge()
+
+    raw = "**Dynamic Findings**\r\nLine one\rLine two\r\n\r\n\r\nLine three"
+    normalized = bridge._normalize_ai_report_text(raw)
+
+    assert normalized == "Dynamic Findings\nLine one\nLine two\n\nLine three"
+
+
 def test_url_detonator_cli_writes_output(monkeypatch, tmp_path) -> None:
     output_file = tmp_path / "detonation.json"
 
