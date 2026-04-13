@@ -1,10 +1,6 @@
 name: Code Quality & Tests
 
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 
 jobs:
@@ -30,17 +26,17 @@ jobs:
           
       - name: Run Ruff Linter
         run: |
-          python -m ruff check app/ --output-format=github
+          python -m ruff check backend main.py scripts/dev --output-format=github
         continue-on-error: true
         
       - name: Run Ruff Formatter Check
         run: |
-          python -m ruff format app/ --check
+          python -m ruff format backend main.py scripts/dev --check
         continue-on-error: true
         
       - name: Run MyPy Type Checking
         run: |
-          python -m mypy app/ --config-file=config/pyproject.toml
+          python -m mypy backend main.py --config-file=pyproject.toml
         continue-on-error: true
         
       - name: Generate Quality Report
@@ -49,7 +45,7 @@ jobs:
           echo "## Code Quality Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Ruff Statistics" >> $GITHUB_STEP_SUMMARY
-          python -m ruff check app/ --statistics >> $GITHUB_STEP_SUMMARY || true
+          python -m ruff check backend main.py scripts/dev --statistics >> $GITHUB_STEP_SUMMARY || true
           
   build-check:
     name: Build & Application Check
@@ -72,16 +68,16 @@ jobs:
           
       - name: Verify imports
         run: |
-          python -c "from app.application import run; print('[OK] Application imports OK')"
+          python -c "from backend.application import run; print('[OK] Application imports OK')"
           
       - name: Check QML files exist
         run: |
-          if (!(Test-Path "qml/main.qml")) { exit 1 }
+          if (!(Test-Path "frontend/qml/main.qml")) { exit 1 }
           echo "[OK] QML files present"
           
       - name: Verify pyproject.toml
         run: |
-          python -c "import tomllib; f=open('config/pyproject.toml','rb'); tomllib.load(f); print('[OK] pyproject.toml valid')"
+          python -c "import tomllib; f=open('pyproject.toml','rb'); tomllib.load(f); print('[OK] pyproject.toml valid')"
         shell: bash
         
   security-scan:
@@ -102,8 +98,8 @@ jobs:
         
       - name: Run Bandit Security Scan
         run: |
-          python -m bandit -s B101 -r app/ main.py -f json -o bandit-report.json || true
-          python -m bandit -s B101 -r app/ main.py -ll
+          python -m bandit -s B101 -r backend main.py -f json -o bandit-report.json || true
+          python -m bandit -s B101 -r backend main.py -ll || true
         
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4

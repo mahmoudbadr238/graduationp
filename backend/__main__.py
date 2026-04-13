@@ -1,4 +1,4 @@
-"""Entry point for running Sentinel as a module: python -m app"""
+"""Entry point for running Sentinel as a module: ``python -m backend``."""
 
 import json
 import logging

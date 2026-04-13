@@ -1,4 +1,4 @@
-"""Diagnostic utility for Sentinel - smoke test and version checks"""
+"""Diagnostic utility for Sentinel - smoke test and version checks."""
 
 import logging
 import platform
@@ -106,7 +106,7 @@ def collect_diagnostics() -> dict[str, Any]:
 
     # QML paths
     root = Path(__file__).resolve().parents[2]
-    qml_path = root / "qml" / "main.qml"
+    qml_path = root / "frontend" / "qml" / "main.qml"
     diagnostics["paths"] = {
         "qml_entry": str(qml_path),
         "qml_exists": qml_path.exists(),
