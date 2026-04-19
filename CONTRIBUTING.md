@@ -27,7 +27,7 @@ Please include:
   - whether the app was elevated
   - whether `GROQ_API_KEY`, Nmap, or VMware were configured
 
-For security issues, follow [../SECURITY.md](../SECURITY.md) instead.
+For security issues, follow [SECURITY.md](SECURITY.md) instead.
 
 ## 💡 Suggesting Enhancements
 
@@ -235,11 +235,11 @@ Before submitting a PR:
 
 ## 📚 Resources
 
-- [../README.md](../README.md)
-- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
-- [QUICKSTART.md](QUICKSTART.md)
-- [api/README_BACKEND.md](api/README_BACKEND.md)
-- [sandbox_vmware.md](sandbox_vmware.md)
+- [README.md](README.md)
+- [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
+- [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/api/README_BACKEND.md](docs/api/README_BACKEND.md)
+- [docs/sandbox_vmware.md](docs/sandbox_vmware.md)
 
 ## 💬 Questions?
 

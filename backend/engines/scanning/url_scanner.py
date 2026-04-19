@@ -1,5 +1,5 @@
 """
-URL Scanner - VirusTotal-like local URL analysis.
+URL Scanner - local URL analysis pipeline.
 
 Multi-layer URL scanning pipeline:
 1. Normalize & validate URL

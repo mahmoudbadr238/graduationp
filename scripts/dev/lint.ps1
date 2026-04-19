@@ -26,6 +26,14 @@ param(
 
 $ErrorActionPreference = "Continue"
 $failCount = 0
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+$qmlRoot = Join-Path $repoRoot "frontend\qml"
+$pythonTargets = @(
+    (Join-Path $repoRoot "backend"),
+    (Join-Path $repoRoot "payload"),
+    (Join-Path $repoRoot "scripts"),
+    (Join-Path $repoRoot "main.py")
+)
 
 Write-Host "=== Sentinel Code Quality Check ===" -ForegroundColor Cyan
 Write-Host ""
@@ -36,7 +44,10 @@ Write-Host ""
 Write-Host "[1/3] QML Linting (qmllint)" -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
-$qmlFiles = Get-ChildItem -Path "qml" -Recurse -Filter "*.qml" -File
+$qmlFiles = @()
+if (Test-Path $qmlRoot) {
+    $qmlFiles = Get-ChildItem -Path $qmlRoot -Recurse -Filter "*.qml" -File
+}
 
 if (Get-Command qmllint -ErrorAction SilentlyContinue) {
     $qmlErrors = 0
@@ -69,7 +80,7 @@ Write-Host "[2/3] Python Linting (Ruff)" -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
 if (Get-Command ruff -ErrorAction SilentlyContinue) {
-    $ruffArgs = @("check", "app", "main.py")
+    $ruffArgs = @("check") + $pythonTargets
     
     if ($Fix) {
         $ruffArgs += "--fix"
@@ -94,7 +105,7 @@ if (Get-Command ruff -ErrorAction SilentlyContinue) {
     Write-Host "  [INFO] Falling back to flake8..." -ForegroundColor Cyan
     
     if (Get-Command flake8 -ErrorAction SilentlyContinue) {
-        $result = flake8 app main.py --max-line-length=120 2>&1
+        $result = flake8 $pythonTargets --max-line-length=120 2>&1
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  [OK] No Python linting errors (flake8)" -ForegroundColor Green
@@ -118,7 +129,8 @@ Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
 if (Get-Command mypy -ErrorAction SilentlyContinue) {
     $mypyArgs = @(
-        "app",
+        (Join-Path $repoRoot "backend"),
+        (Join-Path $repoRoot "main.py"),
         "--ignore-missing-imports",
         "--no-strict-optional",
         "--warn-redundant-casts",

@@ -470,13 +470,9 @@ class SentinelTools:
         except Exception as exc:
             checks.append(f"Firewall (mpssvc): ⚠️ Could not check ({exc})")
 
-        # 3. API keys loaded in environment
+        # 3. AI configuration loaded in environment
         groq_key = bool(os.environ.get("GROQ_API_KEY", "").strip())
-        vt_key = bool(os.environ.get("VT_API_KEY", "").strip())
-        checks.append(
-            f"GROQ_API_KEY: {'✅ Loaded' if groq_key else '❌ Missing'}  |  "
-            f"VT_API_KEY: {'✅ Loaded' if vt_key else '❌ Missing'}"
-        )
+        checks.append(f"GROQ_API_KEY: {'✅ Loaded' if groq_key else '❌ Missing'}")
 
         # 4. Defender CLI accessibility
         try:
@@ -976,7 +972,7 @@ TOOL_SCHEMAS = [
             "description": (
                 "Run a full health check of Sentinel's backend services. "
                 "Verifies WMI SecurityCenter2 connectivity, Windows Firewall "
-                "(mpssvc) status, whether API keys (Groq, VirusTotal) are "
+                "(mpssvc) status, whether AI configuration is present, "
                 "loaded, Defender CLI accessibility, Groq AI scanner "
                 "availability, and Real-Time Protection status. Use this "
                 "tool to troubleshoot when the user reports that scans are "

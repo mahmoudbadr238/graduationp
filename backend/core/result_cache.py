@@ -1,6 +1,6 @@
 """
 Simple in-memory cache with TTL for expensive operations.
-Prevents repeated API calls (VirusTotal, Nmap) and reduces latency.
+Prevents repeated cloud/provider lookups and reduces latency.
 """
 
 import hashlib

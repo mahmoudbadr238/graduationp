@@ -47,8 +47,8 @@ _GUEST_DONE_FLAG = r"C:\Sandbox\out\done.flag"
 _GUEST_SUMMARY = r"C:\Sandbox\out\summary.json"
 _TASK_NAME = "SentinelSandboxAgent"
 
-# ── Host paths to agent scripts (in tools/sandbox_agent/) ─────────────────────
-_TOOLS_DIR = Path(__file__).parent.parent.parent / "tools" / "sandbox_agent"
+# ── Host paths to agent scripts (in payload/sandbox_agent/) ───────────────────
+_TOOLS_DIR = Path(__file__).parent.parent.parent.parent / "payload" / "sandbox_agent"
 _AGENT_PS1 = _TOOLS_DIR / "agent.ps1"  # legacy fallback
 _AGENT_WRAPPER = _TOOLS_DIR / "run_ui_wrapper.ps1"  # ONLOGON interactive runner
 _AGENT_AHK_NEW = _TOOLS_DIR / "run_ui.ahk"  # visible AHK interaction
@@ -280,12 +280,12 @@ def run_file_analysis(
         if not _AGENT_WRAPPER.exists():
             raise FileNotFoundError(
                 f"ONLOGON runner not found: {_AGENT_WRAPPER}\n"
-                "Ensure tools/sandbox_agent/run_ui_wrapper.ps1 is present."
+                "Ensure payload/sandbox_agent/run_ui_wrapper.ps1 is present."
             )
         if not _INSTALL_PS1.exists():
             raise FileNotFoundError(
                 f"install_agent.ps1 not found: {_INSTALL_PS1}\n"
-                "Ensure tools/sandbox_agent/install_agent.ps1 is present."
+                "Ensure payload/sandbox_agent/install_agent.ps1 is present."
             )
 
         # ── Step 4: Revert to clean snapshot ─────────────────────────────────
@@ -550,7 +550,7 @@ def run_file_analysis(
         # ── Step 13b: Collect artifacts state signal ──────────────────────────────
         _state(JobState.COLLECTING)
 
-        # ── Step 14: Parse report (legacy) + build VirusTotal-style report.json ───
+        # ── Step 14: Parse report (legacy) + build the canonical report.json ──────
         _progress(90)
         emit_step("Running", "[14/14] Parsing artifacts and computing final report")
         parsed = parse_artifacts(
@@ -561,7 +561,7 @@ def run_file_analysis(
         )
         result.update(parsed)
 
-        # Build the canonical VirusTotal-style report.json
+        # Build the canonical report.json payload.
         finished_now = datetime.now().isoformat()
         guest_summary = parsed.get("dynamic") or {}
         try:

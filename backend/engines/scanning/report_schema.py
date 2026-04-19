@@ -1,13 +1,13 @@
 """
-Sentinel VT-like Unified Report Schema
-=======================================
+Sentinel Unified Report Schema
+==============================
 Defines the canonical ``report.json`` structure produced by every analysis
 run (static-only OR static + VMware sandbox).  Both the Scan Tool QML page
 and the AI explainer consume this schema.
 
 All fields use **snake_case** keys for consistency with the Python codebase.
 The schema version is ``"2.0"`` to distinguish from the camelCase ``1.0``
-schema in ``app/sandbox/report_schema.py``.
+schema in ``backend/engines/sandbox/report_schema.py``.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class VerdictSection(TypedDict):
 
 class SentinelReport(TypedDict):
     """
-    Full VirusTotal-style analysis report.
+    Full analysis report consumed by the UI and explainer layers.
 
     Saved as ``data/reports/<job_id>/report.json`` on the host.
     """

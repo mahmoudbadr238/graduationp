@@ -1,29 +1,40 @@
 #!/usr/bin/env python3
-"""Sentinel - Endpoint Security Suite v1.0.0"""
-
+import os
 import faulthandler
 import sys
 import traceback
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parent
 
-# Enable faulthandler to dump C-level tracebacks on segfault
-_crash_path = _APP_DIR / "crash_traceback.txt"
-_crash_file = open(_crash_path, "w")  # noqa: SIM115
+def _get_crash_log_path() -> Path:
+    """Store crash traces with the rest of the app logs, not in the repo root."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        log_dir = Path(appdata) / "Sentinel" / "logs"
+    else:
+        log_dir = Path.home() / "AppData" / "Roaming" / "Sentinel" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "crash_traceback.txt"
+
+
+_CRASH_PATH = _get_crash_log_path()
+_crash_file = _CRASH_PATH.open("w", encoding="utf-8")  # noqa: SIM115
 faulthandler.enable(file=_crash_file)
 
 
-# Also catch Python-level unhandled exceptions
-_original_excepthook = sys.excepthook
-def _crash_excepthook(exc_type, exc_value, exc_tb):
-    with open(_crash_path, "a") as f:
-        f.write("\n=== UNHANDLED EXCEPTION ===\n")
-        traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
+def _crash_excepthook(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_tb: object,
+) -> None:
+    with _CRASH_PATH.open("a", encoding="utf-8") as crash_file:
+        crash_file.write("\n=== UNHANDLED EXCEPTION ===\n")
+        traceback.print_exception(exc_type, exc_value, exc_tb, file=crash_file)
     _original_excepthook(exc_type, exc_value, exc_tb)
-sys.excepthook = _crash_excepthook
 
-import os
+
+_original_excepthook = sys.excepthook
+sys.excepthook = _crash_excepthook
 
 from backend.__version__ import APP_FULL_NAME, __version__
 from backend.application import run

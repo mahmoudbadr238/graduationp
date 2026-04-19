@@ -7,20 +7,20 @@
 <br>
 
 <img src="https://img.shields.io/badge/version-1.0.0-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Version">
-<img src="https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
 <img src="https://img.shields.io/badge/Qt-6.x-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt">
-<img src="https://img.shields.io/badge/AI-Groq%20%7C%20Claude%20%7C%20OpenAI-FF6F00?style=for-the-badge&logo=openai&logoColor=white" alt="AI">
+<img src="https://img.shields.io/badge/platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
 <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
 
 <br><br>
 
-**An AI-powered desktop security application that makes Windows security accessible to everyone.**
+**A Windows-first desktop security application for monitoring, scanning, and AI-assisted analysis.**
 
-*Built with PySide6, QML, and Cloud AI (Groq/Claude/OpenAI) for production-quality security analysis.*
+*Built with PySide6, QML, Python services, optional cloud integrations, and Windows security tooling.*
 
 <br>
 
-[✨ Features](#-features) · [🚀 Quick Start](#-quick-start) · [🤖 AI Setup](#-ai-configuration) · [📖 Documentation](#-documentation) · [🤝 Contributing](#-contributing)
+[✨ Features](#-features) · [🚀 Quick Start](#-quick-start) · [🤖 AI Setup](#-ai-configuration) · [🏗️ Architecture](#-architecture) · [📚 Documentation](#-documentation) · [🤝 Contributing](#-contributing)
 
 ---
 
@@ -30,9 +30,15 @@
 
 ## 📋 Overview
 
-**Sentinel** is a comprehensive endpoint security suite designed to bridge the gap between complex Windows security tools and everyday users. By leveraging **online AI technology** (Claude or OpenAI), Sentinel translates cryptic system events into clear, actionable explanations — no security expertise required.
+**Sentinel** is the active graduation project codebase for a desktop endpoint
+security suite focused on Windows monitoring and analysis. The current version
+of the repository uses a `backend/` + `frontend/qml/` structure and combines
+system visibility, file and URL scanning, optional sandbox detonation, and
+AI-assisted explanations in a single desktop app.
 
-> 🎓 **Graduation Project** — Developed as a capstone project demonstrating modern desktop application architecture, AI integration, and user-centered security design.
+> 🎓 **Graduation Project** — developed as a capstone project around desktop
+> security workflows, Windows integration, QML UI architecture, and practical
+> security tooling.
 
 <br>
 
@@ -40,11 +46,11 @@
 
 | Traditional Security Tools | Sentinel |
 |---------------------------|----------|
-| ❌ Cryptic error codes | ✅ Plain English explanations |
-| ❌ Requires expertise | ✅ Designed for everyone |
-| ❌ Generic, template responses | ✅ **Real AI analysis** — context-aware, specific recommendations |
-| ❌ Overwhelming dashboards | ✅ Clean, intuitive interface |
-| ❌ Subscription fees | ✅ Free and open source |
+| ❌ Hard to follow for non-specialists | ✅ Designed to be readable and guided |
+| ❌ Split across many disconnected tools | ✅ Monitoring, scanning, and triage in one app |
+| ❌ Raw system data only | ✅ Human-readable analysis and summaries |
+| ❌ Minimal local diagnostics | ✅ Built-in diagnostics and export flows |
+| ❌ Weak desktop UX | ✅ QML-based interface with theming and notifications |
 
 <br>
 
@@ -52,17 +58,16 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 **AI-Powered Event Analysis** | Groq/Claude/OpenAI translates Windows events into detailed, actionable explanations |
-| 📊 **Real-Time Monitoring** | Live CPU, Memory, Disk, GPU, and Network metrics with beautiful visualizations |
-| 🔍 **Smart Event Viewer** | Color-coded security events with severity ratings and AI recommendations |
-| 🛡️ **Intelligent Scanning** | AI-enhanced file and URL analysis with VirusTotal integration |
-| 🌐 **Network Scanner** | 8 specialized Nmap scan types with streaming output (optional) |
-| 🗑️ **Secure File Shredder** | Multi-pass overwrite with SSD-aware secure deletion |
-| 🔓 **File Recovery** | Signature-based file carving with 53+ supported formats |
-| 🖥️ **Sandbox Lab** | VMware Workstation sandbox detonation with live preview |
-| 📈 **GPU Monitor** | NVIDIA & AMD GPU telemetry with real-time charts |
-| 💬 **Security AI Assistant** | SOC analyst chatbot with access to your live system data |
-| 🎨 **Modern UI** | Dark/Light/System themes with smooth transitions |
+| 🤖 **AI-Assisted Analysis** | Groq-backed explanations for security assistant and report interpretation |
+| 📊 **Live System Monitoring** | CPU, memory, disk, network, and GPU telemetry with live dashboards |
+| 📋 **Event Viewer** | Windows event inspection with explanation workflows and severity cues |
+| 🔍 **Scan Center** | File and URL scanning with reporting and history persistence |
+| 🌐 **Network Scan** | Optional Nmap-backed scans from the desktop UI |
+| 🗂️ **File Function** | Secure deletion and recovery-oriented workflows |
+| 🖥️ **Sandbox Lab** | VMware-based detonation and behavior review |
+| 🔔 **Notifications** | In-app notification center plus system tray integration |
+| 🧪 **Diagnostics** | `python -m backend --diagnose` and JSON diagnostics export |
+| 🎨 **Modern UI** | Sidebar navigation, QML components, and theme-aware pages |
 
 ---
 
@@ -70,78 +75,69 @@
 
 ## 🤖 AI Configuration
 
-Sentinel uses cloud AI for intelligent security analysis. **Groq (free tier)** is recommended for most users.
+Sentinel currently documents **Groq** as the primary AI provider in the active
+setup flow. AI features can be left unconfigured, but they will fall back to
+reduced or offline behavior.
 
 ### Setup Options
 
-#### Option 1: Groq (Recommended - FREE)
-
-Groq offers a generous free tier with fast inference:
+#### Option 1: Groq (Recommended)
 
 ```powershell
-# Set Groq API key
+# Set Groq API key for AI-backed features
 $env:GROQ_API_KEY = "gsk_your-key-here"
 
-# Then run Sentinel
+# Launch Sentinel
 python main.py
 ```
 
-Get your free API key at [console.groq.com](https://console.groq.com/)
+Get an API key at [console.groq.com](https://console.groq.com/).
 
-#### Option 2: Claude/OpenAI (Paid)
+#### Option 2: .env File
 
-```powershell
-# For Claude (best for detailed analysis)
-$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
-
-# OR for OpenAI
-$env:OPENAI_API_KEY = "sk-your-key-here"
-
-# Then run Sentinel
-python main.py
-```
-
-#### Option 3: .env File
-
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and configure the values you need:
 
 ```env
-# Use Groq (free, recommended)
-GROQ_API_KEY=gsk_your-key-here
+GROQ_API_KEY=
+SENTRY_DSN=
+NMAP_PATH=
+OFFLINE_ONLY=false
 
-# OR use Claude (paid)
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# OR use OpenAI (paid)
-OPENAI_API_KEY=sk-your-key-here
+SANDBOX_VMRUN=C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe
+SANDBOX_VMX=D:\vm\windows10\Windows 10 x64.vmx
+SANDBOX_SNAPSHOT=Clean Base
+SANDBOX_GUEST_USER=
+SANDBOX_GUEST_PASS=
 ```
 
-### Get Your API Key
+#### Option 3: Offline-Only Mode
 
-| Provider | Link | Cost | Notes |
-|----------|------|------|-------|
-| **Groq** | [console.groq.com](https://console.groq.com/) | **FREE** | Recommended for most users |
-| **Claude** | [console.anthropic.com](https://console.anthropic.com/) | Paid | Best for detailed analysis |
-| **OpenAI** | [platform.openai.com](https://platform.openai.com/api-keys) | Paid | Fallback option |
+```powershell
+$env:OFFLINE_ONLY = "true"
+python main.py
+```
 
-### AI Features
+### AI-Related Features
 
 | Feature | Uses AI For |
 |---------|------------|
-| **Event Viewer** | Explaining Windows events with context and recommendations |
-| **Security Chatbot** | Answering security questions with access to your system data |
-| **File Scanner** | Analyzing static analysis and sandbox results |
-| **URL Scanner** | Interpreting threat indicators and phishing detection |
+| **Security Assistant** | System-aware question answering and security guidance |
+| **Scan Center** | Report interpretation and AI summaries |
+| **Sandbox / Scan Reports** | Higher-level explanation of analysis results |
+| **Event Analysis Paths** | AI-enhanced explanation when configured |
 
-### Offline Mode
+### Offline Behavior
 
-Without an API key, Sentinel operates in offline mode:
-- ✅ **Event Viewer**: Uses built-in knowledge base for instant explanations
-- ✅ **File Scanner**: Full static analysis (PE parsing, entropy, Groq AI NGAV)
-- ✅ **URL Scanner**: Reputation checks and pattern matching
-- ❌ **AI Chat**: Disabled (no cloud connection)
+Without `GROQ_API_KEY`, Sentinel can still operate with partial functionality:
 
-> 💡 **Tip:** The offline knowledge base covers 500+ common Windows events. Set up Groq (free) for AI-enhanced analysis of uncommon events.
+- ✅ Core desktop UI still launches
+- ✅ System monitoring and local tools still work
+- ✅ Diagnostics and configuration flows still work
+- ✅ Scan workflows can still run where local tooling is available
+- ❌ AI-backed assistant and Groq summaries are unavailable
+
+> 💡 **Tip:** If you are validating a fresh machine, run
+> `python -m backend --diagnose` before opening the UI.
 
 ---
 
@@ -151,9 +147,11 @@ Without an API key, Sentinel operates in offline mode:
 
 ### Prerequisites
 
-- **Windows 10** (1809+) or **Windows 11**
-- **Python 3.10+** ([Download](https://www.python.org/downloads/))
+- **Windows 10** or **Windows 11**
+- **Python 3.11+** ([Download](https://www.python.org/downloads/))
 - **Git** ([Download](https://git-scm.com/downloads))
+- Optional: **Nmap** for network scans
+- Optional: **VMware Workstation** for Sandbox Lab / sandbox-assisted scans
 
 ### Installation
 
@@ -167,7 +165,11 @@ python -m venv .venv
 .venv\Scripts\activate
 
 # Install dependencies
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+# Create local configuration
+Copy-Item .env.example .env
 
 # Launch Sentinel
 python main.py
@@ -177,181 +179,135 @@ python main.py
 
 | Step | Action |
 |------|--------|
-| 1️⃣ | Application opens on **Home** — view live system metrics |
-| 2️⃣ | Navigate with sidebar or shortcuts (`Ctrl+1` to `Ctrl+7`) |
-| 3️⃣ | Try **Event Viewer** (`Ctrl+2`) — see AI-powered event explanations |
-| 4️⃣ | Customize in **Settings** (`Ctrl+7`) — change theme, configure APIs |
+| 1️⃣ | Start with `python -m backend --diagnose` if this is a new machine |
+| 2️⃣ | Launch the app with `python main.py` |
+| 3️⃣ | Review **Home**, **Event Viewer**, **System Snapshot**, and **System Monitor** |
+| 4️⃣ | Configure Groq or VMware only if you need those flows |
+| 5️⃣ | If prompted, allow UAC elevation for full Windows visibility |
 
-> 💡 **Tip:** Run as Administrator for full Security event log access: `.\scripts\run_as_admin.bat`
+> 💡 **Tip:** For limited-access development sessions, you can skip elevation
+> with `SKIP_UAC=1`.
 
 <br>
 
 ## ✨ Features
 
-### 🤖 AI-Powered Event Analysis (Core Feature)
+### 🤖 AI-Assisted Security Workflows
 
-Sentinel's standout feature is its **cloud AI integration** (Groq, Claude, or OpenAI) that transforms complex Windows events into human-readable explanations:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Before (Raw Event)                                             │
-├─────────────────────────────────────────────────────────────────┤
-│  Event ID: 4625                                                 │
-│  Source: Microsoft-Windows-Security-Auditing                    │
-│  Level: Information                                             │
-│  Message: An account failed to log on...                        │
-└─────────────────────────────────────────────────────────────────┘
-                              ▼ AI Processing ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  After (Sentinel Explanation)                                   │
-├─────────────────────────────────────────────────────────────────┤
-│  📌 What Happened                                               │
-│  Someone tried to log into your computer but entered the wrong  │
-│  password. This could be you mistyping, or someone else trying  │
-│  to access your account.                                        │
-│                                                                 │
-│  🔍 Why This Happens                                            │
-│  Failed login attempts occur when credentials don't match.      │
-│  Common causes: typos, forgotten passwords, or unauthorized     │
-│  access attempts.                                               │
-│                                                                 │
-│  ✅ What To Do                                                  │
-│  • If this was you: Double-check your password                  │
-│  • If repeated failures: Consider enabling account lockout      │
-│  • If suspicious: Review the source IP address                  │
-│                                                                 │
-│  🔧 Technical Notes                                             │
-│  Event 4625 | Security Log | Logon Type: 3 (Network)           │
-└─────────────────────────────────────────────────────────────────┘
-```
+Sentinel includes AI-connected flows for assistant responses and report
+interpretation when `GROQ_API_KEY` is configured.
 
 **Key Benefits:**
-- ⚡ **Fast Cloud AI** — Groq free tier for instant responses, Claude/OpenAI as alternatives
-- 📚 **Offline Knowledge Base** — Built-in explanations for 500+ common events (no API key needed)
-- 🎯 **Severity-Aware** — Recommendations tailored to event criticality
-- 🔒 **Privacy-Conscious** — Only event metadata sent for analysis, never personal data
+- ⚡ **Fast setup** with one primary AI environment variable
+- 🧭 **Guided explanations** layered on top of local analysis results
+- 🔒 **Optional by design** so the app still works in reduced mode
+- 🧪 **Diagnostic-friendly** because AI is not required to validate the app
 
 <br>
 
-### 📊 Real-Time System Monitoring
+### 📊 System Snapshot and System Monitor
 
-| Metric | Details |
-|--------|---------|
-| **CPU** | Per-core usage, temperature (if available), frequency |
-| **Memory** | Used/Available RAM, swap usage |
-| **Disk** | Read/Write speeds, partition usage |
-| **Network** | Upload/Download speeds, active connections |
-| **GPU** | Utilization, VRAM, temperature (NVIDIA/AMD) |
+| Area | Details |
+|------|---------|
+| **CPU / Memory** | Live usage, health context, and dashboard presentation |
+| **Disk / Network** | Activity metrics and interface-level details |
+| **GPU** | NVIDIA and AMD telemetry paths where supported |
+| **History Views** | Live charting in monitoring pages |
 
-- 🔄 **1 Hz refresh rate** with smooth animated transitions
-- 📈 **Historical tracking** in SQLite database
-- 🎨 **Beautiful visualizations** with progress bars and charts
-
-<br>
-
-### 🔍 Smart Event Viewer
-
-Transform Windows Event Logs from cryptic technical data into actionable insights:
-
-| Severity | Visual | Example Events |
-|----------|--------|----------------|
-| 🔴 **Critical** | Red badge | System crashes, hardware failures |
-| 🟠 **Error** | Orange badge | Application errors, service failures |
-| 🟡 **Warning** | Yellow badge | Resource warnings, permission issues |
-| 🔵 **Information** | Blue badge | Successful operations, status updates |
-| 🟢 **Success** | Green badge | Audit successes, completed tasks |
-
-**Sources Monitored:** Application, System, Security (requires Admin)
+- 🔄 Continuous update flow through backend services
+- 📈 Separate pages for broad snapshot and focused monitoring
+- 🖥️ Desktop-native UI with system tray support
 
 <br>
 
-### 🖥️ System Snapshot
+### 📋 Event Viewer
 
-Get a comprehensive view of your system:
+Transform Windows event data into a workflow that is easier to inspect and
+triage:
 
-- **Overview** — All metrics at a glance
-- **Hardware** — CPU model, RAM specs, GPU details
-- **Network** — Interface stats, active connections, IP addresses
-- **OS Info** — Windows version, build number, system uptime
-
-<br>
-
-### 🌐 Network Scanner (Optional)
-
-**8 Specialized Scan Types** powered by Nmap:
-
-| Scan Type | Purpose |
-|-----------|---------|
-| 🔍 Host Discovery | Find live devices on your network |
-| 🗺️ Network Mapping | Map topology with traceroute |
-| 🚪 Port Scanning | Detect open/closed/filtered ports |
-| 💻 OS Detection | Identify operating systems |
-| ⚙️ Service Detection | Find running services and versions |
-| 🔥 Firewall Detection | Detect firewall rules |
-| ⚠️ Vulnerability Scan | Check for known CVEs |
-| 📡 Protocol Analysis | Analyze IP protocols |
-
-- 📺 **Real-time streaming output** with console view
-- 🎯 **Auto-detect subnet** for network-wide scans
-- 💾 **Reports auto-saved** to `~/.sentinel/nmap_reports/`
-
-> 📝 **Requires:** [Nmap](https://nmap.org/download.html) installed and in PATH
+| Capability | Description |
+|------------|-------------|
+| **Windows Event Access** | Reads Windows event sources where privileges allow |
+| **Severity Presentation** | Visual prioritization inside the UI |
+| **Explanation Paths** | Human-readable guidance layered onto raw event data |
+| **Admin Awareness** | Full access improves visibility into protected sources |
 
 <br>
 
-### 🗑️ Secure File Shredder
+### 🔍 Scan Center
 
-Permanently destroy sensitive files beyond recovery:
+Scan Center is one of the main active modules in the current codebase:
 
-- **Multi-pass overwrite** — 1, 3, 7, or 35 (Gutmann) passes
-- **SSD-aware** — Disclaimer about wear-leveling limitations
-- **Two-step confirmation** — Checkbox + type "DELETE" to proceed
-- **Real-time progress** — Per-file progress with cancellation support
-- **Audit logging** — Shred operations logged to `%APPDATA%/Sentinel/logs/shredder/`
+- **File scanning** workflows
+- **URL scanning** workflows
+- **History tab** with persisted scan records
+- **Export/report** paths for completed jobs
+- **Optional sandbox coupling** through VMware-backed execution paths
 
 <br>
 
-### 🔓 File Recovery / Carving
+### 🌐 Network Scan (Optional)
 
-Recover deleted files using signature-based carving:
+Sentinel integrates with **Nmap** when it is installed or configured via
+`NMAP_PATH`.
 
-- **53+ file signatures** — Images, documents, archives, media, databases
-- **Header scanning** — Finds files by magic bytes in raw disk data
-- **Batch recovery** — Recover multiple files simultaneously
+- 📡 Desktop-triggered network scanning
+- 🧾 Result pages for collected output
+- ⚙️ Optional dependency that does not block the rest of the app
+
+> 📝 **Requires:** [Nmap](https://nmap.org/download.html) installed or available
+> via `NMAP_PATH`
+
+<br>
+
+### 🗂️ File Function
+
+The File Function area covers local file operations oriented around security and
+recovery tasks:
+
+- **Secure deletion** / shred flows
+- **Recovery-oriented** workflows
+- **Bridge-based backend services** exposed to QML
 
 <br>
 
 ### 🖥️ Sandbox Lab
 
-Detonate suspicious files in an isolated VMware environment:
+Sentinel includes VMware-driven sandbox functionality for deeper detonation and
+behavior review:
 
-- **VMware Workstation integration** — Automated snapshot/restore workflow
-- **Live preview** — Watch execution in real-time through the app
-- **Behavioral analysis** — Track file system, registry, and network activity
-- **Safe rollback** — VM restored to clean snapshot after every detonation
+- **VMware Workstation integration**
+- **Guest automation and preview tooling**
+- **Diagnostics for sandbox prerequisites**
+- **Detonation support for suspicious samples**
 
-> 📝 **Requires:** VMware Workstation Pro installed and configured
-
-<br>
-
-### 📈 GPU Monitor
-
-Real-time GPU telemetry with interactive charts:
-
-- **NVIDIA** — Utilization, VRAM, temperature, power, clock speeds (via pynvml)
-- **AMD** — Basic monitoring via pyadl (Windows)
-- **Live charts** — Animated time-series graphs with 60 FPS rendering
+> 📝 **Requires:** VMware Workstation and a configured guest environment
 
 <br>
 
-### 💬 Security AI Assistant
+### 💬 Security Assistant
 
-An AI-powered SOC analyst chatbot:
+An AI-assisted desktop helper that can operate alongside Sentinel's system
+context and security tooling.
 
-- **System-aware** — Has access to your live CPU, RAM, disk, and network data
-- **Groq-powered** — Fast responses via Groq free tier
-- **Security focused** — Trained to answer security and operational questions
-- **Context-rich** — References your specific system configuration in answers
+- **System-aware** assistant behavior
+- **Groq-backed** when configured
+- **Integrated into the app UI**
+
+<br>
+
+### 🔔 Notifications and Diagnostics
+
+- **In-app notification center**
+- **System tray integration**
+- **Crash capture and logging**
+- **CLI diagnostics** via:
+
+```powershell
+python -m backend --diagnose
+python -m backend --export-diagnostics diagnostics.json
+python -m backend --reset-settings
+```
 
 <br>
 
@@ -359,24 +315,25 @@ An AI-powered SOC analyst chatbot:
 
 ### Environment Setup
 
-Create a `.env` file in the project root (or copy from `.env.example`):
+Create a `.env` file in the project root or copy it from `.env.example`:
 
 ```env
-# ─────────────────────────────────────────────────────────
-# SENTINEL CONFIGURATION
-# ─────────────────────────────────────────────────────────
+# Primary AI provider
+GROQ_API_KEY=
 
-# AI API Keys (At least one required for AI features)
-# Get Claude key: https://console.anthropic.com/
-# Get OpenAI key: https://platform.openai.com/api-keys
-ANTHROPIC_API_KEY=
-OPENAI_API_KEY=
-
-# Nmap Path (Optional - auto-detected if in PATH)
+# Optional external services
+SENTRY_DSN=
 NMAP_PATH=
-
-# Offline Mode - Disable all external API calls
 OFFLINE_ONLY=false
+
+# VMware Sandbox Lab
+SANDBOX_VMRUN=C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe
+SANDBOX_VMX=D:\vm\windows10\Windows 10 x64.vmx
+SANDBOX_SNAPSHOT=Clean Base
+SANDBOX_GUEST_USER=
+SANDBOX_GUEST_PASS=
+SANDBOX_HOST_RESULTS_DIR=C:\SentinelSandbox\results
+SANDBOX_HOST_FRAMES_DIR=C:\SentinelSandbox\frames
 ```
 
 ### Optional Integrations
@@ -384,24 +341,38 @@ OFFLINE_ONLY=false
 <details>
 <summary><b>🌐 Nmap Setup</b></summary>
 
-1. Download installer: https://nmap.org/download.html
-2. Install with **"Add to PATH"** option checked
-3. Verify in terminal: `nmap --version`
-4. Restart Sentinel
-5. Verify: Status bar shows "Nmap: Available"
+1. Install Nmap from https://nmap.org/download.html
+2. Make sure it is on `PATH`, or set `NMAP_PATH`
+3. Run `python -m backend --diagnose`
+4. Launch Sentinel and open the Network Scan page
+
+</details>
+
+<details>
+<summary><b>🖥️ VMware Setup</b></summary>
+
+Configure the VMware-related values in `.env`:
+
+- `SANDBOX_VMRUN`
+- `SANDBOX_VMX`
+- `SANDBOX_SNAPSHOT`
+- `SANDBOX_GUEST_USER`
+- `SANDBOX_GUEST_PASS`
+
+Then validate your setup with Sentinel diagnostics and Sandbox Lab checks.
 
 </details>
 
 <details>
 <summary><b>🔐 Administrator Mode</b></summary>
 
-For full Security event log access:
+Sentinel may request elevation automatically on startup.
+
+For reduced-access development sessions:
 
 ```powershell
-# Option 1: Use provided script
-.\scripts\run_as_admin.bat
-
-# Option 2: Right-click python.exe → Run as Administrator
+$env:SKIP_UAC = "1"
+python main.py
 ```
 
 </details>
@@ -414,80 +385,48 @@ For full Security event log access:
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| **Frontend** | PySide6 + QML | Modern declarative UI with animations |
-| **Backend** | Python 3.10+ | Business logic and system integration |
-| **AI Engine** | Groq / Claude / OpenAI | Cloud AI for event analysis and security chatbot |
-| **Database** | SQLite | Local persistence for scans and settings |
-| **Monitoring** | psutil + pynvml | System and GPU metrics |
-| **Events** | win32evtlog | Windows Event Log integration |
+| **Frontend** | PySide6 + QML | Desktop UI, theming, pages, and components |
+| **Backend** | Python 3.11+ | Application services, bridges, engines, and orchestration |
+| **Monitoring** | psutil, WMI, GPU integrations | Live system telemetry |
+| **Scanning** | Local engines + optional Nmap / VMware | Scan and investigation workflows |
+| **Persistence** | SQLite and local config | History, settings, and runtime state |
+| **Validation** | pytest, Ruff, MyPy, Bandit | Tests and quality checks |
 
 ### Design Principles
 
-- 🧱 **Clean Architecture** — Separation of concerns with clear boundaries
-- 💉 **Dependency Injection** — Testable, modular components
-- 🎨 **Singleton Theme System** — Consistent styling across all components
-- ⚡ **Async Processing** — Non-blocking UI with background workers
-- 🔒 **Privacy First** — Minimal data sent to AI providers, full offline mode available
+- 🧱 **Separation of concerns** between QML UI and Python services
+- ⚡ **Deferred startup** for heavier services
+- 🔌 **Optional integrations** that degrade gracefully when absent
+- 🧪 **CLI diagnostics** for easier local validation
+- 🔒 **Local-first operation** with optional external providers
 
 ### Project Structure
 
-```
-sentinel/
-├── 📁 app/                    # Python Backend
-│   ├── 🤖 ai/                 # AI engine and event analysis
-│   │   ├── groq_smart_assistant.py # Groq AI chatbot integration
-│   │   ├── event_explainer_v5.py   # Event explanation generator
-│   │   ├── event_id_knowledge.py   # Built-in knowledge base (500+ events)
-│   │   ├── event_rules_engine.py   # Offline rule-based explainer
-│   │   ├── security_chatbot_v4.py  # Security AI assistant backend
-│   │   ├── url_explainer.py        # URL threat analysis
-│   │   └── report_explainer.py     # Scan report AI interpreter
-│   ├── 🔧 core/               # Domain logic
-│   │   ├── container.py       # Dependency injection container
-│   │   ├── interfaces.py      # Abstract interfaces
-│   │   └── workers.py         # Background task workers
-│   ├── 🌐 infra/              # Infrastructure
-│   │   ├── sqlite_repo.py     # Database operations
-│   │   ├── events_windows.py  # Windows Event Log reader
-│   │   └── nmap_cli.py        # Nmap integration
-│   ├── 🖥️ ui/                 # QML ↔ Python Bridges
-│   │   ├── backend_bridge.py  # Main bridge (events, scans, monitoring)
-│   │   └── settings_service.py# Settings management
-│   ├── 🗂️ filefunction/       # File Shredder & Recovery
-│   │   └── backend_bridge.py  # Shredder worker + Carver (53 signatures)
-│   ├── 🧪 utils/              # Utilities
-│   │   └── secure_delete.py   # Multi-pass secure deletion engine
-│   ├── 🏖️ sandbox/            # Sandbox orchestration
-│   ├── 📈 gpu/                # GPU monitoring (NVIDIA + AMD)
-│   └── 🧪 tests/              # Unit tests
+```text
+graduationp/
+├── backend/
+│   ├── api/                 # QML-facing services and backend bridge objects
+│   ├── config/              # Environment-backed runtime settings
+│   ├── core/                # Startup, logging, DI, monitoring, notifications
+│   ├── engines/             # AI, scanning, sandbox, file, and security engines
+│   ├── infra/               # Integration helpers such as Nmap availability
+│   ├── tests/               # Automated tests
+│   └── utils/               # Diagnostics, admin helpers, support utilities
 │
-├── 📁 qml/                    # Qt Quick Frontend
-│   ├── main.qml               # Application root with sidebar navigation
-│   ├── 📄 pages/              # 14 application pages
-│   │   ├── HomePage.qml       # Dashboard with live metrics
-│   │   ├── EventViewer.qml    # AI-powered event viewer
-│   │   ├── SystemSnapshot.qml # Hardware/network/OS inventory
-│   │   ├── ScanCenter.qml     # File & URL scanning with VirusTotal
-│   │   ├── NetworkScan.qml    # Nmap 8-type network scanner
-│   │   ├── FileFunction.qml   # Secure Shredder + File Recovery
-│   │   ├── SandboxLabPage.qml # VMware sandbox detonation
-│   │   ├── SecurityAssistant.qml # AI chatbot (Groq-powered)
-│   │   ├── GPUMonitor.qml     # GPU telemetry & charts
-│   │   ├── DataLossPrevention.qml # DLP rules dashboard
-│   │   └── SettingsPage.qml   # Theme, API keys, preferences
-│   ├── 🧩 components/         # 48 reusable QML components
-│   │   ├── Card.qml           # Hover-enabled containers
-│   │   ├── Panel.qml          # Section containers
-│   │   ├── StatCard.qml       # Metric display cards
-│   │   └── ...                # More components
-│   └── 🎨 theme/              # Theme system (Dark/Light/System)
+├── frontend/qml/
+│   ├── main.qml             # App shell and route switching
+│   ├── components/          # Reusable QML building blocks
+│   ├── pages/               # Main pages such as ScanCenter and EventViewer
+│   ├── theme/               # Theme system
+│   ├── ui/                  # Theme manager and UI helpers
+│   └── ux/                  # Responsive / utility QML helpers
 │
-├── 📁 docs/                   # Documentation
-├── 📁 scripts/                # Helper scripts
-├── 📁 tools/                  # Standalone tools (sandbox agent, URL detonator)
-├── 📄 main.py                 # Application entry point
-├── 📄 requirements.txt        # Python dependencies
-└── 📄 README.md               # This file
+├── config/                  # JSON configuration assets
+├── docs/                    # User, API, guide, and project documentation
+├── scripts/                 # Local helper scripts
+├── .env.example             # Example environment configuration
+├── main.py                  # Desktop entrypoint with crash capture
+└── pyproject.toml           # Tooling and packaging configuration
 ```
 
 <br>
@@ -499,10 +438,11 @@ sentinel/
 
 | Issue | Solution |
 |-------|----------|
-| "Nmap not found" | Install Nmap and ensure it's in PATH (`where nmap`) |
-| "Not running with administrator privileges" | Use `scripts/run_as_admin.bat` |
-| "Could not set initial property duration" | Cosmetic warning only — safe to ignore |
-| AI explanations not appearing | Check `~/.sentinel/logs/` for AI worker errors |
+| `nmap` not detected | Install Nmap or set `NMAP_PATH`, then run diagnostics |
+| VMware actions fail | Verify `SANDBOX_VMRUN`, `SANDBOX_VMX`, snapshot, and guest credentials |
+| AI assistant unavailable | Check `GROQ_API_KEY` and confirm `OFFLINE_ONLY` is not `true` |
+| Reduced Windows visibility | Relaunch with administrator privileges |
+| Startup problems | Run `python -m backend --diagnose` and inspect exported diagnostics |
 
 </details>
 
@@ -511,7 +451,7 @@ sentinel/
 
 - 📝 **Open an Issue:** [GitHub Issues](https://github.com/mahmoudbadr238/graduationp/issues)
 - 📧 **Email:** mahmoudbadr238@gmail.com
-- 📚 **Documentation:** [docs/](docs/)
+- 📚 **Docs Index:** [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
 
 </details>
 
@@ -521,26 +461,27 @@ sentinel/
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| **OS** | Windows 10 (1809+) | Windows 11 (22H2+) |
-| **Python** | 3.10 | 3.11+ |
-| **RAM** | 2 GB | 4 GB |
-| **Storage** | 500 MB | 1 GB |
-| **Display** | 1280×720 | 1920×1080 |
+| **OS** | Windows 10 | Windows 11 |
+| **Python** | 3.11 | 3.11+ |
+| **RAM** | 4 GB | 8 GB |
+| **Storage** | 1 GB | More if sandbox artifacts are enabled |
+| **Display** | 1280x720 | 1920x1080 |
 
 <br>
 
 ## 🔐 Security & Privacy
 
-Sentinel is designed with privacy as a core principle:
+Sentinel is designed to run locally first, with optional cloud-connected
+features where configured.
 
 | Aspect | Implementation |
 |--------|----------------|
-| 🔒 **Data Storage** | All data stored locally in `~/.sentinel/sentinel.db` |
-| 🚫 **No Telemetry** | Zero usage statistics or analytics collected |
-| 🤖 **Cloud AI** | Event metadata sent to Groq/Claude/OpenAI; offline mode available without API key |
-| 🌐 **Optional APIs** | Nmap network scanning is opt-in only |
+| 🔒 **Local state** | Settings, history, and diagnostics are stored locally |
+| 🚫 **Optional providers** | External services are opt-in through environment variables |
+| 🤖 **AI usage** | Controlled through `GROQ_API_KEY` and `OFFLINE_ONLY` |
+| 🌐 **Tool integrations** | Nmap and VMware are optional local dependencies |
 
-📄 See [SECURITY.md](SECURITY.md) and [Privacy Policy](docs/PRIVACY.md) for details.
+📄 See [SECURITY.md](SECURITY.md) and [docs/PRIVACY.md](docs/PRIVACY.md) for details.
 
 <br>
 
@@ -548,67 +489,57 @@ Sentinel is designed with privacy as a core principle:
 
 | Category | Description |
 |----------|-------------|
-| 📘 **[Quick Start Guide](docs/QUICKSTART.md)** | Get running in 5 minutes |
-| 📗 **[User Manual](docs/user/USER_MANUAL.md)** | Complete feature reference |
-| 📙 **[API Integration](docs/api/API_INTEGRATION_GUIDE.md)** | AI & Nmap setup |
-| 📔 **[VMware Sandbox Lab](docs/sandbox_vmware.md)** | VMware Workstation setup for in-app detonation demos |
-| 📕 **[Architecture](docs/api/README_BACKEND.md)** | System design overview |
-| 📓 **[Contributing](docs/CONTRIBUTING.md)** | How to contribute |
+| 📘 **[Quick Start Guide](docs/QUICKSTART.md)** | Guided setup and first-run instructions |
+| 📗 **[User Manual](docs/user/USER_MANUAL.md)** | User-facing feature walkthrough |
+| 📙 **[Quick Reference](docs/user/QUICK_REFERENCE.md)** | Shortcuts and operational reference |
+| 📔 **[API Integration](docs/api/API_INTEGRATION_GUIDE.md)** | Integration and backend-oriented notes |
+| 📕 **[Backend Overview](docs/api/README_BACKEND.md)** | Backend structure and design details |
+| 📓 **[Sandbox VMware Guide](docs/sandbox_vmware.md)** | VMware setup and sandbox usage |
+| 📒 **[Contributing](CONTRIBUTING.md)** | Contribution workflow and validation steps |
 
 <br>
 
-## 🗺️ Roadmap
+## 🗺️ Project Status
 
-### ✅ v1.0.0 (Current)
+### ✅ Current Codebase
 
-- [x] Real-time system monitoring (CPU, RAM, GPU, Disk, Network)
-- [x] AI-powered event explanations (Groq / Claude / OpenAI)
-- [x] Offline knowledge base for 500+ Windows Event IDs
-- [x] Windows Event Viewer with severity color-coding
-- [x] Scan Center with VirusTotal API integration
-- [x] 8-type Nmap network scanner with streaming output
-- [x] Secure file shredder (multi-pass, SSD-aware)
-- [x] File recovery / carving (53+ signatures)
-- [x] VMware Sandbox Lab with live preview
-- [x] GPU monitoring (NVIDIA + AMD)
-- [x] Security AI Assistant chatbot (Groq-powered)
-- [x] Data Loss Prevention dashboard
-- [x] Theme support (Dark/Light/System) with persistence
-- [x] Scan history with SQLite + CSV export
-- [x] Settings persistence across restarts
+- [x] QML desktop shell with sidebar navigation
+- [x] Event Viewer, System Snapshot, and System Monitor pages
+- [x] Scan Center with file, URL, and history flows
+- [x] Nmap result page and optional network scan integration
+- [x] File Function workflows
+- [x] VMware Sandbox Lab integration
+- [x] Security Assistant and notification center
+- [x] Diagnostics, settings reset, and export helpers
+- [x] Test, lint, and static-analysis tooling in the repo
 
-### 🚧 v1.1.0 (Planned)
+### 🚧 Ongoing Maintenance Areas
 
-- [ ] First-run setup wizard
-- [ ] Historical metrics charts
-- [ ] Enhanced DLP with live file monitoring
-- [ ] Automated test suite expansion
-- [ ] Multi-language support (i18n)
-
-### 🔮 v2.0.0 (Future)
-
-- [ ] Plugin system for custom scanners
-- [ ] Cloud sync (optional, encrypted)
-- [ ] Threat intelligence feed integration
-- [ ] Automated incident response playbooks
+- [ ] Documentation alignment as features evolve
+- [ ] Continued QA expansion across desktop workflows
+- [ ] Additional hardening around optional integrations
+- [ ] More coverage for scan and sandbox paths
 
 <br>
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) first.
+Contributions are welcome. Please read the current
+[Contributing Guide](CONTRIBUTING.md) first.
 
 ```bash
 # Fork and clone
 git clone https://github.com/YOUR_USERNAME/graduationp.git
+cd graduationp
 
-# Create feature branch
+# Create a branch
 git checkout -b feature/amazing-feature
 
-# Make changes and commit
-git commit -m "feat: Add amazing feature"
+# Validate your changes
+python -m backend --diagnose
+python -m pytest backend/tests -q
 
-# Push and create PR
+# Push and open a PR
 git push origin feature/amazing-feature
 ```
 
@@ -616,7 +547,8 @@ git push origin feature/amazing-feature
 
 ## 📜 License
 
-This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for
+details.
 
 <br>
 
@@ -624,13 +556,12 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 | Technology | Usage |
 |------------|-------|
-| [Qt Framework](https://www.qt.io/) | Cross-platform UI framework |
+| [Qt Framework](https://www.qt.io/) | Desktop UI framework |
 | [PySide6](https://doc.qt.io/qtforpython/) | Python bindings for Qt |
-| [psutil](https://github.com/giampaolo/psutil) | System monitoring |
-| [Nmap](https://nmap.org/) | Network scanning |
-| [Groq](https://groq.com/) | Free-tier cloud AI inference (default) |
-| [Anthropic Claude](https://www.anthropic.com/) | AI-powered explanations (alternative) |
-| [OpenAI](https://openai.com/) | AI-powered explanations (fallback) |
+| [psutil](https://github.com/giampaolo/psutil) | System telemetry |
+| [Groq](https://groq.com/) | AI-backed assistant and analysis flows |
+| [Nmap](https://nmap.org/) | Optional network scanning |
+| [VMware Workstation](https://www.vmware.com/) | Optional sandbox integration |
 
 <br>
 
@@ -640,7 +571,7 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 <br>
 
-**Built with ❤️ as a Graduation Project**
+**Built as a graduation project focused on practical desktop security workflows**
 
 <br>
 

@@ -74,7 +74,7 @@ docs/api/
 │   └─ Backend architecture and design patterns
 │
 ├── 📄 API_INTEGRATION_GUIDE.md
-│   └─ How to integrate with VirusTotal, VirusShare, etc.
+│   └─ How to configure optional services and external tools
 │
 ├── 📄 PERFORMANCE.md
 │   └─ Performance optimization and tuning

@@ -411,7 +411,7 @@ class StaticScanner:
 
     @staticmethod
     def _detect_file_type(content: bytes, pe: "PEAnalysis | None") -> str:
-        """Return a human-readable file type string (VirusTotal-style)."""
+        """Return a human-readable file type string."""
         if pe and pe.is_pe:
             arch = "64-bit" if pe.is_64bit else "32-bit"
             if pe.is_dll:

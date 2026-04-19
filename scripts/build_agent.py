@@ -4,7 +4,7 @@ Usage:
     python build_agent.py
 
 What it does:
-    1. Runs PyInstaller on tools/sandbox_agent/agent_payload.py
+    1. Runs PyInstaller on payload/sandbox_agent/agent_payload.py
     2. Output name: sentinel_agent.exe  (--onefile --noconsole)
     3. Hidden imports: pyautogui, tkinter
     4. Copies the result to  <project_root>/dist/sentinel_agent.exe

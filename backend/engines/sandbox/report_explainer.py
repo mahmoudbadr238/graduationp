@@ -12,7 +12,7 @@ Returns an ExplainerResult dict:
   "error":         "" | "<error message>"
 }
 
-Uses the Groq provider already in the repo (app/ai/providers/groq.py).
+Uses the Groq provider already in the repo (backend.engines.ai.providers.groq).
 Falls back to an offline rule-based explanation if no API key is set.
 """
 

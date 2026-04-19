@@ -37,12 +37,12 @@ if (-not (Get-Command pytest -ErrorAction SilentlyContinue)) {
 }
 
 # Build test arguments
-$testArgs = @("app/tests", "-v")
+$testArgs = @("backend/tests", "-v")
 
 if ($Coverage) {
     Write-Host "[INFO] Code coverage enabled" -ForegroundColor Cyan
     $testArgs += @(
-        "--cov=app",
+        "--cov=backend",
         "--cov-report=term-missing",
         "--cov-report=html:htmlcov",
         "--cov-fail-under=60"

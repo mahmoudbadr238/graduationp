@@ -5,7 +5,7 @@ Sentinel Pre-Flight Diagnostic Suite
 Validates the ENTIRE Sentinel architecture before launch:
   1. System & Privilege Hooks  (Admin, pip packages)
   2. Backend Service Integration  (WMI, Defender CLI, Firewall)
-  3. API & AI Automation  (.env keys, Groq/VT reachability, agent payload)
+  3. API & AI Automation  (.env keys, Groq reachability, agent payload)
   4. UI / QML Compilation  (headless QQmlEngine validation)
 
 Run:
@@ -293,17 +293,6 @@ def test_env_file() -> Tuple[dict, bool]:
             "ACTION: Edit .env -> set GROQ_API_KEY=gsk_... (get one at https://console.groq.com/)",
         )
 
-    # --- Check VT_API_KEY ---
-    vt_key = env_vars.get("VT_API_KEY", "")
-    if vt_key:
-        _pass("VT_API_KEY", f"Present ({len(vt_key)} chars)")
-    else:
-        _warn(
-            "VT_API_KEY",
-            "Key is empty or missing in .env (VirusTotal scanning will be disabled)",
-            "ACTION: Edit .env -> set VT_API_KEY=... (get one at https://www.virustotal.com/gui/join-us)",
-        )
-
     return env_vars, groq_ok
 
 
@@ -364,74 +353,24 @@ def test_groq_reachability(api_key: str) -> None:
         )
 
 
-def test_vt_reachability(api_key: str) -> None:
-    """Ping the VirusTotal API with the key to verify 200 OK."""
-    try:
-        import requests
-    except ImportError:
-        _fail("VirusTotal API reachability", "requests not installed", "ACTION: pip install requests")
-        return
-
-    url = "https://www.virustotal.com/api/v3/users/me"
-    headers = {
-        "x-apikey": api_key,
-        "Accept": "application/json",
-    }
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            _pass("VirusTotal API reachability", "HTTP 200 -- key valid")
-        elif resp.status_code == 401:
-            _fail(
-                "VirusTotal API reachability",
-                "HTTP 401 -- Invalid API key",
-                "ACTION: Edit .env -> replace VT_API_KEY with a valid key from virustotal.com",
-            )
-        elif resp.status_code == 403:
-            _fail(
-                "VirusTotal API reachability",
-                "HTTP 403 -- Access denied (key may lack permissions)",
-                "ACTION: Verify VT_API_KEY has read permissions; check account quota",
-            )
-        else:
-            _fail(
-                "VirusTotal API reachability",
-                f"HTTP {resp.status_code}",
-                "ACTION: Check VirusTotal API status and key validity",
-            )
-    except requests.exceptions.Timeout:
-        _fail(
-            "VirusTotal API reachability",
-            "Timed out after 5s",
-            "ACTION: Check internet connectivity to www.virustotal.com",
-        )
-    except Exception as exc:
-        _fail(
-            "VirusTotal API reachability",
-            f"Error: {exc}",
-            "ACTION: Review network configuration",
-        )
-
-
 def test_agent_payload() -> None:
     """Verify the sentinel_agent.exe payload exists in the expected location."""
     # Check the source script (always needed for builds)
-    source = WORKSPACE / "tools" / "sandbox_agent" / "agent_payload.py"
+    source = WORKSPACE / "payload" / "sandbox_agent" / "agent_payload.py"
     if source.exists():
         _pass("Agent source (agent_payload.py)", f"{source.stat().st_size} bytes")
     else:
         _fail(
             "Agent source (agent_payload.py)",
             f"Not found at {source}",
-            "ACTION: Restore tools/sandbox_agent/agent_payload.py from version control",
+            "ACTION: Restore payload/sandbox_agent/agent_payload.py from version control",
         )
 
     # Check the compiled exe in common output locations
     exe_candidates = [
         WORKSPACE / "dist" / "sentinel_agent.exe",
         WORKSPACE / "build" / "sentinel_agent" / "sentinel_agent.exe",
-        WORKSPACE / "tools" / "sandbox_agent" / "dist" / "sentinel_agent.exe",
+        WORKSPACE / "payload" / "sandbox_agent" / "dist" / "sentinel_agent.exe",
     ]
     found = None
     for p in exe_candidates:
@@ -447,7 +386,7 @@ def test_agent_payload() -> None:
         _warn(
             "Agent payload (sentinel_agent.exe)",
             f"Compiled exe not found (searched: {searched})",
-            "ACTION: Run 'python build_agent.py' to compile the agent payload",
+            "ACTION: Run 'python scripts/build_agent.py' to compile the agent payload",
         )
 
 
@@ -455,33 +394,19 @@ def test_agent_payload() -> None:
 # 4. UI / QML COMPILATION TEST
 # ===========================================================================
 
-# Target files: main.qml + all registered pages + snapshot subpages
-QML_TARGETS = [
-    "qml/main.qml",
-    # Pages
-    "qml/pages/HomePage.qml",
-    "qml/pages/EventViewer.qml",
-    "qml/pages/SystemSnapshot.qml",
-    "qml/pages/GPUMonitor.qml",
-    "qml/pages/ScanHistory.qml",
-    "qml/pages/SystemMonitor.qml",
-    "qml/pages/NetworkScan.qml",
-    "qml/pages/NmapScanResultPage.qml",
-    "qml/pages/ScanCenter.qml",
-    "qml/pages/DataLossPrevention.qml",
-    "qml/pages/FileFunction.qml",
-    "qml/pages/SandboxLabPage.qml",
-    "qml/pages/SettingsPage.qml",
-    "qml/pages/SecurityAssistant.qml",
-    "qml/pages/ResolutionReport.qml",
-    # Snapshot sub-pages
-    "qml/pages/snapshot/SecurityPage.qml",
-    "qml/pages/snapshot/OverviewPage.qml",
-    "qml/pages/snapshot/OSInfoPage.qml",
-    "qml/pages/snapshot/NetworkPage.qml",
-    "qml/pages/snapshot/NetworkAdaptersPage.qml",
-    "qml/pages/snapshot/HardwarePage.qml",
-]
+QML_ROOT = WORKSPACE / "frontend" / "qml"
+
+
+def _iter_qml_targets() -> list[str]:
+    """Compile the current app shell and all page entrypoints under frontend/qml."""
+    targets = ["frontend/qml/main.qml"]
+    pages_dir = QML_ROOT / "pages"
+    if pages_dir.is_dir():
+        targets.extend(
+            str(path.relative_to(WORKSPACE)).replace("\\", "/")
+            for path in sorted(pages_dir.rglob("*.qml"))
+        )
+    return targets
 
 
 def test_qml_compilation() -> None:
@@ -508,20 +433,20 @@ def test_qml_compilation() -> None:
     engine = QQmlEngine()
 
     # Register the same import paths the real application uses
-    qml_root = WORKSPACE / "qml"
+    qml_root = QML_ROOT
     engine.addImportPath(str(qml_root))
     for subdir in ("components", "pages", "theme", "ui", "ux"):
         p = qml_root / subdir
         if p.is_dir():
             engine.addImportPath(str(p))
 
-    # Also add the qml/ parent so "import '../components'" works
-    engine.addImportPath(str(WORKSPACE))
+    # Also add the frontend/ parent so "import '../components'" works
+    engine.addImportPath(str(WORKSPACE / "frontend"))
 
     qml_pass = 0
     qml_fail = 0
 
-    for rel in QML_TARGETS:
+    for rel in _iter_qml_targets():
         qml_path = WORKSPACE / rel
         test_name = f"QML: {rel}"
 
@@ -645,12 +570,6 @@ def main() -> None:
             "Skipped -- no valid GROQ_API_KEY",
             "ACTION: Fix .env first, then re-run diagnostics",
         )
-
-    vt_key = env_vars.get("VT_API_KEY", "")
-    if vt_key:
-        test_vt_reachability(vt_key)
-    else:
-        _warn("VirusTotal API reachability", "Skipped -- VT_API_KEY not set (optional)")
 
     test_agent_payload()
 

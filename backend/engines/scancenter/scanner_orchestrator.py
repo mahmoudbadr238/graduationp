@@ -844,8 +844,8 @@ class ScannerOrchestrator(QThread):
         elif sandbox.persistence_indicators or sandbox.security_tampering:
             paras.append(
                 "Assessment: While ClamAV did not flag the file, the sandbox detected suspicious "
-                "behavioral indicators. Treat this file with caution and consider uploading it to "
-                "VirusTotal for a second opinion."
+                "behavioral indicators. Treat this file with caution and consider checking it with "
+                "an external reputation service for a second opinion."
             )
         elif clam_status == "clean" and sandbox.executed:
             paras.append(
@@ -1068,7 +1068,7 @@ class ScannerOrchestrator(QThread):
             summary = "This file has suspicious characteristics."
             actions = [
                 "Avoid running this file until you can verify its source.",
-                "Upload it to VirusTotal.com for a second opinion.",
+                "Check it with an external reputation or sandbox service for a second opinion.",
             ]
         else:
             summary = "This file appears safe based on our analysis."

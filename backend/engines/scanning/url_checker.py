@@ -62,7 +62,7 @@ class URLChecker:
 
         Args:
             lists_dir: Optional path to URL lists directory.
-                      Defaults to app/scanning/url_lists/
+                      Defaults to backend/engines/scanning/url_lists/
         """
         self._lists_dir = lists_dir or self._get_default_lists_dir()
 

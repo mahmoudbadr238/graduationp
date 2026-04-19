@@ -6,7 +6,7 @@ Runs samples in a restricted Windows environment using:
 - Optional network blocking via Windows Firewall rule
 - File activity monitoring
 
-For full VMware behavioral analysis see app/sandbox_vmware/.
+For full VMware behavioral analysis see backend/engines/sandbox_vmware/.
 100% Offline - No cloud APIs or external services.
 """
 

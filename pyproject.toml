@@ -36,7 +36,7 @@ target-version = "py311"
 line-length = 88
 
 # Include/exclude patterns
-include = ["app/**/*.py", "*.py"]
+include = ["backend/**/*.py", "payload/**/*.py", "scripts/**/*.py", "*.py"]
 exclude = [
     ".git",
     ".venv",
@@ -47,6 +47,7 @@ exclude = [
     "*.egg-info",
     ".mypy_cache",
     ".pytest_cache",
+    "pytest-cache-files-*",
 ]
 
 [tool.ruff.lint]
@@ -148,14 +149,14 @@ max-branches = 15
 # __init__.py files can have unused imports
 "__init__.py" = ["F401"]
 # Qt/QML files need camelCase for Signal names and Slot methods
-"app/ui/*.py" = ["N802", "N815"]  # Allow camelCase function names and class variables for Qt
-"app/gpu/*.py" = ["E501"]  # GPU telemetry has some unavoidable long lines
-# Relative imports are acceptable within app package
-"app/**/*.py" = ["TID252"]
+"backend/api/*.py" = ["N802", "N815"]  # Allow camelCase function names and class variables for Qt
+"backend/engines/gpu/*.py" = ["E501"]  # GPU telemetry has some unavoidable long lines
+# Relative imports are acceptable within the backend package
+"backend/**/*.py" = ["TID252"]
 
 [tool.ruff.lint.isort]
 # Import sorting configuration
-known-first-party = ["app"]
+known-first-party = ["backend", "payload"]
 known-third-party = ["PySide6", "psutil"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
@@ -193,12 +194,13 @@ strict_equality = true
 strict_concatenate = true
 
 # Include/exclude paths
-files = ["app/**/*.py", "*.py"]
+files = ["backend/**/*.py", "main.py"]
 exclude = [
     "build",
     "dist",
     ".venv",
     "venv",
+    "pytest-cache-files-*",
 ]
 
 # Show error codes
@@ -236,7 +238,7 @@ exclude_dirs = [
 # PYTEST - Unit Testing
 # ============================================================================
 [tool.pytest.ini_options]
-testpaths = ["app/tests"]
+testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -256,13 +258,13 @@ filterwarnings = [
 # COVERAGE - Test Coverage
 # ============================================================================
 [tool.coverage.run]
-source = ["app"]
+source = ["backend"]
 branch = true
 omit = [
     "*/__pycache__/*",
     "*/tests/*",
     "*/test_*.py",
-    "app/ui/gpu_backend.py",  # Multiprocessing hard to cover
+    "backend/api/gpu_backend.py",  # Multiprocessing hard to cover
 ]
 
 [tool.coverage.report]

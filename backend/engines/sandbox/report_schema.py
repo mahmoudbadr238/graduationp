@@ -1,4 +1,4 @@
-"""VirusTotal-style final report schema.
+"""Final report schema for sandbox analysis.
 
 Single canonical report.json produced by every analysis run.
 Both the UI and AI explainer consume this schema.
@@ -93,7 +93,7 @@ class VerdictSection(TypedDict):
 
 
 class SentinelReport(TypedDict):
-    """Full VirusTotal-style analysis report.
+    """Full analysis report.
 
     Saved as ``report.json`` in the job artifacts directory.
     """

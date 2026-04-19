@@ -1,5 +1,5 @@
 """
-Unit tests for the VirusTotal-style sandbox reporting pipeline.
+Unit tests for the sandbox reporting pipeline.
 
 Covers:
     - backend.engines.sandbox.report_schema  (score_to_risk, build_empty_report)

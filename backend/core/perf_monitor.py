@@ -1,4 +1,4 @@
-# app/core/perf_monitor.py
+# backend/core/perf_monitor.py
 """
 Lightweight in-app performance monitor for Sentinel.
 

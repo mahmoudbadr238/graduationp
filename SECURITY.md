@@ -13,118 +13,119 @@ If you discover a security vulnerability in Sentinel, please email:
 **Subject**: `[SECURITY] Vulnerability in Sentinel`
 
 Include:
-1. Description of the vulnerability
+
+1. Description of the issue
 2. Steps to reproduce
 3. Potential impact
-4. Suggested fix (if available)
+4. Affected environment or feature
+5. Suggested mitigation, if you have one
 
-We will:
-- Acknowledge receipt within 48 hours
-- Investigate and confirm the issue
-- Develop and test a fix
-- Release a patched version
-- Credit you in the release notes (unless you prefer to remain anonymous)
+### Response Expectations
 
-### Security Response Timeline
+Sentinel follows a best-effort security response process:
 
-- **P1 (Critical)**: Patch released within 24-48 hours
-- **P2 (High)**: Patch released within 1 week
-- **P3 (Medium)**: Patch released within 2 weeks
-- **P4 (Low)**: Fixed in next regular release
+- **Acknowledgement target**: within 5 business days
+- **Triage**: as soon as the issue can be reproduced and scoped
+- **Fix timing**: depends on severity, exploitability, and maintainer capacity
+
+If the report is valid, the fix may land on `main` before it appears in a tagged
+release.
 
 ## Supported Versions
 
-| Version | Status            | Release Date | End of Life |
-|---------|------------------|--------------|-------------|
-| 1.0.x   | Current (Stable) | Jan 2025     | Jan 2027    |
-| 0.x.x   | Legacy           | Pre-release  | Ended       |
+| Version | Status |
+|---------|--------|
+| `main` | Supported |
+| Latest tagged release | Best-effort support |
+| Older releases / old commits | Not supported |
 
-Only the latest version receives security patches.
+Only actively maintained code receives security fixes.
 
 ## Known Security Considerations
 
 ### Admin Privileges
 
-Sentinel requests administrator privileges to access:
-- Windows Security Event logs
-- Firewall status
-- TPM and Secure Boot status
-- Disk encryption (BitLocker)
+Sentinel may request administrator privileges to access protected Windows data
+and security-related features.
 
-**Why**: These features require elevated access on Windows. Without admin rights, security monitoring is degraded but the app still functions.
+Examples include:
 
-### GPU Monitoring
+- Windows event sources that require elevation
+- system-level security visibility
+- privileged monitoring and system inspection paths
 
-- NVIDIA GPU monitoring uses NVIDIA's official pynvml library
-- Power management queries may fail on some hardware (gracefully degraded)
-- No data is sent to NVIDIA (runs locally)
+Without admin rights, the app can still run, but visibility is reduced.
+
+### AI and External Providers
+
+Sentinel can call optional external providers when configured:
+
+- **Groq** via `GROQ_API_KEY`
+- **Sentry** via `SENTRY_DSN`
+
+Security implications:
+
+- Cloud-connected features are optional
+- Data handling depends on the providers you enable
+- `OFFLINE_ONLY=true` should disable external API usage
 
 ### Network Scanning (Nmap)
 
-- **Optional**: Only runs if Nmap is installed and explicitly enabled
-- **Local only**: Scans do not leave your network without explicit user action
-- **Process isolation**: Nmap runs as a subprocess with timeout protection
+- **Optional**: used only when Nmap is available
+- **Locally initiated**: runs from the local machine
+- **Separate tool dependency**: keep the Nmap installation updated
 
-### AI-Powered Analysis
+### VMware Sandbox Integration
 
-- **Cloud-based**: Uses Groq (free tier), Claude, or OpenAI for security explanations
-- **User initiated**: AI analysis only runs when requested by user
-- **Data sent**: Event descriptions and system context sent for analysis
-- **Offline mode**: Built-in knowledge base works without any API key
-- **Privacy**: Refer to Groq/Anthropic/OpenAI privacy policies for data handling
+- **Optional**: only active when VMware is configured
+- **Sensitive configuration**: guest credentials and VM paths must be kept local
+- **Operational risk**: sandbox usage requires careful VM hygiene and snapshot management
 
-### Crash Reporting (Sentry)
+### Diagnostics and Local Artifacts
 
-- **Requires DSN**: Only enabled if `SENTRY_DSN` environment variable is set
-- **Crash-only**: Stack traces sent only on unhandled exceptions
-- **Opt-in**: User must explicitly configure for crash reporting
+Do not publish or commit:
+
+- `.env`
+- API keys
+- VMware guest credentials
+- diagnostics exports with sensitive machine data
+- code signing material
 
 ## Code Security Measures
 
-### Dependency Management
+### Dependency and Tooling Checks
 
-- **pip-audit**: Scans dependencies for known vulnerabilities
-- **Lockfile**: `requirements.lock` pins exact versions
-- **Minimal deps**: Only essential libraries (PySide6, psutil, pynvml)
+- **Bandit** is available for Python security linting
+- **pip-audit** is used in CI for dependency auditing
+- **Ruff** and **MyPy** are used for general quality and static validation
 
-### Code Quality
+### Current Validation Commands
 
-- **Ruff linter**: Enforces PEP 8 and security-focused rules
-- **Bandit**: Scans for common security anti-patterns
-- **Type hints**: Python 3.11+ with mypy compatibility
-- **No eval/exec**: Strict prohibition on dynamic code execution
+```bash
+python -m backend --diagnose
+python -m pytest backend/tests -q
+python -m bandit -s B101 -r backend main.py
+python -m ruff check backend main.py scripts
+python -m mypy backend main.py --config-file=pyproject.toml
+```
 
-### Process Isolation
+### Operational Practices
 
-- GPU telemetry runs in separate process (crashproof)
-- Event reading runs in background worker threads
-- UI thread never blocks on I/O or system calls
-
-### Exception Handling
-
-- Broad exception catching only in boundary code (Windows API, GPU queries)
-- Specific exception types caught in hot paths
-- No secrets logged (API keys, certificates filtered from logs)
+- Keep optional integrations disabled unless needed
+- Avoid logging secrets
+- Review external-provider configuration carefully
+- Treat sandbox credentials and diagnostic exports as sensitive
 
 ## Best Practices for Users
 
-1. **Keep updated**: Update to latest version promptly
-2. **Audit settings**: Review `~/.sentinel/settings.json` or `%APPDATA%/Sentinel/settings.json`
-3. **Manage API keys**: Store API keys in `.env`, never in code or commit history
-4. **Logs**: Periodically delete old logs to prevent accumulation
-5. **Permissions**: Run with minimum required privileges (not always feasible on Windows)
-
-## Security Tests
-
-- **Unit tests**: `pytest -q app/tests/`
-- **Security lint**: `bandit -q -r app main.py`
-- **Dependency audit**: `pip-audit`
-- **Style & types**: `ruff check . && mypy .`
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for security patches and fixes per release.
+1. Keep the app and its dependencies updated
+2. Store secrets in `.env`, not in source files
+3. Review diagnostics before sharing them
+4. Use least privilege where practical
+5. Recheck Nmap and VMware setup after system changes
 
 ## Questions?
 
-For security concerns or questions, please open a [GitHub Discussion](https://github.com/mahmoudbadr238/graduationp/discussions/categories/security) or email security@example.com.
+For security-sensitive issues, use email only.
+
+For non-security bugs or feature requests, use the normal GitHub issue flow.

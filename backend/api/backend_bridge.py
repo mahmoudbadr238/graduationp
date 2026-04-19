@@ -110,7 +110,7 @@ class BackendBridge(QObject):
     sandboxWindowFound = Signal(bool)  # Whether sandbox window was found
     sandboxAutopilotAction = Signal(str)  # Autopilot performed an action (JSON)
 
-    # URL scan signals (VirusTotal-like, 100% local)
+    # URL scan signals (local-first reputation checks)
     urlScanStarted = Signal()
     urlScanProgress = Signal(str, int)  # stage name, progress %
     urlScanFinished = Signal(dict)  # result with verdict, score, evidence, explanation
@@ -1229,11 +1229,6 @@ class BackendBridge(QObject):
             except Exception as e:
                 logger.debug(f"Watchdog unregister failed: {e}")
 
-    @Slot(result=bool)
-    def virusTotalEnabled(self):
-        """Check if VirusTotal integration is enabled."""
-        return self.file_scanner is not None and self.url_scanner is not None
-
     @Slot()
     def loadScanHistory(self):
         """Load all scan records from database (async, never blocks UI)."""
@@ -1354,7 +1349,7 @@ class BackendBridge(QObject):
         """
         if not self.file_scanner:
             self.toast.emit(
-                "error", "File scanning not available (VirusTotal API key required)"
+                "error", "File scanning not available in the current configuration"
             )
             return
 
@@ -1410,7 +1405,7 @@ class BackendBridge(QObject):
 
                 self.scanFinished.emit("file", result)
 
-                # Check VT results if available
+                # Check reputation results if available
                 if result.get("vt_check") and result.get("vt_result", {}).get("found"):
                     vt = result["vt_result"]
                     malicious = vt.get("malicious", 0)
@@ -1462,7 +1457,7 @@ class BackendBridge(QObject):
         if not self.url_scanner:
             self.toast.emit(
                 "error",
-                "URL scanning not available (VirusTotal API key not configured)",
+                "URL scanning not available in the current configuration",
             )
             return
 
@@ -1573,7 +1568,7 @@ class BackendBridge(QObject):
     _vmware_job_id: str | None = None
     _vmware_cancel_events: dict = {}  # job_id → threading.Event
 
-    # URL scan state (VirusTotal-like, 100% local)
+    # URL scan state (local-first reputation checks)
     _url_scan_in_progress = False
     _url_scan_stage = ""
     _url_scan_progress = 0
@@ -4697,7 +4692,7 @@ class BackendBridge(QObject):
             try:
                 with open(report_path, encoding="utf-8") as fh:
                     report = _json.load(fh)
-                # Use v2 AI explainer (app/ai/report_explainer.py)
+                # Use the current v2 AI explainer in backend.engines.ai.
                 try:
                     from backend.engines.ai.report_explainer import explain_report as _explain_v2
 

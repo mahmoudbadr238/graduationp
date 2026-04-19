@@ -107,7 +107,7 @@ Open Event Viewer (Ctrl+1) for AI-powered Windows event analysis:
 Open Scan Center (Ctrl+5) for file and URL scanning:
 - Drag-and-drop files for analysis
 - Paste URLs for threat detection
-- VirusTotal integration (optional, set `VT_API_KEY` in `.env`)
+- Review the generated report and scan history inside the app
 
 ### Secure File Shredder
 Open File Functions for secure file deletion:

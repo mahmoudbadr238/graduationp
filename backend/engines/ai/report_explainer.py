@@ -1,4 +1,4 @@
-"""AI explainer for the v2 SentinelReport schema (app/scanning/report_schema.py).
+"""AI explainer for the v2 SentinelReport schema.
 
 Produces plain-English explanations aimed at non-technical Windows users.
 
@@ -13,7 +13,7 @@ Return schema (ExplainerResult):
   "error":              "" | "<error message>"
 }
 
-Uses the Groq provider already in the repo (app/ai/providers/groq.py).
+Uses the Groq provider already in the repo (backend.engines.ai.providers.groq).
 Falls back to a rule-based offline explanation if no API key is set.
 """
 
