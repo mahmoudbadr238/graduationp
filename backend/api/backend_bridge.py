@@ -1992,8 +1992,7 @@ class BackendBridge(QObject):
             folder = ReportWriter().reports_dir
 
         if folder.exists():
-            import sys
-            _detach = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
+            _detach = subprocess.DETACHED_PROCESS
             subprocess.Popen(["explorer", str(folder)], creationflags=_detach)
 
     @Slot(result=bool)
@@ -3527,9 +3526,8 @@ class BackendBridge(QObject):
             self.nmapScanOutput.emit(scan_id, f"[INFO] Command: {' '.join(cmd)}\n")
             self.nmapScanOutput.emit(scan_id, "-" * 60 + "\n\n")
 
-            # Platform-specific flags
-            _IS_WINDOWS = sys.platform == "win32"
-            flags = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
+            # Hide console window for subprocess
+            flags = subprocess.CREATE_NO_WINDOW
 
             try:
                 # Start process
@@ -3661,24 +3659,13 @@ class BackendBridge(QObject):
     def openNmapReport(self, report_path: str) -> None:
         """Open a saved report file."""
         import os
-        import sys
 
         if not os.path.exists(report_path):
             self.toast.emit("error", "Report file not found")
             return
 
         try:
-            if sys.platform == "win32":
-                os.startfile(report_path)
-            elif sys.platform == "darwin":
-                import subprocess
-
-                subprocess.run(["open", report_path], check=False)
-            else:
-                import subprocess
-
-                subprocess.run(["xdg-open", report_path], check=False)
-
+            os.startfile(report_path)
             self.toast.emit("success", "Opening report...")
         except Exception as e:
             self.toast.emit("error", f"Could not open report: {e}")

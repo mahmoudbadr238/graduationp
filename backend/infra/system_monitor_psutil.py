@@ -9,8 +9,7 @@ import sys
 from typing import Any
 
 # Hide console windows for subprocess calls on Windows
-_IS_WINDOWS = sys.platform == "win32"
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 import psutil
 

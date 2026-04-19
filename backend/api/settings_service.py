@@ -35,9 +35,6 @@ class SettingsService(QObject):
         super().__init__(parent)
 
         self._platform = platform.system()
-        self._is_windows = self._platform == "Windows"
-        self._is_linux = self._platform == "Linux"
-        self._is_macos = self._platform == "Darwin"
 
         # QSettings persists to Windows Registry under
         # HKEY_CURRENT_USER\Software\SentinelSecurity\SentinelApp
@@ -154,8 +151,7 @@ class SettingsService(QObject):
             self._start_with_system = value
             self._qs.setValue("startWithSystem", value)
             self.startWithSystemChanged.emit()
-            if self._is_windows:
-                self._set_windows_autostart(value)
+            self._set_windows_autostart(value)
 
     @Property(bool, notify=sendErrorReportsChanged)
     def sendErrorReports(self) -> bool:
@@ -191,19 +187,11 @@ class SettingsService(QObject):
 
     @Property(bool, constant=True)
     def isWindows(self) -> bool:
-        return self._is_windows
-
-    @Property(bool, constant=True)
-    def isLinux(self) -> bool:
-        return self._is_linux
-
-    @Property(bool, constant=True)
-    def isMacOS(self) -> bool:
-        return self._is_macos
+        return True
 
     @Property(bool, constant=True)
     def supportsAutostart(self) -> bool:
-        return self._is_windows
+        return True
 
     @Property(str, constant=True)
     def settingsPath(self) -> str:
@@ -214,8 +202,6 @@ class SettingsService(QObject):
     # ------------------------------------------------------------------
     def _set_windows_autostart(self, enable: bool):
         """Add/remove Sentinel from HKCU\\...\\Run via winreg."""
-        if not self._is_windows:
-            return
         try:
             import winreg
 
@@ -264,8 +250,7 @@ class SettingsService(QObject):
         self._send_error_reports = False
         self._network_unit = "auto"
 
-        if self._is_windows:
-            self._set_windows_autostart(False)
+        self._set_windows_autostart(False)
 
         # Persist
         self._qs.setValue("themeMode", self._theme_mode)

@@ -31,8 +31,7 @@ VULN_SCAN_TIMEOUT = 3600  # 1 hour for vulnerability scans
 RATE_LIMIT_DELAY = 1  # Delay between scans (seconds)
 
 # Platform detection
-_IS_WINDOWS = sys.platform == "win32"
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 # Scan type profiles - each maps to specific nmap arguments
 # User NEVER provides these flags, only the scan type

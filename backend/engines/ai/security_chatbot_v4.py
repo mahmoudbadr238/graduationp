@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # Hide console windows on Windows for background subprocess calls
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 # Maximum tool-call round-trips before we force a text reply
 MAX_TOOL_ROUNDS = 5

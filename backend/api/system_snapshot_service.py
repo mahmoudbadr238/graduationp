@@ -1,4 +1,4 @@
-"""Cross-platform System Snapshot Service using psutil."""
+"""Windows System Snapshot Service using psutil."""
 
 import platform
 import socket
@@ -12,17 +12,13 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from backend.utils.admin import check_admin
 from backend.utils.security_info import SecurityInfo
 
-# Subprocess flags - CREATE_NO_WINDOW only works on Windows
-_IS_WINDOWS = platform.system() == "Windows"
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
+# Subprocess flags - hide console windows for background calls
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 
 class SystemSnapshotService(QObject):
-    """Cross-platform system monitoring service using psutil.
+    """Windows system monitoring service using psutil."""
 
-    Works on Windows, Linux, and macOS. Platform-specific features
-    are guarded and degrade gracefully.
-    """
 
     # Signals for property changes
     cpuUsageChanged = Signal()
@@ -60,11 +56,8 @@ class SystemSnapshotService(QObject):
         # Connect internal signal for thread-safe security info updates
         self._securityInfoReadyInternal.connect(self._onSecurityInfoReady)
 
-        # Detect platform once
+        # Platform info
         self._platform = platform.system()
-        self._is_windows = self._platform == "Windows"
-        self._is_linux = self._platform == "Linux"
-        self._is_macos = self._platform == "Darwin"
 
         # Metrics
         self._cpu_usage = 0.0
@@ -139,41 +132,16 @@ class SystemSnapshotService(QObject):
         self._timer.stop()
 
     def _get_cpu_name(self) -> str:
-        """Get CPU model name from system."""
+        """Get CPU model name from Windows registry."""
         try:
-            if self._is_windows:
-                try:
-                    import winreg
+            import winreg
 
-                    reg_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
-                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
-                        cpu_name = winreg.QueryValueEx(key, "ProcessorNameString")[0]
-                        return cpu_name.strip()
-                except Exception:
-                    return "Intel/AMD Processor"
-            elif self._is_linux:
-                try:
-                    with open("/proc/cpuinfo") as f:
-                        for line in f:
-                            if "model name" in line:
-                                return line.split(":", 1)[1].strip()
-                except Exception:
-                    return "Linux Processor"
-            elif self._is_macos:
-                try:
-                    result = subprocess.run(
-                        ["sysctl", "-n", "machdep.cpu.brand_string"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    if result.returncode == 0:
-                        return result.stdout.strip()
-                except Exception:
-                    return "Apple Silicon"
+            reg_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
+                cpu_name = winreg.QueryValueEx(key, "ProcessorNameString")[0]
+                return cpu_name.strip()
         except Exception:
-            pass
-        return "Unknown Processor"
+            return "Intel/AMD Processor"
 
     def _update_system_uptime(self):
         """Update system uptime in seconds."""
@@ -235,10 +203,7 @@ class SystemSnapshotService(QObject):
 
             # Disk usage (system partition)
             try:
-                if self._is_windows:
-                    disk = psutil.disk_usage("C:\\")
-                else:
-                    disk = psutil.disk_usage("/")
+                disk = psutil.disk_usage("C:\\")
                 self._disk_usage = disk.percent
                 self.diskUsageChanged.emit()
             except (PermissionError, OSError):
@@ -402,12 +367,6 @@ class SystemSnapshotService(QObject):
                             ipv6_addr = addr.address.split("%")[0]  # Remove zone ID
                             iface_data["ipv6"] = ipv6_addr
                     elif hasattr(psutil, "AF_LINK") and addr.family == psutil.AF_LINK:
-                        # macOS/BSD
-                        iface_data["mac"] = addr.address
-                    elif (
-                        hasattr(socket, "AF_PACKET") and addr.family == socket.AF_PACKET
-                    ):
-                        # Linux
                         iface_data["mac"] = addr.address
 
                 interfaces.append(iface_data)
@@ -517,15 +476,7 @@ class SystemSnapshotService(QObject):
 
     @Property(bool, constant=True)
     def isWindows(self) -> bool:
-        return self._is_windows
-
-    @Property(bool, constant=True)
-    def isLinux(self) -> bool:
-        return self._is_linux
-
-    @Property(bool, constant=True)
-    def isMacOS(self) -> bool:
-        return self._is_macos
+        return True
 
     @Property(bool, constant=True)
     def isAdmin(self) -> bool:
@@ -662,7 +613,7 @@ class SystemSnapshotService(QObject):
         }
 
         try:
-            if self._is_windows:
+            if True:  # Windows-only app
                 # Use centralized SecurityInfo service for Windows
                 security_status = SecurityInfo.get_all_security_status()
 
@@ -774,12 +725,7 @@ class SystemSnapshotService(QObject):
                         f"[SystemSnapshot] Error gathering simplified security info: {e}"
                     )
 
-            elif self._is_linux:
-                # Check Linux Firewall (ufw/firewalld)
-                info["firewallStatus"] = self._check_linux_firewall()
-                info["antivirus"] = self._check_linux_antivirus()
-                info["appArmorEnabled"] = self._check_apparmor()
-                info["selinuxEnabled"] = self._check_selinux()
+
         except Exception as e:
             print(f"[SystemSnapshot] Error gathering security info: {e}")
 
@@ -867,7 +813,7 @@ class SystemSnapshotService(QObject):
                 capture_output=True,
                 text=True,
                 timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW if self._is_windows else 0,
+                creationflags=_SUBPROCESS_FLAGS,
             )
 
             if result.returncode == 0:
@@ -955,82 +901,7 @@ class SystemSnapshotService(QObject):
         except Exception:
             return "Unknown"
 
-    def _check_linux_firewall(self) -> str:
-        """Check Linux firewall status (ufw or firewalld)."""
-        try:
-            # Try ufw first
-            result = subprocess.run(
-                ["ufw", "status"], capture_output=True, text=True, timeout=5
-            )
 
-            if result.returncode == 0:
-                output = result.stdout.lower()
-                if "status: active" in output:
-                    return "Enabled (ufw)"
-                if "status: inactive" in output:
-                    return "Disabled (ufw)"
-        except Exception:
-            pass
-
-        try:
-            # Try firewalld
-            result = subprocess.run(
-                ["firewall-cmd", "--state"], capture_output=True, text=True, timeout=5
-            )
-
-            if result.returncode == 0 and "running" in result.stdout.lower():
-                return "Enabled (firewalld)"
-        except Exception:
-            pass
-
-        return "Unknown"
-
-    def _check_linux_antivirus(self) -> str:
-        """Check for ClamAV or other AV on Linux."""
-        try:
-            result = subprocess.run(
-                ["which", "clamscan"], capture_output=True, text=True, timeout=5
-            )
-
-            if result.returncode == 0 and result.stdout.strip():
-                return "ClamAV Installed"
-            return "None Detected"
-        except Exception:
-            return "None Detected"
-
-    def _check_apparmor(self) -> str:
-        """Check if AppArmor is enabled (Linux)."""
-        try:
-            result = subprocess.run(
-                ["aa-enabled"], capture_output=True, text=True, timeout=5
-            )
-
-            if result.returncode == 0:
-                return "Enabled"
-            return "Disabled"
-        except Exception:
-            # Check via /sys
-            try:
-                with open("/sys/module/apparmor/parameters/enabled") as f:
-                    if f.read().strip() == "Y":
-                        return "Enabled"
-            except Exception:
-                pass
-            return "N/A"
-
-    def _check_selinux(self) -> str:
-        """Check if SELinux is enabled (Linux)."""
-        try:
-            result = subprocess.run(
-                ["getenforce"], capture_output=True, text=True, timeout=5
-            )
-
-            if result.returncode == 0:
-                status = result.stdout.strip()
-                return status if status else "Disabled"
-            return "N/A"
-        except Exception:
-            return "N/A"
 
     @Slot()
     def refreshSecurityInfo(self):

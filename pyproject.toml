@@ -247,7 +247,6 @@ markers = [
     "integration: marks tests as integration tests (slow)",
     "slow: marks tests as slow",
     "windows: marks tests as Windows-specific",
-    "linux: marks tests as Linux-specific",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

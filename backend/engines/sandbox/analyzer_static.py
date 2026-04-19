@@ -32,7 +32,7 @@ from .job_schema import StaticAnalysisResult
 logger = logging.getLogger(__name__)
 
 # Hide console windows on Windows for background subprocess calls
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 _MPCMDRUN_CANDIDATES = [
     r"C:\Program Files\Windows Defender\MpCmdRun.exe",

@@ -56,7 +56,7 @@ from .report_schema import (
 logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = os.name == "nt"
-_CREATE_NO_WINDOW = 0x08000000 if _IS_WINDOWS else 0
+_CREATE_NO_WINDOW = 0x08000000
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Options container

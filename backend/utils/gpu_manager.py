@@ -1,6 +1,6 @@
 """
 Sentinel GPU Manager - Universal Multi-Vendor GPU Monitoring System
-Supports NVIDIA, AMD, and Intel GPUs on Windows and Linux
+Supports NVIDIA, AMD, and Intel GPUs on Windows
 Auto-installs required libraries and provides unified API
 """
 
@@ -104,21 +104,14 @@ class LibraryInstaller:
 
     @staticmethod
     def install_amd_stack() -> bool:
-        """Install AMD monitoring stack (Windows Performance Counters built-in)"""
-        # On Windows, we use WMI Performance Counters (built-in, no install needed)
-        # On Linux, we'd install rocm-smi
-        if platform.system() == "Linux":
-            # Try to install amdsmi (AMD System Management Interface)
-            return LibraryInstaller.check_and_install("amdsmi")
-
+        """Install AMD monitoring stack (Windows Performance Counters built-in)."""
         # Windows uses WMI - already available
         return True
 
     @staticmethod
     def install_intel_stack() -> bool:
-        """Install Intel monitoring stack"""
+        """Install Intel monitoring stack."""
         # Intel GPUs on Windows use WMI
-        # On Linux, intel_gpu_top is system utility, not Python package
         # GPUtil can detect Intel GPUs as fallback
         return LibraryInstaller.check_and_install("GPUtil")
 
@@ -354,17 +347,6 @@ class AMDMonitor:
                 self.available = True
             except (ImportError, RuntimeError, OSError) as e:
                 logger.warning("AMD WMI init failed: %s", e)
-        else:
-            # Linux: Try ROCm SMI
-            try:
-                import amdsmi
-
-                amdsmi.amdsmi_init()
-                self.amdsmi = amdsmi
-                self.available = True
-                logger.info("✅ AMD monitoring initialized (ROCm SMI)")
-            except (ImportError, RuntimeError, OSError):
-                logger.info("AMD ROCm SMI not available")
 
     def _cache_performance_counters(self):
         """Cache AMD GPU performance counter data"""

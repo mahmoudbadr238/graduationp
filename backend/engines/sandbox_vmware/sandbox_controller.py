@@ -1756,7 +1756,7 @@ class SandboxLabController(QObject):
                 text=True,
                 timeout=180,
                 check=False,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
             if result.returncode == 0 and mp4_path.exists():
                 mp4_saved = True
@@ -2232,7 +2232,7 @@ class SandboxLabController(QObject):
         self.evidenceChanged.emit()
 
     def _open_in_explorer(self, path: Path) -> None:
-        _detach = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
+        _detach = subprocess.DETACHED_PROCESS
         try:
             if path.is_file():
                 subprocess.Popen(["explorer", f"/select,{path}"],

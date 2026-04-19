@@ -27,7 +27,7 @@ from .report_schema import EngineResult, FileInfo, IocSection, StaticSection
 logger = logging.getLogger(__name__)
 
 # Hide console windows on Windows for background subprocess calls
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

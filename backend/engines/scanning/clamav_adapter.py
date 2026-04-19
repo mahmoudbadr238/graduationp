@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Subprocess flags for Windows
 _IS_WINDOWS = os.name == "nt"
-_SUBPROCESS_FLAGS = 0x08000000 if _IS_WINDOWS else 0  # CREATE_NO_WINDOW
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
 
 
 @dataclass
@@ -123,7 +123,7 @@ class ClamAVAdapter:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                creationflags=_SUBPROCESS_FLAGS if _IS_WINDOWS else 0,
+                creationflags=_SUBPROCESS_FLAGS,
             )
 
             output = result.stdout.strip()
@@ -185,7 +185,7 @@ class ClamAVAdapter:
                 capture_output=True,
                 text=True,
                 timeout=10,
-                creationflags=_SUBPROCESS_FLAGS if _IS_WINDOWS else 0,
+                creationflags=_SUBPROCESS_FLAGS,
             )
             return result.stdout.strip()
         except Exception:
