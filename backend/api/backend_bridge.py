@@ -5209,6 +5209,28 @@ class BackendBridge(QObject):
 
         _t.Thread(target=_run, daemon=True, name="scancenter-history").start()
 
+    @Slot()
+    def clearScanCenterHistory(self) -> None:
+        """Remove all ScanCenter history rows and refresh the History tab."""
+        import threading as _t
+
+        from backend.engines.scancenter.history_repo import HistoryRepo
+
+        def _run() -> None:
+            try:
+                deleted = HistoryRepo().clear_all()
+                self.scanCenterHistoryLoaded.emit([])
+                if deleted > 0:
+                    label = "entry" if deleted == 1 else "entries"
+                    self.toast.emit("success", f"Cleared {deleted} history {label}.")
+                else:
+                    self.toast.emit("info", "Scan history is already empty.")
+            except Exception as exc:
+                logger.exception("clearScanCenterHistory failed")
+                self.toast.emit("error", f"Could not clear scan history: {exc}")
+
+        _t.Thread(target=_run, daemon=True, name="scancenter-history-clear").start()
+
     @Slot(str, str)
     def exportScanCenterReport(self, job_id: str, dest_dir: str = "") -> None:
         """Export the report for *job_id* to *dest_dir* (defaults to ~/.sentinel/reports/)."""

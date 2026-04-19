@@ -116,6 +116,17 @@ class HistoryRepo:
         except Exception as exc:
             logger.warning("scancenter_history delete failed: %s", exc)
 
+    def clear_all(self) -> int:
+        """Delete all ScanCenter history rows and return how many were removed."""
+        try:
+            with _connect() as con:
+                cur = con.execute("DELETE FROM scancenter_history")
+                con.commit()
+                return max(0, int(cur.rowcount or 0))
+        except Exception as exc:
+            logger.warning("scancenter_history clear_all failed: %s", exc)
+            return 0
+
     # ── Reads ────────────────────────────────────────────────────────────────
 
     def list_recent(self, limit: int = 200) -> list[dict[str, Any]]:
