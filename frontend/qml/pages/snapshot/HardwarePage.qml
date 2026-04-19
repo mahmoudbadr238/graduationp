@@ -29,8 +29,8 @@ AppSurface {
         anchors.fill: parent
         anchors.margins: Theme.spacing_md
         clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         contentWidth: availableWidth
 
         Flickable {

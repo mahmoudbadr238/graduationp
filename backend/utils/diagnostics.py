@@ -3,8 +3,9 @@
 import logging
 import platform
 import sys
-from pathlib import Path
 from typing import Any
+
+from backend.runtime import resolve_bundle_path
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,7 @@ def collect_diagnostics() -> dict[str, Any]:
         diagnostics["gpu"]["error"] = str(e)
 
     # QML paths
-    root = Path(__file__).resolve().parents[2]
-    qml_path = root / "frontend" / "qml" / "main.qml"
+    qml_path = resolve_bundle_path("frontend", "qml", "main.qml")
     diagnostics["paths"] = {
         "qml_entry": str(qml_path),
         "qml_exists": qml_path.exists(),

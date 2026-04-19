@@ -852,7 +852,7 @@ Rectangle {
                                     Layout.fillWidth: true; Layout.preferredHeight: 34; color: ThemeManager.elevated(); radius: 6
                                     RowLayout {
                                         anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 6
-                                        Text { text: ""; Layout.preferredWidth: 32 }
+                                        Text { text: ""; Layout.preferredWidth: 30 }
                                         Text { text: "Type"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; font.bold: true; Layout.preferredWidth: 58 }
                                         Text { text: "Size"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; font.bold: true; Layout.preferredWidth: 78 }
                                         Text { text: "Confidence"; color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; font.bold: true; Layout.preferredWidth: 82 }
@@ -872,16 +872,53 @@ Rectangle {
                                     ScrollBar.vertical: ScrollBar { policy: candidateModel.count > 10 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
                                     delegate: Rectangle {
+                                        id: candidateDelegate
                                         width: candidateListView.width; height: 42; radius: 6
-                                        color: tabRecovery.selectedIds[model.cid] ? Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.10) : (model.index % 2 === 0 ? "transparent" : Qt.rgba(1,1,1,0.02))
-                                        border.color: tabRecovery.selectedIds[model.cid] ? ThemeManager.accent : "transparent"
-                                        border.width: tabRecovery.selectedIds[model.cid] ? 1 : 0
+                                        // Read selectedCount to force QML to re-evaluate when selections change
+                                        property bool isSelected: { var _dep = tabRecovery.selectedCount; return tabRecovery.selectedIds[model.cid] === true }
+                                        color: isSelected ? Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.15) : (model.index % 2 === 0 ? "transparent" : Qt.rgba(1,1,1,0.02))
+                                        border.color: isSelected ? ThemeManager.accent : "transparent"
+                                        border.width: isSelected ? 1.5 : 0
+
+                                        // Left accent bar for selected items
+                                        Rectangle {
+                                            visible: candidateDelegate.isSelected
+                                            width: 3; height: parent.height - 4; radius: 2
+                                            anchors.left: parent.left; anchors.leftMargin: 2
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: ThemeManager.accent
+                                        }
 
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: tabRecovery.toggleCandidate(model.cid) }
 
                                         RowLayout {
                                             anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 6
-                                            CheckBox { checked: tabRecovery.selectedIds[model.cid] === true; onToggled: tabRecovery.toggleCandidate(model.cid); Layout.preferredWidth: 32 }
+
+                                            // Styled checkbox
+                                            Rectangle {
+                                                Layout.preferredWidth: 22; Layout.preferredHeight: 22; radius: 4
+                                                color: candidateDelegate.isSelected ? ThemeManager.accent : "transparent"
+                                                border.color: candidateDelegate.isSelected ? ThemeManager.accent : ThemeManager.muted()
+                                                border.width: 2
+                                                Layout.alignment: Qt.AlignVCenter
+
+                                                Text {
+                                                    anchors.centerIn: parent; text: "✓"
+                                                    color: "#ffffff"; font.pixelSize: 14; font.bold: true
+                                                    visible: candidateDelegate.isSelected
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                    onClicked: tabRecovery.toggleCandidate(model.cid)
+                                                }
+
+                                                Behavior on color { ColorAnimation { duration: 150 } }
+                                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                            }
+
+                                            Item { Layout.preferredWidth: 4 }
+
                                             Rectangle { Layout.preferredWidth: 52; Layout.preferredHeight: 24; radius: 4; color: tabRecovery._typeBadgeColor(model.ctype); Text { anchors.centerIn: parent; text: model.ctype.toUpperCase(); color: "#ffffff"; font.pixelSize: ThemeManager.fontSize_caption; font.bold: true } }
                                             Text { text: tabRecovery._formatSize(model.sizeGuess); color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_small; Layout.preferredWidth: 78 }
                                             Text { text: model.confidence + "%"; color: tabRecovery._confidenceColor(model.confidence); font.bold: true; font.pixelSize: ThemeManager.fontSize_small; Layout.preferredWidth: 82 }

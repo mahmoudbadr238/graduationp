@@ -771,10 +771,9 @@ if ($KillOnFinish) {
     $report.spawned_processes | ForEach-Object { try { Stop-Process -Id $_.pid -Force -EA SilentlyContinue } catch {} }
 }
 
-# ── Re-enable network ─────────────────────────────────────────────────────────
-if ($DisableNetwork) {
-    try { Get-NetAdapter | Enable-NetAdapter -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-}
+# -- Network note: adapters are intentionally NOT re-enabled here.
+# The host-side controller is responsible for restoring guest networking
+# via VMware vmrun or snapshot revert so the host is never affected.
 
 # ── Finalise scores / highlights ─────────────────────────────────────────────
 if ($report.alerts.Count -gt 0)           { $report.highlights.Add("$($report.alerts.Count) alert(s) raised during analysis") }

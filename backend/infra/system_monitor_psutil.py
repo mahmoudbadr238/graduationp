@@ -5,7 +5,12 @@ import contextlib
 import logging
 import platform
 import subprocess  # nosec B404 - subprocess required for Windows security checks (PowerShell, netsh, manage-bde)
+import sys
 from typing import Any
+
+# Hide console windows for subprocess calls on Windows
+_IS_WINDOWS = sys.platform == "win32"
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 import psutil
 
@@ -591,6 +596,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_SUBPROCESS_FLAGS,
                 )
                 if result.returncode == 0:
                     defender_enabled = result.stdout.strip().lower() == "true"
@@ -610,6 +616,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_SUBPROCESS_FLAGS,
                 )
                 if result.returncode == 0:
                     firewall_enabled = "ON" in result.stdout
@@ -648,6 +655,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_SUBPROCESS_FLAGS,
                 )
                 if result.returncode == 0:
                     bitlocker_enabled = "Protection On" in result.stdout
@@ -672,6 +680,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_SUBPROCESS_FLAGS,
                 )
                 if "Administrator privilege is required" in result.stderr:
                     security_info["tpm"] = {
@@ -692,6 +701,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                             capture_output=True,
                             text=True,
                             timeout=3,
+                            creationflags=_SUBPROCESS_FLAGS,
                         )
                         tpm_ready = (
                             result2.returncode == 0
@@ -720,6 +730,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                     capture_output=True,
                     text=True,
                     timeout=3,
+                    creationflags=_SUBPROCESS_FLAGS,
                 )
                 if (
                     "Administrator privilege is required" in result.stderr

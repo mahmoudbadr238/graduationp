@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from backend.runtime import resolve_bundle_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,11 +99,9 @@ class EventRulesEngine:
         # Find the knowledge base file
         possible_paths = [
             Path(__file__).parent / "knowledge" / "event_rules.json",
-            Path(__file__).parent.parent.parent
-            / "app"
-            / "ai"
-            / "knowledge"
-            / "event_rules.json",
+            resolve_bundle_path(
+                "backend", "engines", "ai", "knowledge", "event_rules.json"
+            ),
         ]
 
         kb_path = None

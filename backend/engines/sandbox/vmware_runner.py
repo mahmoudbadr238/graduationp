@@ -19,6 +19,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from backend.runtime import resolve_app_path
+
 from backend.engines.sandbox_vmware.config import SandboxConfig, load_sandbox_config
 from backend.engines.sandbox_vmware.vmrun_client import VmrunClient, VmrunError
 
@@ -554,6 +556,7 @@ class VMwareRunner:
             _workspace_root = _backend_root.parent                # → project root
             # build_agent.py outputs to <workspace>/dist/sentinel_agent.exe
             for _candidate in (
+                resolve_app_path("sentinel_agent.exe"),
                 _workspace_root / "dist" / "sentinel_agent.exe",
                 _backend_root / "dist" / "sentinel_agent.exe",
             ):

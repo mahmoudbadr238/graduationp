@@ -126,7 +126,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
 
                 ColumnLayout {
                     width: Math.max(320, Math.min(920, reportScroll.availableWidth - 48))

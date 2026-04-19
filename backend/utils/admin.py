@@ -5,6 +5,7 @@ Handles checking and requesting administrator privileges.
 
 import ctypes
 import os
+import subprocess
 import sys
 
 
@@ -38,18 +39,23 @@ class AdminPrivileges:
             return None  # Already admin
 
         try:
-            # Get the script path
-            script = os.path.abspath(sys.argv[0])
-            params = " ".join(sys.argv[1:])
+            if getattr(sys, "frozen", False):
+                target = sys.executable
+                params = subprocess.list2cmdline(sys.argv[1:])
+                working_dir = os.path.dirname(sys.executable)
+            else:
+                script = os.path.abspath(sys.argv[0])
+                target = sys.executable
+                params = subprocess.list2cmdline([script, *sys.argv[1:]])
+                working_dir = os.path.dirname(script)
 
-            # Request elevation via ShellExecute with 'runas' verb
             ret = ctypes.windll.shell32.ShellExecuteW(
-                None,  # hwnd
-                "runas",  # operation
-                sys.executable,  # file (Python interpreter)
-                f'"{script}" {params}',  # parameters
-                os.path.dirname(script),  # directory — keep original CWD
-                0,  # nShowCmd: SW_HIDE — suppress lingering console window
+                None,
+                "runas",
+                target,
+                params,
+                working_dir,
+                1 if getattr(sys, "frozen", False) else 0,
             )
 
             if ret > 32:  # Success

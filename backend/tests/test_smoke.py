@@ -10,7 +10,7 @@ def test_import_app():
     """Test that the app module can be imported."""
     import backend
 
-    assert app is not None
+    assert backend is not None
 
 
 def test_diagnose_command():

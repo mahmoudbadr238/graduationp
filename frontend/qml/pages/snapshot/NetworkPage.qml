@@ -21,7 +21,7 @@ AppSurface {
         anchors.fill: parent
         anchors.margins: Theme.spacing_md
         clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
 
         Column {
             spacing: 18

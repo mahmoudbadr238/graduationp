@@ -224,6 +224,7 @@ debug*.txt
 temp_*.txt
 chart_*.txt
 *.spec
+!config/*.spec
 
 # Build and distribution artifacts
 build/

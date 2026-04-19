@@ -21,7 +21,7 @@ AppSurface {
         anchors.fill: parent
         anchors.margins: 0
         clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
         contentWidth: availableWidth
 
         Column {

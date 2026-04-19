@@ -3,10 +3,12 @@
 import os
 import sys
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtQml import QQmlApplicationEngine
+
+from backend.runtime import bundle_root
 
 from .core.config import get_config
 from .core.container import configure
@@ -87,19 +89,7 @@ class DesktopSecurityApplication:
 
     def _setup_paths(self):
         """Set up QML import paths and working directory."""
-        # Get the absolute path to workspace root
-        # When frozen by PyInstaller, use sys._MEIPASS or executable directory
-        if getattr(sys, "frozen", False):
-            # Running in PyInstaller bundle
-            if hasattr(sys, "_MEIPASS"):
-                # Temporary folder used by PyInstaller
-                workspace_root = sys._MEIPASS
-            else:
-                # Directory containing the executable
-                workspace_root = os.path.dirname(sys.executable)
-        else:
-            # Running in normal Python environment
-            workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        workspace_root = str(bundle_root())
 
         # Set working directory
         os.chdir(workspace_root)
@@ -183,40 +173,47 @@ class DesktopSecurityApplication:
 
             self.orchestrator.schedule_deferred(1000, "GPU Backend", init_gpu)
 
-            # IMMEDIATE: System Snapshot Service (cross-platform)
-            try:
-                self.snapshot_service = SystemSnapshotService()
-                # Force initial data collection
-                self.snapshot_service._update_metrics()
-                self.snapshot_service._update_disk_partitions()
-                self.snapshot_service._update_network_interfaces()
-                self.engine.rootContext().setContextProperty(
-                    "SnapshotService", self.snapshot_service
-                )
-                self.snapshot_service.start(
-                    5000
-                )  # Start with 5s interval for lower CPU usage
-                print(
-                    f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
-                )
+            # PLACEHOLDER: Register None so QML doesn't error on missing property
+            self.engine.rootContext().setContextProperty("SnapshotService", None)
 
-                # Connect snapshot service to backend for AI chatbot context
-                if self.backend:
-                    self.backend.set_snapshot_service(self.snapshot_service)
-            except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] System Snapshot service failed: {e}")
-                self.snapshot_service = None
+            # DEFERRED: System Snapshot Service (200ms after startup)
+            def init_snapshot():
+                try:
+                    self.snapshot_service = SystemSnapshotService()
+                    self.snapshot_service._update_metrics()
+                    self.snapshot_service._update_disk_partitions()
+                    self.snapshot_service._update_network_interfaces()
+                    self.engine.rootContext().setContextProperty(
+                        "SnapshotService", self.snapshot_service
+                    )
+                    self.snapshot_service.start(5000)
+                    print(
+                        f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
+                    )
+                    if self.backend:
+                        self.backend.set_snapshot_service(self.snapshot_service)
+                except (ImportError, RuntimeError, OSError) as e:
+                    print(f"[WARNING] System Snapshot service failed: {e}")
+                    self.snapshot_service = None
 
-            # IMMEDIATE: Security Controller (toggle Firewall/RDP/UAC)
-            try:
-                self.security_controller = get_security_controller()
-                self.engine.rootContext().setContextProperty(
-                    "SecurityController", self.security_controller
-                )
-                print("[OK] Security Controller registered")
-            except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] Security Controller failed: {e}")
-                self.security_controller = None
+            self.orchestrator.schedule_deferred(200, "Snapshot Service", init_snapshot)
+
+            # PLACEHOLDER for QML
+            self.engine.rootContext().setContextProperty("SecurityController", None)
+
+            # DEFERRED: Security Controller (300ms)
+            def init_security_controller():
+                try:
+                    self.security_controller = get_security_controller()
+                    self.engine.rootContext().setContextProperty(
+                        "SecurityController", self.security_controller
+                    )
+                    print("[OK] Security Controller registered")
+                except (ImportError, RuntimeError, OSError) as e:
+                    print(f"[WARNING] Security Controller failed: {e}")
+                    self.security_controller = None
+
+            self.orchestrator.schedule_deferred(300, "Security Controller", init_security_controller)
 
             # IMMEDIATE: Settings Service (cross-platform)
             try:
@@ -278,46 +275,57 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] Recovery controller failed: {e}")
                 self.recovery_controller = None
 
-            # IMMEDIATE: Notification Service (cross-platform)
-            try:
-                self.notification_service = get_notification_service()
-                self.engine.rootContext().setContextProperty(
-                    "NotificationService", self.notification_service
-                )
-                print("[OK] Notification service initialized and exposed to QML")
+            # PLACEHOLDER for QML
+            self.engine.rootContext().setContextProperty("NotificationService", None)
+            self.engine.rootContext().setContextProperty("NotificationManager", None)
 
-                # Unified notification manager (QML tab + native OS toast)
-                self.notification_manager = NotificationManager(
-                    self.notification_service
-                )
-                self.engine.rootContext().setContextProperty(
-                    "NotificationManager", self.notification_manager
-                )
-                print("[OK] NotificationManager created (tray icon pending)")
+            # DEFERRED: Notification Service (400ms)
+            def init_notifications():
+                try:
+                    self.notification_service = get_notification_service()
+                    self.engine.rootContext().setContextProperty(
+                        "NotificationService", self.notification_service
+                    )
+                    print("[OK] Notification service initialized and exposed to QML")
 
-                # Connect Snapshot service to notification service for security alerts
-                if self.snapshot_service:
-                    self.snapshot_service.set_notification_service(
+                    self.notification_manager = NotificationManager(
                         self.notification_service
                     )
-                    print("[OK] Security notifications connected")
-            except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] Notification service failed: {e}")
-                self.notification_service = None
+                    self.engine.rootContext().setContextProperty(
+                        "NotificationManager", self.notification_manager
+                    )
+                    print("[OK] NotificationManager created (tray icon pending)")
 
-            # IMMEDIATE: Resource Monitor (live CPU/RAM/Net dashboard)
-            try:
-                from .core.resource_monitor import get_resource_monitor_bridge
+                    if self.snapshot_service:
+                        self.snapshot_service.set_notification_service(
+                            self.notification_service
+                        )
+                        print("[OK] Security notifications connected")
+                except (ImportError, RuntimeError, OSError) as e:
+                    print(f"[WARNING] Notification service failed: {e}")
+                    self.notification_service = None
 
-                self.resource_monitor = get_resource_monitor_bridge()
-                self.engine.rootContext().setContextProperty(
-                    "ResourceMonitor", self.resource_monitor
-                )
-                self.resource_monitor.start()
-                print("[OK] Resource Monitor registered and started")
-            except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] Resource Monitor failed: {e}")
-                self.resource_monitor = None
+            self.orchestrator.schedule_deferred(400, "Notifications", init_notifications)
+
+            # PLACEHOLDER for QML
+            self.engine.rootContext().setContextProperty("ResourceMonitor", None)
+
+            # DEFERRED: Resource Monitor (500ms)
+            def init_resource_monitor():
+                try:
+                    from .core.resource_monitor import get_resource_monitor_bridge
+
+                    self.resource_monitor = get_resource_monitor_bridge()
+                    self.engine.rootContext().setContextProperty(
+                        "ResourceMonitor", self.resource_monitor
+                    )
+                    self.resource_monitor.start()
+                    print("[OK] Resource Monitor registered and started")
+                except (ImportError, RuntimeError, OSError) as e:
+                    print(f"[WARNING] Resource Monitor failed: {e}")
+                    self.resource_monitor = None
+
+            self.orchestrator.schedule_deferred(500, "Resource Monitor", init_resource_monitor)
 
             # IMMEDIATE: Real-Time Protection Bridge
             try:
@@ -563,9 +571,33 @@ class DesktopSecurityApplication:
         roots = self.engine.rootObjects()
         if roots:
             window = roots[0]
-            window.show()
+            if hasattr(window, "showNormal"):
+                window.showNormal()
+            else:
+                window.show()
+            if hasattr(window, "setVisible"):
+                window.setVisible(True)
             window.raise_()
             window.requestActivate()
+
+    def _show_main_window_on_startup(self):
+        """Force the main window visible after the event loop starts."""
+        roots = self.engine.rootObjects()
+        if not roots:
+            return
+
+        window = roots[0]
+        if hasattr(window, "showNormal"):
+            window.showNormal()
+        else:
+            window.show()
+        if hasattr(window, "setVisible"):
+            window.setVisible(True)
+        if hasattr(window, "raise_"):
+            window.raise_()
+        if hasattr(window, "requestActivate"):
+            window.requestActivate()
+        print("[OK] Main window shown on startup")
 
     def _show_and_navigate(self, route):
         """Show the main window and navigate to a specific page."""
@@ -663,6 +695,10 @@ class DesktopSecurityApplication:
 
             # Stay alive in tray when window is closed
             self.app.setQuitOnLastWindowClosed(False)
+
+            # QML's visible:true is not always enough for packaged elevated builds.
+            # Force the root window to a normal foreground state once the event loop starts.
+            QTimer.singleShot(0, self._show_main_window_on_startup)
 
             print("[OK] QML UI loaded successfully")
             print("\n=== Sentinel Desktop Security Suite ===")

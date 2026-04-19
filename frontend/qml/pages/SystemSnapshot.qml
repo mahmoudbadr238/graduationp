@@ -61,12 +61,14 @@ Item {
             // ===== HEADER =====
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 80
+                Layout.minimumHeight: 80
+                implicitHeight: headerRow.implicitHeight + 48
                 color: ThemeManager.panel()
                 border.color: ThemeManager.border()
                 border.width: 1
 
                 RowLayout {
+                    id: headerRow
                     anchors.fill: parent
                     anchors.margins: 24
                     spacing: 12

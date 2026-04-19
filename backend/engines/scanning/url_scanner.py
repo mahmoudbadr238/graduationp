@@ -25,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
 
+from backend.runtime import is_frozen, resolve_app_path, resolve_bundle_path
+
 logger = logging.getLogger(__name__)
 
 # Try importing optional dependencies
@@ -1165,22 +1167,18 @@ class UrlScanner:
 
         Returns dict with sandbox execution results.
         """
-        # Check if WebView2 detonator exists
-        detonator_path = (
-            Path(__file__).parent.parent.parent
-            / "tools"
-            / "url_detonator"
-            / "webview2_detonator.py"
+        helper_exe = resolve_app_path("sentinel_url_detonator.exe")
+        detonator_path = resolve_bundle_path(
+            "payload", "url_detonator", "webview2_detonator.py"
         )
 
-        if not detonator_path.exists():
-            # Try alternative location
-            detonator_path = (
-                Path(__file__).parent.parent.parent / "tools" / "webview2_detonator.py"
-            )
-
-        if not detonator_path.exists():
-            raise FileNotFoundError("WebView2 detonator script not found")
+        if is_frozen():
+            if not helper_exe.exists():
+                raise FileNotFoundError(
+                    f"URL detonator executable not found: {helper_exe}"
+                )
+        elif not detonator_path.exists():
+            raise FileNotFoundError(f"WebView2 detonator script not found: {detonator_path}")
 
         # Create temp file path for subprocess JSON output
         fd, result_file = tempfile.mkstemp(suffix=".json")
@@ -1202,17 +1200,29 @@ class UrlScanner:
                     f"Sandbox not available: {avail.get('reason', 'unknown')}"
                 )
 
-            # Build command
-            cmd = [
-                sys.executable,
-                str(detonator_path),
-                "--url",
-                url,
-                "--output",
-                result_file,
-                "--timeout",
-                str(timeout_seconds),
-            ]
+            if is_frozen():
+                cmd = [
+                    str(helper_exe),
+                    "--url",
+                    url,
+                    "--output",
+                    result_file,
+                    "--timeout",
+                    str(timeout_seconds),
+                ]
+                run_cwd = str(helper_exe.parent)
+            else:
+                cmd = [
+                    sys.executable,
+                    str(detonator_path),
+                    "--url",
+                    url,
+                    "--output",
+                    result_file,
+                    "--timeout",
+                    str(timeout_seconds),
+                ]
+                run_cwd = str(detonator_path.parent)
             if block_downloads:
                 cmd.append("--block-downloads")
 
@@ -1222,7 +1232,7 @@ class UrlScanner:
                 capture_output=True,
                 timeout=timeout_seconds + 10,
                 text=True,
-                cwd=str(detonator_path.parent),
+                cwd=run_cwd,
             )
 
             # Read and validate output payload

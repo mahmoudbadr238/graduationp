@@ -39,7 +39,7 @@ Item {
 
     // ── Auto-start monitor & poll stats ──
     Component.onCompleted: {
-        if (typeof ResourceMonitor !== "undefined") {
+        if (typeof ResourceMonitor !== "undefined" && ResourceMonitor) {
             ResourceMonitor.start()
             monitorRunning = true
         }
@@ -54,7 +54,7 @@ Item {
         repeat: true
         triggeredOnStart: true
         onTriggered: {
-            if (typeof ResourceMonitor !== "undefined") {
+            if (typeof ResourceMonitor !== "undefined" && ResourceMonitor) {
                 cpuPercent = ResourceMonitor.getCpuPercent()
                 ramPercent = ResourceMonitor.getRamPercent()
                 ramUsedGb = ResourceMonitor.getRamUsedGb()
@@ -161,7 +161,7 @@ Item {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (typeof ResourceMonitor !== "undefined") {
+                                if (typeof ResourceMonitor !== "undefined" && ResourceMonitor) {
                                     if (monitorRunning) ResourceMonitor.stop()
                                     else ResourceMonitor.start()
                                 }

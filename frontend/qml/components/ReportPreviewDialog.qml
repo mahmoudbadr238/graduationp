@@ -154,8 +154,8 @@ Popup {
             Layout.margins: 4
             clip: true
             
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             
             TextArea {
                 id: reportTextArea

@@ -13,6 +13,8 @@ from typing import Any
 
 from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
 
+from backend.runtime import is_frozen, resolve_app_path
+
 logger = logging.getLogger(__name__)
 
 # History configuration
@@ -45,8 +47,7 @@ class GPUServiceBridge(QObject):
 
         # Process management
         self._proc = QProcess(self)
-        self._proc.setProgram(sys.executable)
-        self._proc.setArguments(["-u", "-m", "backend.engines.gpu.telemetry_worker"])
+        self._configure_worker_process()
         self._proc.readyReadStandardOutput.connect(self._on_stdout)
         self._proc.readyReadStandardError.connect(self._on_stderr)
         self._proc.started.connect(self._on_started)
@@ -75,6 +76,30 @@ class GPUServiceBridge(QObject):
         self._history: dict[int, dict[str, deque]] = {}
 
         logger.info("GPU Service Bridge initialized")
+
+    def _configure_worker_process(self, interval_ms: int | None = None) -> bool:
+        """Configure the subprocess used for GPU telemetry."""
+        if is_frozen():
+            worker_path = resolve_app_path("sentinel_gpu_worker.exe")
+            if not worker_path.exists():
+                logger.warning("GPU worker executable not found: %s", worker_path)
+                return False
+
+            args: list[str] = []
+            if interval_ms is not None:
+                args.append(str(interval_ms))
+
+            self._proc.setProgram(str(worker_path))
+            self._proc.setArguments(args)
+            return True
+
+        args = ["-u", "-m", "backend.engines.gpu.telemetry_worker"]
+        if interval_ms is not None:
+            args.append(str(interval_ms))
+
+        self._proc.setProgram(sys.executable)
+        self._proc.setArguments(args)
+        return True
 
     def _init_gpu_history(self, gpu_id: int):
         """Initialize history tracking for a GPU"""
@@ -161,10 +186,13 @@ class GPUServiceBridge(QObject):
         self._interval = interval_ms
         self.updateIntervalChanged.emit(interval_ms)
 
-        # Update worker arguments with interval
-        self._proc.setArguments(
-            ["-u", "-m", "backend.engines.gpu.telemetry_worker", str(interval_ms)]
-        )
+        if not self._configure_worker_process(interval_ms):
+            self._set_status("stopped")
+            self.error.emit(
+                "GPU Monitoring Unavailable",
+                "sentinel_gpu_worker.exe is missing from the application folder.",
+            )
+            return
 
         logger.info(f"Starting GPU worker (interval={interval_ms}ms)")
         self._set_status("starting")

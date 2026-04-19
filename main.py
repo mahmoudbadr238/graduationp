@@ -36,32 +36,7 @@ def _crash_excepthook(
 _original_excepthook = sys.excepthook
 sys.excepthook = _crash_excepthook
 
-from backend.__version__ import APP_FULL_NAME, __version__
-from backend.application import run
-from backend.utils.admin import AdminPrivileges
+from backend.entrypoint import main
 
 if __name__ == "__main__":
-    print(f"{APP_FULL_NAME} v{__version__}")
-
-    # Check for admin privileges and auto-elevate if needed
-    # This ensures full access to Security event logs
-    skip_uac = os.environ.get("SKIP_UAC", "").lower() in ("1", "true", "yes")
-
-    if not AdminPrivileges.is_admin() and not skip_uac:
-        print("[WARNING] Administrator privileges required for full functionality")
-        print("  Requesting UAC elevation...")
-
-        # elevate() will prompt for admin, restart the app, and exit this process
-        AdminPrivileges.elevate()
-
-        # If we're still here, user declined or it failed
-        print(
-            "[WARNING] Elevation declined or failed. Continuing with limited access..."
-        )
-        print("  Some features may be unavailable.\n")
-    elif skip_uac:
-        print("[DEBUG] Skipping UAC (SKIP_UAC=1)\n")
-    else:
-        print("[OK] Running with administrator privileges\n")
-
-    raise SystemExit(run())
+    raise SystemExit(main())

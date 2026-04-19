@@ -491,6 +491,7 @@ class IntegratedSandbox:
                         ],
                         capture_output=True,
                         timeout=10,
+                        creationflags=0x08000000,  # CREATE_NO_WINDOW
                     )
                 except Exception as e:
                     logger.warning(f"Failed to add firewall rule: {e}")
@@ -703,6 +704,7 @@ class IntegratedSandbox:
                         ],
                         capture_output=True,
                         timeout=10,
+                        creationflags=0x08000000,  # CREATE_NO_WINDOW
                     )
                 except Exception as e:
                     logger.warning(f"Failed to remove firewall rule: {e}")

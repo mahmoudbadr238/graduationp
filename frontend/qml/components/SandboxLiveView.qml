@@ -689,8 +689,8 @@ Rectangle {
                         Layout.fillHeight: true
                         clip: true
                         
-                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
                         
                         ListView {
                             id: eventListView
