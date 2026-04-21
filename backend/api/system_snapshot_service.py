@@ -28,6 +28,8 @@ class SystemSnapshotService(QObject):
     memoryAvailableChanged = Signal()
     diskUsageChanged = Signal()
     diskPartitionsChanged = Signal()
+    hiddenDiskPartitionsChanged = Signal()
+    showHiddenMountsChanged = Signal()
     netUpBpsChanged = Signal()  # Primary network throughput in bits per second
     netDownBpsChanged = Signal()
     netUpKbpsChanged = Signal()  # Legacy compatibility (derived from Bps)
@@ -67,6 +69,8 @@ class SystemSnapshotService(QObject):
         self._memory_available = 0
         self._disk_usage = 0.0
         self._disk_partitions: list[dict] = []
+        self._hidden_disk_partitions: list[dict] = []
+        self._show_hidden_mounts = False
         self._net_up_bps = 0.0  # Primary: bits per second
         self._net_down_bps = 0.0
         self._top_processes: list[dict] = []
@@ -432,6 +436,24 @@ class SystemSnapshotService(QObject):
     def diskPartitions(self) -> list[dict]:
         """List of disk partitions with usage information."""
         return self._disk_partitions
+
+    @Property("QVariantList", notify=hiddenDiskPartitionsChanged)
+    def hiddenDiskPartitions(self) -> list[dict]:
+        """Windows compatibility: no hidden-mount classification."""
+        return self._hidden_disk_partitions
+
+    @Property(bool, notify=showHiddenMountsChanged)
+    def showHiddenMounts(self) -> bool:
+        """Compatibility property used by the shared QML storage view."""
+        return self._show_hidden_mounts
+
+    @showHiddenMounts.setter
+    def showHiddenMounts(self, value: bool) -> None:
+        enabled = bool(value)
+        if enabled == self._show_hidden_mounts:
+            return
+        self._show_hidden_mounts = enabled
+        self.showHiddenMountsChanged.emit()
 
     @Property(float, notify=netUpBpsChanged)
     def netUpBps(self) -> float:

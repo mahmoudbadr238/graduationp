@@ -11,12 +11,66 @@ as simple Python data structures for fast lookup.
 
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
+
+# ---------------------------------------------------------------------------
+# Platform-aware text substitution
+# ---------------------------------------------------------------------------
+_IS_LINUX = platform.system() == "Linux"
+
+# Same substitution map used by event_rules_engine.py, kept in sync.
+_PLATFORM_SUBS: list[tuple[str, str]] = [
+    ("Windows recorded",  "Linux recorded"),
+    ("Windows detected",  "The system detected"),
+    ("Windows encountered", "The system encountered"),
+    ("Windows logged",    "The system logged"),
+    ("Windows started",   "The system started"),
+    ("Windows shut down", "The system shut down"),
+    ("Windows stopped",   "The system stopped"),
+    ("Windows is shutting down", "The system is shutting down"),
+    ("Windows began",     "The system began"),
+    ("Windows asked",     "The system asked"),
+    ("Windows components", "system daemons/services"),
+    ("Windows services",  "system services"),
+    ("Windows service",   "system service"),
+    ("Windows Firewall",  "System Firewall"),
+    ("Windows Security",  "System Security"),
+    ("Windows Defender",  "ClamAV / System Antivirus"),
+    ("Windows Update",    "System Updates"),
+    ("Windows Management Instrumentation", "System Management"),
+    ("Windows Installer", "Package Manager"),
+    ("Windows Memory Diagnostic", "memtest86+"),
+    ("Windows desktop environment", "desktop environment"),
+    ("Windows Search",    "Desktop Search"),
+    ("Windows Error Reporting", "System Error Reporting"),
+    ("Run as administrator", "Run as root"),
+    ("Run as Administrator", "Run as root"),
+    ("run as administrator", "run as root"),
+    ("as Administrator",  "as root"),
+    ("as administrator",  "as root"),
+    ("Task Manager",      "System Monitor / htop"),
+    ("services.msc",      "systemctl"),
+    ("chkdsk",            "fsck"),
+    ("ipconfig",          "ip addr / ifconfig"),
+    ("Group Policy",      "system policy"),
+    ("Start menu",        "application menu"),
+]
+
+
+def _platform_sub(text: str) -> str:
+    """Replace Windows-specific terms with Linux equivalents when on Linux."""
+    if not _IS_LINUX or not text:
+        return text
+    for win_term, linux_term in _PLATFORM_SUBS:
+        text = text.replace(win_term, linux_term)
+    return text
 
 
 @dataclass(frozen=True)
 class EventKnowledge:
     """Structured knowledge about a Windows event."""
+
 
     title: str  # Short summary (max ~60 chars)
     severity: str  # "Safe", "Minor", "Warning", "Critical"
@@ -971,18 +1025,35 @@ def lookup_event_knowledge(source: str, event_id: int) -> EventKnowledge | None:
         EventKnowledge if found, None otherwise.
         First checks for exact (source, event_id) match,
         then falls back to generic ("*", event_id) match.
+
+    On Linux, returned strings are automatically substituted to replace
+    Windows-specific terminology with Linux-native equivalents.
     """
     # Normalize source
     source = (source or "").strip()
 
     # Try exact match first
     key = (source, event_id)
-    if key in EVENT_KB:
-        return EVENT_KB[key]
+    kb = EVENT_KB.get(key)
 
     # Try generic match (any source)
-    generic_key = ("*", event_id)
-    return EVENT_KB.get(generic_key)
+    if kb is None:
+        generic_key = ("*", event_id)
+        kb = EVENT_KB.get(generic_key)
+
+    if kb is None:
+        return None
+
+    # Apply platform substitution on Linux
+    if _IS_LINUX:
+        return EventKnowledge(
+            title=_platform_sub(kb.title),
+            severity=kb.severity,
+            what_happened=_platform_sub(kb.what_happened),
+            what_you_can_do=_platform_sub(kb.what_you_can_do),
+            tech_notes=_platform_sub(kb.tech_notes) if kb.tech_notes else None,
+        )
+    return kb
 
 
 def get_friendly_title(source: str, event_id: int, fallback: str = "") -> str:
@@ -990,8 +1061,9 @@ def get_friendly_title(source: str, event_id: int, fallback: str = "") -> str:
     Get a friendly title for an event, or return fallback if not in KB.
 
     This is useful for the event list display.
+    On Linux, Windows-specific terms in the title are automatically substituted.
     """
     kb = lookup_event_knowledge(source, event_id)
     if kb:
         return kb.title
-    return fallback
+    return _platform_sub(fallback) if _IS_LINUX else fallback

@@ -25,6 +25,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import time
 from dataclasses import dataclass
 from threading import Lock
@@ -55,138 +56,200 @@ MAX_BACKOFF = 30.0
 
 
 # =============================================================================
-# SYSTEM PROMPTS
+# SYSTEM PROMPTS  (dynamic, platform-aware)
 # =============================================================================
 
-EVENT_EXPLANATION_PROMPT = """You are an expert Windows security analyst explaining events to users.
+_OS_NAME = platform.system()  # "Windows" or "Linux"
 
-CRITICAL RULES:
-1. Be SPECIFIC - reference the ACTUAL event ID, provider, and message details given
-2. Explain WHAT happened in plain English (not generic - use the specific event data)
-3. Explain WHY it matters for security (specific to THIS event type)
-4. Tell if this is NORMAL or needs attention (based on the level and context)
-5. Give EXACT steps to investigate or remediate (specific commands, paths, tools)
-6. Include specific thresholds when relevant (e.g., "more than 5 failures in 10 minutes")
 
-You will receive:
-- Event ID (the Windows event identifier)
-- Provider/Source (which Windows component generated it)
-- Level (Information, Warning, Error, Critical)  
-- Log Name (which Windows log: Application, System, Security, etc.)
-- Timestamp (when the event occurred)
-- Message (the actual event text - VERY IMPORTANT, contains specifics)
-- Local analysis (from knowledge base - TRUST these facts, don't contradict)
+def _build_event_prompt(os_name: str | None = None, detail_level: str = "normal") -> str:
+    """Build a platform-aware event explanation system prompt.
 
-YOUR JOB:
-1. Read the Message carefully - it contains the SPECIFIC details (user names, service names, error codes)
-2. Extract those specifics into your explanation
-3. Add context about what this means for the user's security
-4. Give actionable steps
+    Args:
+        os_name: "Windows" or "Linux" (defaults to runtime detection).
+        detail_level: "normal" or "simplified".
 
-EXAMPLE: If message says "Service 'Windows Update' changed from running to stopped":
-- DO say: "The Windows Update service stopped running on this computer."
-- DON'T say: "A service state change was detected."
+    Returns:
+        The full system prompt string for the Groq API call.
+    """
+    os_name = os_name or _OS_NAME
+    is_linux = os_name == "Linux"
 
-Response format (JSON only, no markdown):
-{
-    "title": "Brief descriptive title using specific names from the event",
-    "brief_user": "1-2 sentences in super simple language for normal users. NO technical jargon. What happened and is it okay?",
-    "brief_technical": "2-4 sentences for IT professionals. Include event ID, error codes, service names, specific values from the message.",
-    "confidence": 0.0-1.0 float (1.0 if message is detailed; reduce if message is vague/missing),
-    "evidence": ["Event ID: 7036", "Provider: Service Control Manager", "Message mentions: Windows Update service", "KB rule: service state change"],
-    "what_happened": "Detailed explanation (2-4 sentences, use actual names/values from message)",
-    "why_it_happened": ["specific cause 1 based on event context", "specific cause 2"],
-    "what_it_affects": ["specific impact 1", "specific impact 2"],
-    "is_normal": true or false,
-    "risk_level": "none|low|medium|high|critical",
-    "what_to_do": ["specific step 1 with actual commands/paths", "specific step 2"],
-    "when_to_worry": ["specific pattern that indicates a real problem"],
-    "technical_brief": "One-line technical summary for IT professionals with relevant codes/IDs"
-}
+    # ---------- terminology swaps ----------
+    os_label = "Linux" if is_linux else "Windows"
+    log_source = "syslog / journalctl" if is_linux else "Windows Event Log"
+    component_label = "system daemon or service" if is_linux else "Windows component"
+    example_event = (
+        "Unit 'nginx.service' entered 'failed' state."
+        if is_linux
+        else "Service 'Windows Update' changed from running to stopped"
+    )
+    example_good = (
+        "The nginx web server crashed and is no longer running."
+        if is_linux
+        else "The Windows Update service stopped running on this computer."
+    )
+    diag_commands = (
+        "journalctl -u <unit>, systemctl status <unit>, dmesg"
+        if is_linux
+        else "Get-EventLog, Get-WinEvent, Get-MpComputerStatus"
+    )
 
-IMPORTANT: If the event message is empty or vague, say so explicitly in brief_user and set confidence lower (0.3-0.6)."""
+    # ---- simplified mode ----
+    if detail_level == "simplified":
+        return (
+            f"You are explaining a {os_label} system event to someone who knows "
+            "NOTHING about computers.\n\n"
+            "RULES:\n"
+            "1. Use EVERYDAY language - like explaining to a grandparent\n"
+            "2. Use analogies (e.g., 'like a door being opened', 'like a car engine starting')\n"
+            "3. NO technical terms AT ALL - no event IDs, no service names, no error codes\n"
+            "4. Focus on: Is this okay? Should they worry? What should they do?\n\n"
+            "You MUST return ONLY a raw JSON object (no markdown fences) with these EXACT keys:\n"
+            "{\n"
+            '    "short_title": "Super simple title (5 words max)",\n'
+            '    "plain_summary": "2-3 sentences a child could understand. Use analogies. Reassure or warn.",\n'
+            '    "what_happened": "Simple explanation using everyday analogies",\n'
+            '    "why_it_happens": "Simple reason this occurs",\n'
+            '    "what_you_can_do": "Simple action in everyday language",\n'
+            '    "risk_level": "Low|Medium|High|Critical",\n'
+            '    "is_normal": true or false,\n'
+            '    "confidence": 0.0-1.0 float,\n'
+            '    "evidence": ["list of evidence used"],\n'
+            '    "brief_user": "Same as plain_summary",\n'
+            '    "brief_technical": "Keep this technical for reference, 2-3 sentences.",\n'
+            '    "title": "Same as short_title",\n'
+            '    "why_it_happened": ["simple reason 1", "simple reason 2"],\n'
+            '    "what_it_affects": [],\n'
+            '    "what_to_do": ["simple action"],\n'
+            '    "when_to_worry": [],\n'
+            '    "technical_brief": "Technical reference (for IT)"\n'
+            "}"
+        )
 
-# Simplified version of prompt for "Explain simpler" mode
-EVENT_EXPLANATION_PROMPT_SIMPLIFIED = """You are explaining a Windows event to someone who knows NOTHING about computers.
+    # ---- normal (full) mode ----
+    return (
+        f"You are a cybersecurity expert analyzing {os_label} system events.\n\n"
+        f"The log comes from a {os_label} machine ({log_source}).\n\n"
+        "CRITICAL RULES:\n"
+        "1. Be SPECIFIC — reference the ACTUAL event ID, provider, and message details given\n"
+        f"2. Explain WHAT happened in plain English (use the specific {component_label} names)\n"
+        "3. Explain WHY it matters for security (specific to THIS event type)\n"
+        "4. Tell if this is NORMAL or needs attention (based on the level and context)\n"
+        f"5. Give EXACT steps to investigate or remediate (specific commands: {diag_commands})\n"
+        "6. Include specific thresholds when relevant\n\n"
+        "You will receive:\n"
+        f"- Event ID (the {os_label} event identifier)\n"
+        f"- Provider/Source (which {component_label} generated it)\n"
+        "- Level (Information, Warning, Error, Critical)\n"
+        f"- Log Name (which {os_label} log)\n"
+        "- Timestamp (when the event occurred)\n"
+        "- Message (the actual event text — VERY IMPORTANT, contains specifics)\n"
+        "- Local analysis (from knowledge base — TRUST these facts, don't contradict)\n\n"
+        "YOUR JOB:\n"
+        "1. Read the Message carefully — it contains the SPECIFIC details\n"
+        "2. Extract those specifics into your explanation\n"
+        "3. Add context about what this means for the user's security\n"
+        "4. Give actionable steps\n\n"
+        f"EXAMPLE: If message says \"{example_event}\":\n"
+        f'- DO say: "{example_good}"\n'
+        "- DON'T say: \"A service state change was detected.\"\n\n"
+        "You MUST return ONLY a raw JSON object (no markdown fences) with these EXACT keys:\n"
+        "{\n"
+        '    "short_title": "Brief descriptive title using specific names from the event",\n'
+        '    "plain_summary": "1-2 sentences in super simple language for normal users. NO jargon.",\n'
+        '    "what_happened": "Detailed explanation (2-4 sentences, use actual names/values from message)",\n'
+        '    "why_it_happens": "Semicolon-separated reasons this occurs",\n'
+        '    "what_you_can_do": "Semicolon-separated actionable steps with actual commands/paths",\n'
+        '    "risk_level": "Low|Medium|High|Critical",\n'
+        '    "is_normal": true or false,\n'
+        '    "confidence": 0.0-1.0 float (1.0 if message is detailed; reduce if vague/missing),\n'
+        '    "evidence": ["list of evidence strings"],\n'
+        '    "brief_user": "Same as plain_summary",\n'
+        '    "brief_technical": "2-4 sentences for IT professionals with event ID, error codes, service names.",\n'
+        '    "title": "Same as short_title",\n'
+        '    "why_it_happened": ["specific cause 1", "specific cause 2"],\n'
+        '    "what_it_affects": ["specific impact 1", "specific impact 2"],\n'
+        '    "what_to_do": ["specific step 1", "specific step 2"],\n'
+        '    "when_to_worry": ["specific pattern that indicates a real problem"],\n'
+        '    "technical_brief": "One-line technical summary with relevant codes/IDs"\n'
+        "}\n\n"
+        "IMPORTANT: If the event message is empty or vague, say so explicitly in "
+        "plain_summary and set confidence lower (0.3-0.6)."
+    )
 
-RULES:
-1. Use EVERYDAY language - like explaining to a grandparent
-2. Use analogies (e.g., "like a door being opened", "like a car engine starting")
-3. NO technical terms AT ALL - no event IDs, no service names, no error codes
-4. Focus on: Is this okay? Should they worry? What should they do?
 
-Response format (JSON only, no markdown):
-{
-    "title": "Super simple title (5 words max)",
-    "brief_user": "2-3 sentences a child could understand. Use analogies. Reassure or warn appropriately.",
-    "brief_technical": "Keep this technical for reference, 2-3 sentences.",
-    "confidence": 0.0-1.0 float,
-    "evidence": ["list of evidence used"],
-    "what_happened": "Simple explanation using everyday analogies",
-    "why_it_happened": ["simple reason 1", "simple reason 2"],
-    "what_it_affects": [],
-    "is_normal": true or false,
-    "risk_level": "none|low|medium|high|critical",
-    "what_to_do": ["simple action in everyday language"],
-    "when_to_worry": [],
-    "technical_brief": "Technical reference (for IT)"
-}"""
+def _build_chat_system_prompt(os_name: str | None = None) -> str:
+    """Build a platform-aware chat system prompt."""
+    os_name = os_name or _OS_NAME
+    is_linux = os_name == "Linux"
 
-CHAT_SYSTEM_PROMPT = """You are Sentinel, an expert Windows security assistant.
+    os_label = "Linux" if is_linux else "Windows"
+    scope_items = (
+        f"- {os_label} security and administration\n"
+        "- Sentinel app features (event viewer, scans, firewall, defender)\n"
+        "- Malware analysis and threat assessment\n"
+        "- System hardening and security best practices"
+    )
+    if is_linux:
+        tool_cmds = (
+            "- journalctl, systemctl status (system logs)\n"
+            "- ufw status, iptables -L (firewall)\n"
+            "- clamav, rkhunter (malware scanners)\n"
+            "- ss -tuln, netstat (network)"
+        )
+    else:
+        tool_cmds = (
+            "- Get-EventLog, Get-WinEvent (event logs)\n"
+            "- Get-NetFirewallProfile (firewall)\n"
+            "- Get-MpComputerStatus (defender)\n"
+            "- Get-WindowsUpdateLog (updates)"
+        )
 
-SCOPE: You ONLY answer questions about:
-- Windows security and administration
-- Sentinel app features (event viewer, scans, firewall, defender)
-- Malware analysis and threat assessment
-- System hardening and security best practices
+    return (
+        f"You are Sentinel, an expert {os_label} security assistant.\n\n"
+        f"SCOPE: You ONLY answer questions about:\n{scope_items}\n\n"
+        "If asked about ANYTHING else, politely redirect to security topics.\n\n"
+        "STYLE:\n"
+        "- Be direct and confident\n"
+        "- Use bullet points for lists\n"
+        "- Give specific commands/steps when relevant\n"
+        "- Reference previous conversation context when applicable\n\n"
+        "You have access to:\n"
+        f"- {os_label} Event logs from the user's system\n"
+        "- Security status (Defender/ClamAV, Firewall, Updates)\n"
+        "- Scan results (file and URL analysis)\n"
+        "- Previous conversation history\n\n"
+        "CRITICAL BEHAVIORS:\n\n"
+        "1. CONTEXT AWARENESS: Use conversation history to maintain context. If the user refers to\n"
+        '   "it", "that event", "this issue", look at previous messages to understand what they mean.\n\n'
+        '2. SIMPLIFICATION: If the user says "I don\'t understand", "explain simpler", "what does that mean",\n'
+        "   or similar - DO NOT just repeat yourself. Instead:\n"
+        "   - Use everyday analogies\n"
+        "   - Avoid all technical jargon\n"
+        "   - Break it into smaller, simpler concepts\n"
+        "   - Give concrete real-world examples\n\n"
+        "3. HELP RESOLVE: When helping resolve events, provide:\n"
+        "   - Diagnosis steps (safe, read-only commands)\n"
+        "   - Specific action plan\n"
+        "   - Ask for confirmation before suggesting changes to system settings\n"
+        "   - Verify the outcome after actions\n\n"
+        f"4. TOOL ACCESS: You can suggest the user run diagnostic commands like:\n{tool_cmds}\n\n"
+        "Response format (JSON only):\n"
+        "{\n"
+        '    "answer": "Your response (use markdown for formatting)",\n'
+        '    "why_it_happened": ["relevant context points"],\n'
+        '    "what_it_affects": ["security implications"],\n'
+        '    "what_to_do_now": ["specific actionable steps with commands if applicable"],\n'
+        '    "follow_up_suggestions": ["suggested follow-up questions user might ask"],\n'
+        '    "confidence": "high|medium|low"\n'
+        "}"
+    )
 
-If asked about ANYTHING else, politely redirect to security topics.
 
-STYLE:
-- Be direct and confident
-- Use bullet points for lists
-- Give specific commands/steps when relevant
-- Reference previous conversation context when applicable
+# Keep module-level references for backward compatibility
+CHAT_SYSTEM_PROMPT = _build_chat_system_prompt()
 
-You have access to:
-- Windows Event logs from the user's system
-- Security status (Defender, Firewall, Updates)
-- Scan results (file and URL analysis)
-- Previous conversation history
-
-CRITICAL BEHAVIORS:
-
-1. CONTEXT AWARENESS: Use conversation history to maintain context. If the user refers to
-   "it", "that event", "this issue", look at previous messages to understand what they mean.
-
-2. SIMPLIFICATION: If the user says "I don't understand", "explain simpler", "what does that mean",
-   or similar - DO NOT just repeat yourself. Instead:
-   - Use everyday analogies
-   - Avoid all technical jargon
-   - Break it into smaller, simpler concepts
-   - Give concrete real-world examples
-
-3. HELP RESOLVE: When helping resolve events, provide:
-   - Diagnosis steps (safe, read-only commands)
-   - Specific action plan
-   - Ask for confirmation before suggesting changes to system settings
-   - Verify the outcome after actions
-
-4. TOOL ACCESS: You can suggest the user run diagnostic commands like:
-   - Get-EventLog, Get-WinEvent (event logs)
-   - Get-NetFirewallProfile (firewall)
-   - Get-MpComputerStatus (defender)
-   - Get-WindowsUpdateLog (updates)
-
-Response format (JSON only):
-{
-    "answer": "Your response (use markdown for formatting)",
-    "why_it_happened": ["relevant context points"],
-    "what_it_affects": ["security implications"],
-    "what_to_do_now": ["specific actionable steps with commands if applicable"],
-    "follow_up_suggestions": ["suggested follow-up questions user might ask"],
-    "confidence": "high|medium|low"
-}"""
 
 SIMPLER_REWRITE_PROMPT = """Rewrite this explanation for a non-technical user.
 
@@ -686,6 +749,9 @@ class GroqProvider(AIProvider):
         log_name = event.get("log_name", "Application")
         timestamp = event.get("timestamp", event.get("time_created", ""))
 
+        # Detect platform for prompt context
+        os_name = platform.system()  # "Windows" or "Linux"
+
         # Check cache first (keyed by detail_level too)
         cached = self._cache.get_event(
             event_id, provider, level, message, detail_level=detail_level
@@ -702,6 +768,7 @@ class GroqProvider(AIProvider):
         safe_message = self._redact_message(message)
 
         context_parts = [
+            f"Operating System: {os_name}",
             f"Event ID: {event_id}",
             f"Provider: {provider}",
             f"Level: {level}",
@@ -730,12 +797,8 @@ class GroqProvider(AIProvider):
                     f"- Recommended: {', '.join(kb_explanation['actions'][:3])}"
                 )
 
-        # Choose prompt based on detail level
-        prompt = (
-            EVENT_EXPLANATION_PROMPT_SIMPLIFIED
-            if detail_level == "simplified"
-            else EVENT_EXPLANATION_PROMPT
-        )
+        # Build dynamic platform-aware prompt
+        prompt = _build_event_prompt(os_name=os_name, detail_level=detail_level)
 
         messages = [
             {"role": "system", "content": prompt},
@@ -916,10 +979,31 @@ class GroqProvider(AIProvider):
                 confidence="low",
             )
 
+    @staticmethod
+    def _normalize_risk_level(raw: str) -> str:
+        """Normalize risk_level to one of Low/Medium/High/Critical.
+
+        Groq may return 'none', 'low', 'medium', 'high', 'critical' in
+        varying cases.  Map them to the capitalised form the QML UI expects.
+        """
+        mapping = {
+            "none": "Low",
+            "low": "Low",
+            "medium": "Medium",
+            "high": "High",
+            "critical": "Critical",
+        }
+        return mapping.get(raw.strip().lower(), "Low")
+
     def _parse_event_response(
         self, content: str, evidence: list[str] | None = None
     ) -> AIResponse:
-        """Parse event explanation response with brief fields."""
+        """Parse event explanation response with strict UI-key validation.
+
+        Ensures the 6 required UI keys always exist:
+        short_title, plain_summary, what_happened,
+        why_it_happens, what_you_can_do, risk_level
+        """
         try:
             # Handle JSON wrapped in markdown
             if "```json" in content:
@@ -957,8 +1041,39 @@ class GroqProvider(AIProvider):
                     # Extract fields with regex as last resort
                     data = self._extract_fields_from_text(content)
 
-            # Extract new brief fields
-            brief_user = data.get("brief_user", "")
+            # ----------------------------------------------------------
+            # Enforce the 6 required UI keys with safe defaults
+            # ----------------------------------------------------------
+            short_title = (
+                data.get("short_title")
+                or data.get("title")
+                or "Event Information"
+            )
+            plain_summary = (
+                data.get("plain_summary")
+                or data.get("brief_user")
+                or data.get("what_happened")
+                or short_title
+            )
+            what_happened = data.get("what_happened") or plain_summary
+            # why_it_happens can be a string or list; normalise to string
+            raw_why = data.get("why_it_happens") or data.get("why_it_happened", [])
+            if isinstance(raw_why, list):
+                why_it_happens = "; ".join(raw_why) if raw_why else ""
+            else:
+                why_it_happens = str(raw_why)
+            # what_you_can_do can be a string or list; normalise to string
+            raw_do = data.get("what_you_can_do") or data.get("what_to_do", [])
+            if isinstance(raw_do, list):
+                what_you_can_do = "; ".join(raw_do) if raw_do else ""
+            else:
+                what_you_can_do = str(raw_do)
+            risk_level = self._normalize_risk_level(
+                str(data.get("risk_level", "Low"))
+            )
+
+            # Extract existing brief fields
+            brief_user = data.get("brief_user", "") or plain_summary
             brief_technical = data.get(
                 "brief_technical", data.get("technical_brief", "")
             )
@@ -966,12 +1081,7 @@ class GroqProvider(AIProvider):
             evidence_list = data.get("evidence", evidence or [])
 
             # Use brief_user as primary answer, fall back to what_happened
-            answer = (
-                brief_user
-                or data.get("summary")
-                or data.get("what_happened")
-                or data.get("title", "")
-            )
+            answer = brief_user or plain_summary or what_happened
 
             return AIResponse(
                 answer=answer,
@@ -980,12 +1090,18 @@ class GroqProvider(AIProvider):
                 what_to_do_now=data.get("what_to_do", data.get("what_to_do_now", [])),
                 follow_up_suggestions=data.get("when_to_worry", []),
                 technical_details={
-                    "title": data.get("title", ""),
+                    "title": short_title,
                     "is_normal": data.get("is_normal", True),
-                    "risk_level": data.get("risk_level", "low"),
+                    "risk_level": risk_level,
                     "technical_brief": data.get("technical_brief", ""),
-                    "full_what_happened": data.get("what_happened", ""),
-                    # New brief fields
+                    "full_what_happened": what_happened,
+                    # UI-required keys
+                    "short_title": short_title,
+                    "plain_summary": plain_summary,
+                    "what_happened": what_happened,
+                    "why_it_happens": why_it_happens,
+                    "what_you_can_do": what_you_can_do,
+                    # Brief fields
                     "brief_user": brief_user,
                     "brief_technical": brief_technical,
                     "confidence": confidence_value,
@@ -1042,19 +1158,35 @@ class GroqProvider(AIProvider):
     def _kb_to_response(
         self, kb: dict[str, Any], event: dict[str, Any] | None = None
     ) -> AIResponse:
-        """Convert KB explanation to AIResponse with brief fields."""
+        """Convert KB explanation to AIResponse with brief fields.
+
+        Uses platform.system() so the fallback text never says
+        'Windows' on a Linux machine.
+        """
         title = kb.get("title", "Event recorded")
         event_id = event.get("event_id", 0) if event else 0
         provider = event.get("provider", "Unknown") if event else "Unknown"
+        os_name = platform.system()
 
-        # Generate briefs from KB data
-        brief_user = (
-            f"{title}. This is a routine event that doesn't require immediate action."
-        )
+        # Generate OS-aware briefs from KB data
         if kb.get("severity") in ("Warning", "Critical"):
-            brief_user = f"{title}. This event may need attention - check the recommended actions."
+            brief_user = f"{title}. This event may need attention — check the recommended actions."
+        elif os_name == "Linux":
+            brief_user = f"{title}. A Linux system service recorded this event. No immediate action required."
+        else:
+            brief_user = f"{title}. This is a routine event that doesn't require immediate action."
 
         brief_technical = f"Event {event_id} from {provider}. {kb.get('impact', title)}"
+
+        # Build the 6 required UI keys for the fallback too
+        raw_why = kb.get("causes", [])
+        why_str = "; ".join(raw_why) if isinstance(raw_why, list) else str(raw_why)
+        raw_do = kb.get("actions", [])
+        do_str = "; ".join(raw_do) if isinstance(raw_do, list) else str(raw_do)
+        risk = self._normalize_risk_level(
+            {"Safe": "low", "Minor": "low", "Warning": "medium", "Critical": "high"}
+            .get(kb.get("severity", "Minor"), "low")
+        )
 
         return AIResponse(
             answer=brief_user,
@@ -1068,6 +1200,13 @@ class GroqProvider(AIProvider):
                 "brief_technical": brief_technical,
                 "confidence": 0.9 if kb.get("matched") else 0.6,
                 "evidence": [f"KB rule matched: {title}"] if kb.get("matched") else [],
+                # 6 required UI keys
+                "short_title": title,
+                "plain_summary": brief_user,
+                "what_happened": kb.get("impact", title),
+                "why_it_happens": why_str,
+                "what_you_can_do": do_str,
+                "risk_level": risk,
             },
             source="local_kb",
             confidence="high" if kb.get("matched") else "medium",

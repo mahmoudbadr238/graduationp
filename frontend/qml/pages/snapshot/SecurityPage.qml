@@ -1,4 +1,4 @@
-﻿import QtQuick 2.15
+import QtQuick 2.15
 import QtQuick.Controls 2.15
 import "../../components"
 import "../../theme"
@@ -16,6 +16,9 @@ AppSurface {
         },
         "is_admin": false
     })
+
+    // Platform detection for hiding Windows-only UI elements
+    readonly property bool isLinux: (typeof Backend !== 'undefined' && Backend) ? Backend.isLinux : false
 
     ScrollView {
         anchors.fill: parent
@@ -68,14 +71,14 @@ AppSurface {
                     anchors.verticalCenter: parent.verticalCenter
 
                     Text {
-                        text: root.snapshotData.is_admin ? "Administrator Privileges Active" : "Limited Privileges"
+                        text: root.snapshotData.is_admin ? (root.isLinux ? "Root Privileges Active" : "Administrator Privileges Active") : "Limited Privileges"
                         color: Theme.text
                         font.pixelSize: ThemeManager.fontSize_body
                         font.bold: true
                     }
 
                     Text {
-                        text: root.snapshotData.is_admin ? "All security features available" : "Some features may be limited. Run as administrator for full access."
+                        text: root.snapshotData.is_admin ? "All security features available" : (root.isLinux ? "Some features may be limited. Run as root for full access." : "Some features may be limited. Run as administrator for full access.")
                         color: Theme.textSecondary
                         font.pixelSize: ThemeManager.fontSize_small
                     }
@@ -96,38 +99,51 @@ AppSurface {
                 anchors.topMargin: 20
 
                 Repeater {
-                    model: [
-                        {
-                            feature: "Windows Defender",
-                            status: root.snapshotData.security && root.snapshotData.security.windows_defender ? root.snapshotData.security.windows_defender.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.windows_defender ? root.snapshotData.security.windows_defender.enabled : false
-                        },
-                        {
-                            feature: "Firewall",
-                            status: root.snapshotData.security && root.snapshotData.security.firewall ? root.snapshotData.security.firewall.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.firewall ? root.snapshotData.security.firewall.enabled : false
-                        },
-                        {
-                            feature: "TPM 2.0",
-                            status: root.snapshotData.security && root.snapshotData.security.tpm ? root.snapshotData.security.tpm.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.tpm ? root.snapshotData.security.tpm.enabled : false
-                        },
-                        {
-                            feature: "Secure Boot",
-                            status: root.snapshotData.security && root.snapshotData.security.secure_boot ? root.snapshotData.security.secure_boot.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.secure_boot ? root.snapshotData.security.secure_boot.enabled : false
-                        },
-                        {
-                            feature: "BitLocker",
-                            status: root.snapshotData.security && root.snapshotData.security.bitlocker ? root.snapshotData.security.bitlocker.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.bitlocker ? root.snapshotData.security.bitlocker.enabled : false
-                        },
-                        {
-                            feature: "UAC",
-                            status: root.snapshotData.security && root.snapshotData.security.uac ? root.snapshotData.security.uac.status : "Unknown",
-                            enabled: root.snapshotData.security && root.snapshotData.security.uac ? root.snapshotData.security.uac.enabled : false
+                    // Filter out Windows-only features on Linux
+                    model: {
+                        var allItems = [
+                            {
+                                feature: root.isLinux ? "ClamAV" : "Windows Defender",
+                                status: root.snapshotData.security && root.snapshotData.security.windows_defender ? root.snapshotData.security.windows_defender.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.windows_defender ? root.snapshotData.security.windows_defender.enabled : false,
+                                linuxVisible: true
+                            },
+                            {
+                                feature: "Firewall",
+                                status: root.snapshotData.security && root.snapshotData.security.firewall ? root.snapshotData.security.firewall.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.firewall ? root.snapshotData.security.firewall.enabled : false,
+                                linuxVisible: true
+                            },
+                            {
+                                feature: "TPM 2.0",
+                                status: root.snapshotData.security && root.snapshotData.security.tpm ? root.snapshotData.security.tpm.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.tpm ? root.snapshotData.security.tpm.enabled : false,
+                                linuxVisible: false
+                            },
+                            {
+                                feature: "Secure Boot",
+                                status: root.snapshotData.security && root.snapshotData.security.secure_boot ? root.snapshotData.security.secure_boot.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.secure_boot ? root.snapshotData.security.secure_boot.enabled : false,
+                                linuxVisible: false
+                            },
+                            {
+                                feature: "BitLocker",
+                                status: root.snapshotData.security && root.snapshotData.security.bitlocker ? root.snapshotData.security.bitlocker.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.bitlocker ? root.snapshotData.security.bitlocker.enabled : false,
+                                linuxVisible: false
+                            },
+                            {
+                                feature: "UAC",
+                                status: root.snapshotData.security && root.snapshotData.security.uac ? root.snapshotData.security.uac.status : "Unknown",
+                                enabled: root.snapshotData.security && root.snapshotData.security.uac ? root.snapshotData.security.uac.enabled : false,
+                                linuxVisible: false
+                            }
+                        ]
+                        if (root.isLinux) {
+                            return allItems.filter(function(item) { return item.linuxVisible })
                         }
-                    ]
+                        return allItems
+                    }
 
                     Rectangle {
                         width: parent.width

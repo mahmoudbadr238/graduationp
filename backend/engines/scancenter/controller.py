@@ -633,6 +633,12 @@ class ScanController:
                 )
             else:
                 report.sandbox = SandboxSection(enabled=False)
+                _sb_skip_reason = (
+                    "Skipped — Linux OS (Sandbox requires Windows VMware)"
+                    if not _IS_WINDOWS
+                    else "Skipped — sandbox not enabled"
+                )
+                emit_step("sandbox", "Sandbox skipped", _sb_skip_reason, "ok")
 
             if self._cancelled():
                 return self._finalise(report, t0, opts, cancelled=True)

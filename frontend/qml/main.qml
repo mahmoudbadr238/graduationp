@@ -233,6 +233,7 @@ ApplicationWindow {
                     isActive: currentRoute === "sandbox-lab"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("sandbox-lab")
+                    visible: Backend ? !Backend.isLinux : true
                 }
 
                 SidebarItem {

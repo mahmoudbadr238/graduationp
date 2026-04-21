@@ -18,7 +18,6 @@ Requires: colorama  (pip install colorama)
 from __future__ import annotations
 
 import argparse
-import ctypes
 import importlib
 import io
 import os
@@ -27,6 +26,12 @@ import sys
 import time
 from pathlib import Path
 from typing import List, Tuple
+
+_IS_WINDOWS = sys.platform == "win32"
+_IS_LINUX = sys.platform.startswith("linux")
+
+if _IS_WINDOWS:
+    import ctypes
 
 # Force UTF-8 stdout/stderr so any stray Unicode doesn't crash on cp1252
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -82,38 +87,57 @@ def _header(title: str) -> None:
 # 1. SYSTEM & PRIVILEGE HOOK TESTS
 # ===========================================================================
 def test_admin_privileges() -> None:
-    """Check if the process is running with Administrator (UAC) elevation."""
-    try:
-        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except Exception:
-        is_admin = False
+    """Check if the process is running with elevated privileges."""
+    if _IS_WINDOWS:
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            is_admin = False
 
-    if is_admin:
-        _pass("Administrator privileges", "Running elevated")
+        if is_admin:
+            _pass("Administrator privileges", "Running elevated")
+        else:
+            _fail(
+                "Administrator privileges",
+                "NOT running as Administrator",
+                "ACTION: Right-click terminal -> 'Run as administrator', or use scripts/run_as_admin.bat",
+            )
     else:
-        _fail(
-            "Administrator privileges",
-            "NOT running as Administrator",
-            "ACTION: Right-click terminal -> 'Run as administrator', or use scripts/run_as_admin.bat",
-        )
+        # Linux / macOS
+        is_root = os.geteuid() == 0
+        if is_root:
+            _pass("Root privileges", "Running as root")
+        else:
+            _warn(
+                "Root privileges",
+                "NOT running as root — some diagnostics may be limited",
+                "ACTION: Re-run with 'sudo python run_diagnostics.py'",
+            )
 
 
 # Packages grouped by purpose so the report is useful
-REQUIRED_PACKAGES = {
+_COMMON_PACKAGES = {
     # pip-name  ->  import-name
     "PySide6": "PySide6",
     "psutil": "psutil",
-    "wmi": "wmi",
     "requests": "requests",
     "colorama": "colorama",
     "python-dotenv": "dotenv",
-    "pywin32": "win32api",
     "pefile": "pefile",
     "groq": "groq",
     "aiohttp": "aiohttp",
     "GPUtil": "GPUtil",
     "nvidia-ml-py": "pynvml",
 }
+
+_WINDOWS_ONLY_PACKAGES = {
+    "wmi": "wmi",
+    "pywin32": "win32api",
+}
+
+REQUIRED_PACKAGES = {**_COMMON_PACKAGES}
+if _IS_WINDOWS:
+    REQUIRED_PACKAGES.update(_WINDOWS_ONLY_PACKAGES)
 
 
 def test_pip_packages() -> None:
@@ -134,7 +158,12 @@ def test_pip_packages() -> None:
 # 2. BACKEND SERVICE INTEGRATION TESTS
 # ===========================================================================
 def test_wmi_security_center() -> None:
-    """Connect to ROOT\\SecurityCenter2 and query AntiVirusProduct."""
+    """Connect to ROOT\\SecurityCenter2 and query AntiVirusProduct (Windows only)."""
+    if not _IS_WINDOWS:
+        _warn("WMI SecurityCenter2", "Skipped — Windows-only test",
+              "Linux uses ClamAV / custom AV integration instead")
+        return
+
     try:
         import wmi as wmi_mod
 
@@ -164,7 +193,12 @@ def test_wmi_security_center() -> None:
 
 
 def test_defender_cli() -> None:
-    """Run MpCmdRun.exe -h and verify returncode 0."""
+    """Run MpCmdRun.exe -h and verify returncode 0 (Windows only)."""
+    if not _IS_WINDOWS:
+        _warn("Defender CLI (MpCmdRun)", "Skipped — Windows-only test",
+              "Linux uses ClamAV (clamscan / freshclam) instead")
+        return
+
     mpcmd = os.path.join(
         os.environ.get("ProgramFiles", r"C:\Program Files"),
         "Windows Defender",
@@ -209,6 +243,16 @@ def test_defender_cli() -> None:
 
 
 def test_firewall_service() -> None:
+    """Check the firewall service for the current platform."""
+    if _IS_WINDOWS:
+        _test_firewall_windows()
+    elif _IS_LINUX:
+        _test_firewall_linux()
+    else:
+        _warn("Firewall service", "Unknown platform — skipped")
+
+
+def _test_firewall_windows() -> None:
     """Check the Windows Firewall service (mpssvc) via psutil."""
     try:
         import psutil
@@ -244,6 +288,51 @@ def test_firewall_service() -> None:
             f"psutil error: {exc}",
             "ACTION: Run as Administrator to access service information",
         )
+
+
+def _test_firewall_linux() -> None:
+    """Check if UFW or firewalld is active on Linux."""
+    # Try UFW first
+    try:
+        result = subprocess.run(
+            ["ufw", "status"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and "active" in result.stdout.lower():
+            _pass("Firewall service (UFW)", "UFW is active")
+            return
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Try firewalld
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "firewalld"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            _pass("Firewall service (firewalld)", "firewalld is active")
+            return
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Try iptables
+    try:
+        result = subprocess.run(
+            ["iptables", "-L", "-n"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            _pass("Firewall service (iptables)", "iptables rules present")
+            return
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    _warn(
+        "Firewall service",
+        "No active firewall detected (UFW, firewalld, or iptables)",
+        "ACTION: Install and enable a firewall — e.g. 'sudo apt install ufw && sudo ufw enable'",
+    )
 
 
 # ===========================================================================

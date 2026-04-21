@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import platform
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +23,48 @@ from typing import Any
 from backend.runtime import resolve_bundle_path
 
 logger = logging.getLogger(__name__)
+
+# Platform-aware substitution map: (Windows term -> Linux term)
+_IS_LINUX = platform.system() == "Linux"
+_PLATFORM_SUBS: list[tuple[str, str]] = [
+    ("Windows recorded",  "Linux recorded"),
+    ("Windows detected",  "The system detected"),
+    ("Windows encountered", "The system encountered"),
+    ("Windows logged",    "The system logged"),
+    ("Windows started",   "The system started"),
+    ("Windows shut down", "The system shut down"),
+    ("Windows stopped",   "The system stopped"),
+    ("Windows is shutting down", "The system is shutting down"),
+    ("Windows began",     "The system began"),
+    ("Windows asked",     "The system asked"),
+    ("Windows components", "system daemons/services"),
+    ("Windows services",  "system services"),
+    ("Windows service",   "system service"),
+    ("Windows Firewall",  "System Firewall"),
+    ("Windows Security",  "System Security"),
+    ("Windows Defender",  "ClamAV / System Antivirus"),
+    ("Windows Update",    "System Updates"),
+    ("Windows Management Instrumentation", "System Management"),
+    ("Windows Installer", "Package Manager"),
+    ("Windows Memory Diagnostic", "memtest86+"),
+    ("Windows desktop environment", "desktop environment"),
+    ("Run as administrator", "Run as root"),
+    ("Run as Administrator", "Run as root"),
+    ("run as administrator", "run as root"),
+    ("as Administrator",  "as root"),
+    ("as administrator",  "as root"),
+    # Tool-specific substitutions
+    ("Task Manager",      "System Monitor / htop"),
+    ("services.msc",      "systemctl"),
+    ("chkdsk",            "fsck"),
+    ("ipconfig /flushdns", "systemd-resolve --flush-caches"),
+    ("ipconfig /release", "dhclient -r"),
+    ("ipconfig /renew",   "dhclient"),
+    ("ipconfig",          "ip addr / ifconfig"),
+    ("Group Policy",      "system policy"),
+    ("Start menu",        "application menu"),
+    ("C:\\\\Windows\\\\Minidump", "/var/crash"),
+]
 
 
 @dataclass
@@ -133,6 +176,22 @@ class EventRulesEngine:
         except Exception as e:
             logger.error(f"Failed to load event rules: {e}")
 
+    @staticmethod
+    def _platform_sub(text: str) -> str:
+        """Replace Windows-specific terms with Linux equivalents when on Linux."""
+        if not _IS_LINUX or not text:
+            return text
+        for win_term, linux_term in _PLATFORM_SUBS:
+            text = text.replace(win_term, linux_term)
+        return text
+
+    @staticmethod
+    def _platform_sub_list(items: list[str]) -> list[str]:
+        """Apply platform substitution to a list of strings."""
+        if not _IS_LINUX or not items:
+            return items
+        return [EventRulesEngine._platform_sub(s) for s in items]
+
     def lookup(
         self,
         provider: str,
@@ -175,9 +234,9 @@ class EventRulesEngine:
                 # Found exact match!
                 result.title = event_data.get("title", result.title)
                 result.severity = event_data.get("severity", "Minor")
-                result.impact = event_data.get("impact", "")
-                result.causes = event_data.get("causes", [])
-                result.actions = event_data.get("actions", [])
+                result.impact = self._platform_sub(event_data.get("impact", ""))
+                result.causes = self._platform_sub_list(event_data.get("causes", []))
+                result.actions = self._platform_sub_list(event_data.get("actions", []))
                 result.matched = True
                 logger.debug(f"Exact match: {provider}:{event_id}")
             else:
@@ -240,9 +299,9 @@ class EventRulesEngine:
             "title", f"{result.level} event from {result.provider}"
         )
         result.severity = template.get("severity", "Minor")
-        result.impact = template.get("impact", "")
-        result.causes = template.get("causes", [])
-        result.actions = template.get("actions", [])
+        result.impact = self._platform_sub(template.get("impact", ""))
+        result.causes = self._platform_sub_list(template.get("causes", []))
+        result.actions = self._platform_sub_list(template.get("actions", []))
         result.matched = False
         result.template_used = template_key
 
@@ -256,19 +315,19 @@ class EventRulesEngine:
 
         result.title = template.get("title", "Security log access denied")
         result.severity = template.get("severity", "Minor")
-        result.impact = template.get(
+        result.impact = self._platform_sub(template.get(
             "impact", "Cannot read Security event log without admin privileges."
-        )
-        result.causes = template.get(
+        ))
+        result.causes = self._platform_sub_list(template.get(
             "causes", ["Application running without admin rights"]
-        )
-        result.actions = template.get(
+        ))
+        result.actions = self._platform_sub_list(template.get(
             "actions",
             [
                 "Run Sentinel as Administrator",
                 "Right-click Sentinel and select 'Run as administrator'",
             ],
-        )
+        ))
         result.matched = True
         result.template_used = "security_1314"
 

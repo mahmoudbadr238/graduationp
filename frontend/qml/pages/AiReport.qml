@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../components"
 import "../theme"
+import "../ui"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AiReport  –  Full AI Security Analyst Detailed Report

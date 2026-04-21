@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtQml import QQmlApplicationEngine
 
 from backend.runtime import bundle_root
+from backend.platform import IS_WINDOWS, IS_LINUX
 
 from .core.config import get_config
 from .core.container import configure
@@ -16,14 +17,23 @@ from .core.logging_setup import setup_crash_handlers, setup_logging
 from .core.perf_monitor import start_perf_monitor
 from .core.startup_orchestrator import StartupOrchestrator
 from .infra.integrations import print_integration_status
-from .infra.privileges import is_admin
+if IS_WINDOWS:
+    from .infra.privileges import is_admin
+else:
+    from .platform.linux.admin import check_admin as is_admin
 from .api.backend_bridge import BackendBridge
 from .api.gpu_service import get_gpu_service
 from .api.notification_service import NotificationService, get_notification_service
 from .api.notification_manager import NotificationManager
-from .api.security_controller import get_security_controller
 from .api.settings_service import SettingsService
-from .api.system_snapshot_service import SystemSnapshotService
+
+# Platform-aware imports
+if IS_WINDOWS:
+    from .api.security_controller import get_security_controller
+    from .api.system_snapshot_service import SystemSnapshotService
+else:
+    from .platform.linux.security_controller import get_security_controller
+    from .platform.linux.system_snapshot_service import SystemSnapshotService
 
 
 class DesktopSecurityApplication:
@@ -104,6 +114,7 @@ class DesktopSecurityApplication:
         self.engine.addImportPath(os.path.join(qml_path, "theme"))
         self.engine.addImportPath(os.path.join(qml_path, "pages"))
         self.engine.addImportPath(os.path.join(qml_path, "ux"))  # For Theme singleton
+        self.engine.addImportPath(os.path.join(qml_path, "ui"))   # For ThemeManager singleton
 
         # Set QML context properties for component paths
         components_path = os.path.join(qml_path, "components").replace("\\", "/")
@@ -129,20 +140,21 @@ class DesktopSecurityApplication:
             # Register backend BEFORE loading QML to avoid "Backend not available" warnings
             self.engine.rootContext().setContextProperty("Backend", self.backend)
 
-            # Register sandbox preview image provider for live preview
-            try:
-                from .api.sandbox_preview_provider import register_preview_provider
+            # Register sandbox preview image provider for live preview (Windows only)
+            if IS_WINDOWS:
+                try:
+                    from .api.sandbox_preview_provider import register_preview_provider
 
-                preview_controller = register_preview_provider(
-                    self.engine, self.backend
-                )
-                if preview_controller:
-                    self.engine.rootContext().setContextProperty(
-                        "SandboxPreview", preview_controller
+                    preview_controller = register_preview_provider(
+                        self.engine, self.backend
                     )
-                    print("[OK] Sandbox preview provider registered")
-            except ImportError as e:
-                print(f"[WARNING] Sandbox preview provider not available: {e}")
+                    if preview_controller:
+                        self.engine.rootContext().setContextProperty(
+                            "SandboxPreview", preview_controller
+                        )
+                        print("[OK] Sandbox preview provider registered")
+                except ImportError as e:
+                    print(f"[WARNING] Sandbox preview provider not available: {e}")
 
             # DEFERRED: Heavy backend initialization (100ms after startup)
             def init_backend_heavy():
@@ -235,22 +247,38 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] Settings service failed: {e}")
                 self.settings_service = None
 
-            # IMMEDIATE: VMware Sandbox Lab controller (graceful if VMware is absent)
-            try:
-                from .engines.sandbox_vmware import SandboxLabController
+            # IMMEDIATE: VMware Sandbox Lab controller (Windows only)
+            if IS_WINDOWS:
+                try:
+                    from .engines.sandbox_vmware import SandboxLabController
 
-                self.sandbox_lab = SandboxLabController()
-                self.engine.rootContext().setContextProperty(
-                    "SandboxLab", self.sandbox_lab
-                )
-                print("[OK] Sandbox Lab controller registered")
-            except Exception as e:
-                print(f"[WARNING] Sandbox Lab controller failed: {e}")
+                    self.sandbox_lab = SandboxLabController()
+                    self.engine.rootContext().setContextProperty(
+                        "SandboxLab", self.sandbox_lab
+                    )
+                    print("[OK] Sandbox Lab controller registered")
+                except Exception as e:
+                    print(f"[WARNING] Sandbox Lab controller failed: {e}")
+                    self.sandbox_lab = None
+                    self.engine.rootContext().setContextProperty("SandboxLab", None)
+            else:
                 self.sandbox_lab = None
                 self.engine.rootContext().setContextProperty("SandboxLab", None)
+                print("[OK] Sandbox Lab skipped (Linux)")
 
             # IMMEDIATE: File Function Service (shred + recovery)
             try:
+                # Route secure_delete to platform-specific version before
+                # importing FileFunctionBridge (which uses it at module level)
+                if IS_LINUX:
+                    import backend.utils.secure_delete as _sd_mod
+                    from backend.platform.linux.secure_delete import (
+                        validate_target as _vt,
+                        shred_file as _sf,
+                    )
+                    _sd_mod.validate_target = _vt
+                    _sd_mod.shred_file = _sf
+
                 from .engines.filefunction.backend_bridge import FileFunctionBridge
 
                 self.file_function_service = FileFunctionBridge()
@@ -262,7 +290,9 @@ class DesktopSecurityApplication:
                 print(f"[WARNING] File Function service failed: {e}")
                 self.file_function_service = None
 
-            # IMMEDIATE: Recovery Controller (two-phase scan + selective carve)
+            # IMMEDIATE: Recovery Controller
+            # Windows: Win32 CreateFile + sector-aligned reads
+            # Linux:   direct open('/dev/sdX','rb') — requires root
             try:
                 from .engines.filefunction.recovery_controller import RecoveryController
 
@@ -271,9 +301,10 @@ class DesktopSecurityApplication:
                     "RecoveryService", self.recovery_controller
                 )
                 print("[OK] Recovery controller registered")
-            except (ImportError, RuntimeError, OSError) as e:
+            except Exception as e:
                 print(f"[WARNING] Recovery controller failed: {e}")
                 self.recovery_controller = None
+                self.engine.rootContext().setContextProperty("RecoveryService", None)
 
             # PLACEHOLDER for QML
             self.engine.rootContext().setContextProperty("NotificationService", None)

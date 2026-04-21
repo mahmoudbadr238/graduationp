@@ -191,7 +191,16 @@ class RealTimeProtectionWorker(QThread):
     # ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:  # noqa: D401
-        """WMI process-creation watcher loop (runs in background thread)."""
+        """Process-creation watcher loop (runs in background thread).
+
+        On Windows: uses WMI __InstanceCreationEvent.
+        On Linux: uses psutil process polling.
+        """
+
+        import sys
+        if sys.platform != "win32":
+            self._run_linux()
+            return
 
         # ── COM initialisation (REQUIRED for WMI on background threads) ──
         try:
@@ -366,6 +375,194 @@ class RealTimeProtectionWorker(QThread):
                 pythoncom.CoUninitialize()
             except Exception:
                 pass
+
+    # ─────────────────────────────────────────────────────────────
+    # Linux RTP — psutil process polling
+    # ─────────────────────────────────────────────────────────────
+
+    # System / kernel processes that must never be scanned or killed
+    _LINUX_SKIP_PROCESSES = frozenset({
+        "systemd", "kthreadd", "ksoftirqd", "kworker", "rcu_gp",
+        "rcu_par_gp", "rcu_sched", "migration", "cpuhp",
+        "init", "bash", "sh", "dash", "zsh", "fish",
+        "sshd", "cron", "atd", "dbus-daemon", "rsyslogd",
+        "journald", "systemd-journald", "systemd-logind",
+        "systemd-udevd", "systemd-resolved", "systemd-timesyncd",
+        "networkd", "systemd-networkd", "agetty", "login",
+        "polkitd", "accounts-daemon", "udisksd",
+        # Python itself (our own process)
+        "python", "python3", "python3.10", "python3.11", "python3.12",
+    })
+
+    def _run_linux(self) -> None:
+        """Linux RTP implementation using psutil process polling.
+
+        Polls ``psutil.process_iter()`` every ~1 second, tracking
+        which PIDs have already been seen.  New executables are
+        scanned through the StaticScanner pipeline.
+        """
+        import psutil
+
+        # ── Initialise the static scanner ──
+        try:
+            from backend.engines.scanning.static_scanner import StaticScanner
+            self._scanner = StaticScanner()
+        except Exception as exc:
+            logger.warning("RTP-Linux: Could not load scanner: %s", exc)
+            self._scanner = None
+
+        self._running = True
+        self.status_changed.emit("started")
+        logger.info("RTP-Linux: Real-Time Protection ENABLED (psutil polling)")
+
+        # Snapshot current PIDs so we only scan truly *new* processes
+        seen_pids: set[int] = set()
+        try:
+            for proc in psutil.process_iter(["pid"]):
+                seen_pids.add(proc.info["pid"])
+        except Exception:
+            pass
+
+        try:
+            while self._running:
+                time.sleep(WMI_POLL_INTERVAL)
+                if not self._running:
+                    break
+
+                try:
+                    current_pids: set[int] = set()
+                    for proc in psutil.process_iter(
+                        ["pid", "name", "exe", "status"]
+                    ):
+                        try:
+                            info = proc.info
+                            pid = info["pid"]
+                            current_pids.add(pid)
+
+                            if pid in seen_pids:
+                                continue  # Already seen
+
+                            name = (info.get("name") or "unknown").lower()
+                            exe_path = info.get("exe") or ""
+
+                            # Skip kernel threads and system processes
+                            if not exe_path:
+                                seen_pids.add(pid)
+                                continue
+
+                            base_name = name.replace(".exe", "")
+                            if base_name in self._LINUX_SKIP_PROCESSES:
+                                seen_pids.add(pid)
+                                continue
+
+                            # Skip kernel threads (no executable)
+                            if info.get("status") == psutil.STATUS_ZOMBIE:
+                                seen_pids.add(pid)
+                                continue
+
+                            # Mark as seen
+                            seen_pids.add(pid)
+
+                            if not Path(exe_path).exists():
+                                continue
+
+                            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+
+                            # ── Check scan cache ──
+                            cache_key = exe_path.lower()
+                            if cache_key in self._scan_cache:
+                                was_malicious = self._scan_cache[cache_key]
+                                if was_malicious:
+                                    self._kill_process(
+                                        pid, name, exe_path, psutil, cached=True
+                                    )
+                                self.process_detected.emit(ts, name, str(pid))
+                                continue
+
+                            # ── Scan the executable ──
+                            self._total_scanned += 1
+                            self.process_scanned.emit(
+                                f"[{self._total_scanned}] Scanning: {name} (PID {pid})"
+                            )
+
+                            is_malicious = False
+                            matched_rules: list[str] = []
+                            threat_score = 0
+                            sha256 = ""
+
+                            if self._scanner:
+                                try:
+                                    result = self._scanner.scan_file(exe_path)
+                                    threat_score = int(result.score or 0)
+                                    is_malicious = threat_score >= KILL_THRESHOLD
+                                    sha256 = result.sha256 or ""
+
+                                    groq = result.groq_analysis or {}
+                                    if groq.get("verdict"):
+                                        matched_rules = [
+                                            f"Groq:{groq.get('verdict')}"
+                                        ]
+
+                                    if threat_score < KILL_THRESHOLD:
+                                        is_malicious = False
+
+                                except Exception as scan_exc:
+                                    logger.debug(
+                                        "RTP-Linux: Scan error for %s: %s",
+                                        name, scan_exc,
+                                    )
+
+                            # ── Update cache ──
+                            if len(self._scan_cache) >= self._cache_max:
+                                keys = list(self._scan_cache.keys())
+                                for k in keys[: len(keys) // 2]:
+                                    del self._scan_cache[k]
+                            self._scan_cache[cache_key] = is_malicious
+
+                            # ── Take action ──
+                            if is_malicious:
+                                self._kill_process(
+                                    pid, name, exe_path, psutil,
+                                    matched_rules=matched_rules,
+                                    threat_score=threat_score,
+                                    sha256=sha256,
+                                )
+
+                            self.process_detected.emit(ts, name, str(pid))
+
+                            # ── Periodic stats ──
+                            if self._total_scanned % 10 == 0:
+                                self.stats_updated.emit(
+                                    self._total_scanned,
+                                    self._threats_found,
+                                    self._threats_killed,
+                                )
+
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            continue
+
+                    # Prune seen_pids of exited processes to prevent unbounded growth
+                    seen_pids &= current_pids
+
+                except Exception as poll_exc:
+                    if self._running:
+                        logger.debug("RTP-Linux: Polling error: %s", poll_exc)
+                    time.sleep(1)
+
+        except Exception as exc:
+            if self._running:
+                logger.exception("RTP-Linux: Fatal error in polling loop")
+                self.status_changed.emit(f"error: {exc}")
+        finally:
+            self._running = False
+            self.status_changed.emit("stopped")
+            logger.info(
+                "RTP-Linux: Real-Time Protection DISABLED "
+                "(scanned=%d, threats=%d, killed=%d)",
+                self._total_scanned,
+                self._threats_found,
+                self._threats_killed,
+            )
 
     # ─────────────────────────────────────────────────────────────
     # Kill logic

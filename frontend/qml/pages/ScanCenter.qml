@@ -264,10 +264,18 @@ Item {
         fileMode: FileDialog.OpenFile
         onAccepted: {
             var s = selectedFile.toString()
-                         .replace(/^file:\/\/\//i, "")
-                         .replace(/\//g, "\\")
+            // Strip file:// prefix and decode URI-encoded characters
+            if (Backend && Backend.isLinux) {
+                // Linux: file:///home/… → /home/…
+                s = s.replace(/^file:\/\//i, "")
+                s = decodeURIComponent(s)
+            } else {
+                // Windows: file:///C:/… → C:\…
+                s = s.replace(/^file:\/\/\//i, "")
+                     .replace(/\//g, "\\")
+            }
             root.filePath   = s
-            root.fileName   = s.split("\\").pop()
+            root.fileName   = s.split(/[\\\/]/).pop()
             root.fileReport = null
             root.filePct    = 0
             root.explainData = null
@@ -397,10 +405,15 @@ Item {
                                     onDropped: {
                                         if (drop.urls.length > 0) {
                                             var s = drop.urls[0].toString()
-                                                .replace(/^file:\/\/\//i, "")
-                                                .replace(/\//g, "\\")
+                                            if (Backend && Backend.isLinux) {
+                                                s = s.replace(/^file:\/\//i, "")
+                                                s = decodeURIComponent(s)
+                                            } else {
+                                                s = s.replace(/^file:\/\/\//i, "")
+                                                     .replace(/\//g, "\\")
+                                            }
                                             root.filePath   = s
-                                            root.fileName   = s.split("\\").pop()
+                                            root.fileName   = s.split(/[\\\/]/).pop()
                                             root.fileReport = null
                                             root.filePct    = 0
                                             root.explainData = null
@@ -557,6 +570,7 @@ Item {
                                 checked: root.optSandbox
                                 enabled: true
                                 opacity: root.fileScanning ? 0.4 : 1.0
+                                visible: Backend ? !Backend.isLinux : true
                                 onToggled: {
                                     if (root.fileScanning) return
                                     root.optSandbox = checked
@@ -597,12 +611,13 @@ Item {
                             Item { Layout.fillWidth: true }
                         } // Row 2a
 
-                        // ── Row 2b: Allow execution + Disable guest network
+                        // ── Row 2b: Allow execution + Disable guest network (Windows only)
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            Layout.preferredHeight: 32
+                            Layout.preferredHeight: (Backend && Backend.isLinux) ? 0 : 32
+                            visible: Backend ? !Backend.isLinux : true
                             spacing: 24
 
                             CheckBox {
@@ -782,6 +797,7 @@ Item {
                                 model: phaseModel
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
+                                    visible: !(model.phase === "sandbox" && (Backend ? Backend.isLinux : false))
                                     implicitHeight: (model.phase === "sandbox" && model.status === "warn") ? 86 : 58
                                     radius: 8
                                     color: ThemeManager.surface()

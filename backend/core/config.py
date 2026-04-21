@@ -1,8 +1,4 @@
-"""Configuration management for Sentinel.
-
-Handles app data storage, settings persistence, and safe load/save with backups.
-Windows-only: data stored in %APPDATA%\\Sentinel\\.
-"""
+"""Configuration management for Sentinel."""
 
 import copy
 import json
@@ -11,6 +7,8 @@ import os
 import shutil
 from pathlib import Path
 from typing import Any
+
+from backend.platform.paths import get_app_paths
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +38,11 @@ class Config:
 
     def __init__(self):
         """Initialize configuration manager."""
-        self.app_data_dir = self._get_app_data_dir()
-        self.config_file = self.app_data_dir / "settings.json"
-        self.backup_file = self.app_data_dir / "settings.backup.json"
-        self.logs_dir = self.app_data_dir / "logs"
+        self.paths = get_app_paths()
+        self.app_data_dir = self.paths.config_dir
+        self.config_file = self.paths.config_dir / "settings.json"
+        self.backup_file = self.paths.config_dir / "settings.backup.json"
+        self.logs_dir = self.paths.log_dir
 
         # Create directories
         self.app_data_dir.mkdir(parents=True, exist_ok=True)
@@ -54,32 +53,39 @@ class Config:
 
     @staticmethod
     def _get_app_data_dir() -> Path:
-        """Get Windows app data directory (%APPDATA%\\Sentinel)."""
-        appdata = os.getenv("APPDATA")
-        if appdata:
-            return Path(appdata) / "Sentinel"
-        # Fallback if APPDATA is not set
-        return Path.home() / "AppData" / "Roaming" / "Sentinel"
+        """Get platform-appropriate app data directory."""
+        return get_app_paths().config_dir
+
+    def _candidate_config_files(self) -> tuple[Path, ...]:
+        """Return primary and legacy config file locations."""
+        return self.paths.config_candidates("settings.json")
 
     def _load_or_initialize(self) -> dict[str, Any]:
         """Load config from file or create with defaults."""
-        if self.config_file.exists():
+        for candidate in self._candidate_config_files():
+            if not candidate.exists():
+                continue
             try:
-                with open(self.config_file, encoding="utf-8") as f:
+                with open(candidate, encoding="utf-8") as f:
                     config = json.load(f)
-                logger.info(f"Loaded config from {self.config_file}")
+                logger.info("Loaded config from %s", candidate)
                 # Merge with defaults to ensure all keys present
                 return self._merge_defaults(config)
             except (OSError, json.JSONDecodeError) as e:
-                logger.warning(f"Failed to load config: {e}. Using backup or defaults.")
-                if self.backup_file.exists():
-                    try:
-                        with open(self.backup_file, encoding="utf-8") as f:
-                            config = json.load(f)
-                        logger.info("Restored config from backup")
-                        return self._merge_defaults(config)
-                    except (OSError, json.JSONDecodeError):
-                        pass
+                logger.warning(
+                    "Failed to load config from %s: %s. Trying fallback locations.",
+                    candidate,
+                    e,
+                )
+
+        if self.backup_file.exists():
+            try:
+                with open(self.backup_file, encoding="utf-8") as f:
+                    config = json.load(f)
+                logger.info("Restored config from backup: %s", self.backup_file)
+                return self._merge_defaults(config)
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Backup config at %s is not readable", self.backup_file)
         # Use defaults
         logger.info("Using default configuration")
         return copy.deepcopy(self.DEFAULTS)

@@ -23,6 +23,7 @@ Rectangle {
     property real shredPercent: 0
     property int shredPassIdx: 0
     property int shredTotalPasses: 1
+    property bool isLinux: typeof Backend !== 'undefined' && Backend ? Backend.isLinux : false
 
     FileDialog {
         id: filePicker
@@ -30,7 +31,7 @@ Rectangle {
         onAccepted: {
             var s = selectedFile.toString()
                         .replace(/^file:\/\/\//i, "")
-                        .replace(/\//g, "\\")
+            if (!root.isLinux) s = s.replace(/\//g, "\\")
             s = decodeURIComponent(s)
             selectedFilePath = s
             shredDone = false
@@ -65,13 +66,14 @@ Rectangle {
             color: ThemeManager.panel()
             z: 10
             property int currentIndex: 0
+            property var tabModel: [qsTr("File Permanent Delete"), qsTr("File Recovery")]
 
             Row {
                 anchors.fill: parent
                 Repeater {
-                    model: [qsTr("File Permanent Delete"), qsTr("File Recovery")]
+                    model: tabBarBg.tabModel
                     Rectangle {
-                        width: tabBarBg.width / 2
+                        width: tabBarBg.width / tabBarBg.tabModel.length
                         height: tabBarBg.height
                         color: "transparent"
                         Text {
@@ -169,7 +171,7 @@ Rectangle {
                                         if (drop.hasUrls && drop.urls.length > 0) {
                                             var raw = drop.urls[0].toString()
                                             var s = raw.replace(/^file:\/\/\//i, "")
-                                                       .replace(/\//g, "\\")
+                                            if (!root.isLinux) s = s.replace(/\//g, "\\")
                                             s = decodeURIComponent(s)
                                             selectedFilePath = s
                                             shredDone = false
@@ -313,16 +315,19 @@ Rectangle {
                             }
 
                             RowLayout {
-                                spacing: 8
+                                spacing: 12
                                 CheckBox {
                                     id: confirmCheck
+                                    text: ""
                                     enabled: !shredRunning && !shredDone
-                                    contentItem: Text {
-                                        text: "I understand this action is irreversible"
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_body
-                                        leftPadding: (confirmCheck.indicator ? confirmCheck.indicator.width : 18) + 6
-                                    }
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                Text {
+                                    text: "I understand this action is irreversible"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: ThemeManager.fontSize_body
+                                    verticalAlignment: Text.AlignVCenter
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
                             }
 
@@ -569,13 +574,15 @@ Rectangle {
                 }
 
                 Component.onCompleted: {
-                    if (RecoveryService) {
+                    if (typeof RecoveryService !== 'undefined' && RecoveryService !== null) {
                         tabRecovery.isAdmin = RecoveryService.checkAdmin()
                         var drivesJson = RecoveryService.getAvailableDrives()
                         var drives = JSON.parse(drivesJson)
                         var model = ["All Drives"]
                         for (var i = 0; i < drives.length; i++) model.push(drives[i])
                         tabRecovery.driveList = model
+                    } else {
+                        tabRecovery.errorMsg = "File Recovery requires the Windows Agent. This feature is not available on Linux."
                     }
                 }
 
@@ -618,8 +625,8 @@ Rectangle {
                             ColumnLayout {
                                 id: adminWarnCol
                                 anchors.fill: parent; anchors.margins: 12
-                                Text { text: "\u26A0  Not running as Administrator"; color: ThemeManager.warning; font.bold: true; font.pixelSize: ThemeManager.fontSize_body }
-                                Text { text: "Raw disk scanning requires admin privileges. Running in demo mode instead."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                Text { text: root.isLinux ? "\u26A0  Not running as Root" : "\u26A0  Not running as Administrator"; color: ThemeManager.warning; font.bold: true; font.pixelSize: ThemeManager.fontSize_body }
+                                Text { text: root.isLinux ? "Raw disk scanning requires root privileges. Running in demo mode instead." : "Raw disk scanning requires admin privileges. Running in demo mode instead."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             }
                         }
 
@@ -679,6 +686,10 @@ Rectangle {
                                         cursorShape: btnScan.isEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                         onClicked: {
                                             if (!btnScan.isEnabled) return
+                                            if (typeof RecoveryService === 'undefined' || RecoveryService === null) {
+                                                tabRecovery.errorMsg = "Recovery service unavailable. Restart the application."
+                                                return
+                                            }
                                             console.log("[DEBUG] Start Scan clicked")
                                             tabRecovery.resetRecovery()
                                             tabRecovery.scanning = true; tabRecovery.errorMsg = ""
@@ -710,7 +721,8 @@ Rectangle {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             console.log("[DEBUG] Cancel scan clicked")
-                                            RecoveryService.cancelRecoveryScan()
+                                            if (typeof RecoveryService !== 'undefined' && RecoveryService !== null)
+                                                RecoveryService.cancelRecoveryScan()
                                         }
                                     }
                                 }
@@ -959,6 +971,10 @@ Rectangle {
                                             cursorShape: btnRecoverSelected.isEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                             onClicked: {
                                                 if (!btnRecoverSelected.isEnabled) return
+                                                if (typeof RecoveryService === 'undefined' || RecoveryService === null) {
+                                                    tabRecovery.errorMsg = "File Recovery requires the Windows Agent."
+                                                    return
+                                                }
                                                 var ids = Object.keys(tabRecovery.selectedIds).map(function(k) { return parseInt(k) })
                                                 tabRecovery.recovering = true
                                                 tabRecovery.recoverTotal = ids.length
@@ -1075,7 +1091,7 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: RecoveryService.openRecoveryFolder(tabRecovery.outputDir)
+                                            onClicked: { if (typeof RecoveryService !== 'undefined' && RecoveryService !== null) RecoveryService.openRecoveryFolder(tabRecovery.outputDir) }
                                         }
                                     }
                                 }
@@ -1088,7 +1104,8 @@ Rectangle {
 
                 // â”€â”€ Recovery service connections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 Connections {
-                    target: RecoveryService
+                    target: (typeof RecoveryService !== 'undefined' && RecoveryService !== null) ? RecoveryService : null
+                    enabled: (typeof RecoveryService !== 'undefined' && RecoveryService !== null)
 
                     function onRecoveryScanProgressChanged(jsonStr) {
                         var d = JSON.parse(jsonStr)

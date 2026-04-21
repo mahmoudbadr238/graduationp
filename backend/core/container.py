@@ -27,11 +27,10 @@ DI = Container()
 
 def configure() -> None:
     """Configure all dependencies in the DI container."""
-    from backend.infra.events_windows import WindowsEventReader
+    from backend.platform import IS_WINDOWS
     from backend.infra.file_scanner import LocalFileScanner
     from backend.infra.nmap_cli import NmapCli
     from backend.infra.sqlite_repo import SqliteRepo
-    from backend.infra.system_monitor_psutil import PsutilSystemMonitor
     from backend.engines.scanning.url_scanner import UrlScanner
     from .interfaces import (
         IEventReader,
@@ -43,9 +42,23 @@ def configure() -> None:
         IUrlScanner,
     )
 
+    # Platform-aware system monitor (Windows version has winreg/WMI at module level)
+    if IS_WINDOWS:
+        from backend.infra.system_monitor_psutil import PsutilSystemMonitor
+    else:
+        from backend.platform.linux.system_monitor_psutil import PsutilSystemMonitor
+
     # Register implementations
     DI.register(ISystemMonitor, lambda: PsutilSystemMonitor())
-    DI.register(IEventReader, lambda: WindowsEventReader())
+
+    # Platform-aware event reader
+    if IS_WINDOWS:
+        from backend.infra.events_windows import WindowsEventReader
+        DI.register(IEventReader, lambda: WindowsEventReader())
+    else:
+        from backend.platform.linux.events_linux import LinuxEventReader
+        DI.register(IEventReader, lambda: LinuxEventReader())
+
     DI.register(IScanRepository, lambda: SqliteRepo())
     DI.register(IEventRepository, lambda: SqliteRepo())
 

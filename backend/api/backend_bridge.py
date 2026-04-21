@@ -3,13 +3,16 @@
 import hashlib
 import json
 import logging
+import platform
 import re
 import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import Property, QObject, QProcess, QThreadPool, QTimer, Signal, Slot
+
+from backend.platform import IS_LINUX, IS_WINDOWS
 
 from backend.core.container import DI
 from backend.core.errors import ExternalToolMissing, IntegrationDisabled
@@ -258,6 +261,12 @@ class BackendBridge(QObject):
         # The V4 event explainer handles all explanations deterministically
         # QTimer.singleShot(2000, self._start_ai_worker)  # Disabled - archived
 
+    # ── Platform property for QML ────────────────────────────────────────
+    @Property(bool, constant=True)
+    def isLinux(self) -> bool:
+        """Expose platform detection to QML."""
+        return IS_LINUX
+
     def _event_to_dict(self, e) -> dict:
         """Convert an event object to a dictionary."""
         if hasattr(e, "to_dict"):
@@ -273,6 +282,44 @@ class BackendBridge(QObject):
             "message": getattr(e, "message", "")[:500],
             "time_created": str(getattr(e, "time_created", "")),
         }
+
+    @staticmethod
+    def _normalize_filepath(raw_path: str) -> str:
+        """Normalize a file path from QML for the current OS.
+
+        Handles:
+        - ``file:///`` and ``file://`` URI prefixes
+        - URL percent-encoding (``%20`` → space, etc.)
+        - Backslash / forward-slash mismatches
+        - Ensures result is an absolute path
+        """
+        import os
+        from urllib.parse import unquote
+
+        path = (raw_path or "").strip()
+        if not path:
+            return path
+
+        # Strip file:// URI prefix
+        if path.startswith("file:///"):
+            path = path[7:]  # file:///C:/... → C:/... or file:///home/... → home/...
+        elif path.startswith("file://"):
+            path = path[5:]  # file://localhost/... → //localhost/...
+
+        # Decode percent-encoded characters
+        path = unquote(path)
+
+        # Normalise separators to os.sep
+        path = path.replace("\\", os.sep).replace("/", os.sep)
+
+        # On Linux, ensure the path starts with /
+        if os.name != "nt" and not path.startswith(os.sep):
+            path = os.sep + path
+
+        # Resolve to absolute path (handles . / .. / double separators)
+        path = os.path.abspath(path)
+
+        return path
 
     def _normalize_file_scan_result_for_qml(self, result: dict | None) -> dict:
         """Ensure file scan payload always contains QML-consumed keys."""
@@ -656,7 +703,10 @@ class BackendBridge(QObject):
     def _prewarm_security_snapshot(self):
         """Pre-warm security snapshot cache in background."""
         try:
-            from backend.utils.security_snapshot import prewarm_security_snapshot
+            if IS_LINUX:
+                from backend.platform.linux.security_snapshot import prewarm_security_snapshot
+            else:
+                from backend.utils.security_snapshot import prewarm_security_snapshot
 
             prewarm_security_snapshot()
         except ImportError:
@@ -773,38 +823,94 @@ class BackendBridge(QObject):
     def _get_defender_status_for_ai(self) -> dict:
         """Get Defender status for AI context."""
         try:
-            from backend.utils.security_snapshot import get_security_snapshot
+            if IS_LINUX:
+                from backend.platform.linux.admin import check_admin
+                from backend.platform.linux.security_posture import collect_security_info
 
-            snapshot = get_security_snapshot()
-            if snapshot and snapshot.defender:
-                d = snapshot.defender
+                info = collect_security_info(
+                    is_admin=check_admin(),
+                    os_name=platform.platform(),
+                    kernel=platform.release(),
+                    uptime="Unknown",
+                )
+                raw = ((info.get("simplified") or {}).get("raw") or {})
                 return {
-                    "realtime_protection": d.realtime_protection,
-                    "antivirus_enabled": d.antivirus_enabled,
-                    "tamper_protection": d.tamper_protection,
-                    "last_scan": d.last_quick_scan or "Unknown",
+                    "realtime_protection": raw.get("antivirusRealtime"),
+                    "antivirus_enabled": raw.get("antivirusEnabled"),
+                    "tamper_protection": None,
+                    "last_scan": "Unknown",
+                    "query_success": True,
                 }
+            else:
+                from backend.utils.security_snapshot import get_security_snapshot
+
+                snapshot = get_security_snapshot()
+                if snapshot and snapshot.defender:
+                    d = snapshot.defender
+                    return {
+                        "realtime_protection": d.realtime_protection,
+                        "antivirus_enabled": d.antivirus_enabled,
+                        "tamper_protection": d.tamper_protection,
+                        "last_scan": d.last_quick_scan or "Unknown",
+                        "query_success": True,
+                    }
         except Exception as e:
             logger.warning(f"Failed to get Defender status: {e}")
-        return {"realtime_protection": True, "antivirus_enabled": True}
+        return {
+            "realtime_protection": None,
+            "antivirus_enabled": None,
+            "tamper_protection": None,
+            "last_scan": "Unknown",
+            "query_success": False,
+        }
 
     def _get_firewall_status_for_ai(self) -> dict:
         """Get Firewall status for AI context."""
         try:
-            from backend.utils.security_snapshot import get_security_snapshot
+            if IS_LINUX:
+                from backend.platform.linux.admin import check_admin
+                from backend.platform.linux.security_posture import collect_security_info
 
-            snapshot = get_security_snapshot()
-            if snapshot and snapshot.firewall:
-                f = snapshot.firewall
+                info = collect_security_info(
+                    is_admin=check_admin(),
+                    os_name=platform.platform(),
+                    kernel=platform.release(),
+                    uptime="Unknown",
+                )
+                raw = ((info.get("simplified") or {}).get("raw") or {})
+                enabled = raw.get("firewallEnabled")
                 return {
-                    "domain": f.domain_enabled,
-                    "private": f.private_enabled,
-                    "public": f.public_enabled,
-                    "all_enabled": f.all_profiles_enabled,
+                    "domain": enabled,
+                    "private": enabled,
+                    "public": enabled,
+                    "all_enabled": enabled,
+                    "enabled": enabled,
+                    "query_success": True,
                 }
+            else:
+                from backend.utils.security_snapshot import get_security_snapshot
+
+                snapshot = get_security_snapshot()
+                if snapshot and snapshot.firewall:
+                    f = snapshot.firewall
+                    return {
+                        "domain": f.domain_enabled,
+                        "private": f.private_enabled,
+                        "public": f.public_enabled,
+                        "all_enabled": f.all_profiles_enabled,
+                        "enabled": f.all_profiles_enabled,
+                        "query_success": True,
+                    }
         except Exception as e:
             logger.warning(f"Failed to get Firewall status: {e}")
-        return {"domain": True, "private": True, "public": True}
+        return {
+            "domain": None,
+            "private": None,
+            "public": None,
+            "all_enabled": None,
+            "enabled": None,
+            "query_success": False,
+        }
 
     def _init_smart_assistant(self):
         """Initialize the ChatbotBridge (Groq API powered chatbot)."""
@@ -1347,6 +1453,7 @@ class BackendBridge(QObject):
         Args:
             path: Absolute path to file
         """
+        path = self._normalize_filepath(path)
         if not self.file_scanner:
             self.toast.emit(
                 "error", "File scanning not available in the current configuration"
@@ -1591,6 +1698,7 @@ class BackendBridge(QObject):
             path: Absolute path to file
             run_sandbox: Whether to run in sandbox for behavioral analysis
         """
+        path = self._normalize_filepath(path)
         if not path:
             self.toast.emit("error", "File path cannot be empty")
             return
@@ -3526,19 +3634,19 @@ class BackendBridge(QObject):
             self.nmapScanOutput.emit(scan_id, f"[INFO] Command: {' '.join(cmd)}\n")
             self.nmapScanOutput.emit(scan_id, "-" * 60 + "\n\n")
 
-            # Hide console window for subprocess
-            flags = subprocess.CREATE_NO_WINDOW
+            # Hide console window for subprocess (Windows only)
+            popen_kwargs: dict = dict(
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            if IS_WINDOWS:
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
             try:
                 # Start process
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    creationflags=flags,
-                )
+                process = subprocess.Popen(cmd, **popen_kwargs)
 
                 # Stream output
                 start_time = datetime.now()
@@ -3665,7 +3773,11 @@ class BackendBridge(QObject):
             return
 
         try:
-            os.startfile(report_path)
+            if IS_WINDOWS:
+                os.startfile(report_path)
+            else:
+                import subprocess as _sp
+                _sp.Popen(["xdg-open", report_path])
             self.toast.emit("success", "Opening report...")
         except Exception as e:
             self.toast.emit("error", f"Could not open report: {e}")
@@ -4370,34 +4482,56 @@ class BackendBridge(QObject):
         Set event context for the chatbot to help resolve.
 
         Called from EventViewer when user clicks "Ask Chatbot to Help Resolve".
+        Pushes the event context into the chatbot's conversation memory
+        so the LLM already knows about the event before the user asks.
 
         Args:
             event_json: JSON string with event data and explanation
         """
         import json
+        import platform
 
         try:
             event_data = json.loads(event_json)
 
-            # Store context (no-op now — ChatbotBridge doesn't need pre-set context)
-
-            # Build initial message to send to chatbot
+            # Extract event metadata
             event_id = event_data.get("event_id", "Unknown")
             provider = event_data.get("provider", "Unknown")
             level = event_data.get("level", "Information")
 
-            # Get explanation summary if available
+            # Get the Groq plain_summary (falls back through several keys)
             explanation = event_data.get("explanation", {})
-            summary = explanation.get("summary") or explanation.get("what_happened", "")
+            plain_summary = (
+                explanation.get("plain_summary")
+                or explanation.get("brief_user")
+                or explanation.get("summary")
+                or explanation.get("what_happened", "")
+            )
 
-            # Create a help request message
-            help_message = "I need help resolving this Windows event:\n\n"
+            # ── Push context into ChatbotBridge memory ──
+            if self._chatbot_bridge is not None:
+                try:
+                    eid = int(event_id) if str(event_id).isdigit() else 0
+                except (ValueError, TypeError):
+                    eid = 0
+                self._chatbot_bridge.push_event_context(
+                    event_id=eid,
+                    provider=str(provider),
+                    plain_summary=str(plain_summary),
+                )
+
+            # ── Build a platform-aware help request message ──
+            os_label = "Linux" if platform.system() == "Linux" else "Windows"
+            help_message = f"I need help resolving this {os_label} event:\n\n"
             help_message += f"**Event ID:** {event_id}\n"
             help_message += f"**Source:** {provider}\n"
             help_message += f"**Level:** {level}\n"
-            if summary:
-                help_message += f"**Summary:** {summary}\n"
-            help_message += "\nPlease help me understand what caused this and what I should do to fix it."
+            if plain_summary:
+                help_message += f"**Summary:** {plain_summary}\n"
+            help_message += (
+                "\nPlease help me understand what caused this "
+                "and what I should do to fix it."
+            )
 
             # Send the message to chatbot
             self.sendSmartMessage(help_message)
@@ -4756,6 +4890,9 @@ class BackendBridge(QObject):
 
         from backend.engines.scancenter.controller import ScanController, ScanOptions
 
+        # ── Normalize file path (cross-platform safety) ──────────────────
+        file_path = self._normalize_filepath(file_path)
+
         if self._scancenter_controller is not None:
             self.toast.emit("warning", "A scan is already running. Cancel it first.")
             return
@@ -4970,7 +5107,51 @@ class BackendBridge(QObject):
                 self.scanCenterAiBrief.emit(_brief)
                 self.scanCenterAiDetailed.emit(_detailed)
 
-                # ── Emit final verdict phase as done ──────────────────────────
+                # ── Force-complete ALL phase cards ─────────────────────────────
+                # The agent-step callback may not fire for skipped or fast
+                # phases (sandbox on Linux, IOCs with no hits, etc.), leaving
+                # QML phase cards stuck on "Waiting…".  Unconditionally emit
+                # "done" for every phase as the authoritative final state.
+                try:
+                    from backend.platform import IS_LINUX as _IS_LINUX
+                except Exception:
+                    _IS_LINUX = not (os.name == "nt")
+
+                # Sandbox — always complete, with appropriate summary
+                if not opts.use_sandbox:
+                    _sb_summary = (
+                        "Skipped — Linux OS (Sandbox requires Windows VMware)"
+                        if _IS_LINUX
+                        else "Skipped — sandbox not enabled"
+                    )
+                    self.scanCenterPhaseUpdate.emit(json.dumps({
+                        "phase": "sandbox", "status": "done",
+                        "summary": _sb_summary,
+                        "score": 0, "pct": 100,
+                    }))
+                # else: sandbox phase was already marked done by _on_agent_step
+
+                # IOC extraction
+                _ioc_summary = "Complete"
+                if report.iocs:
+                    _n_urls    = len(report.iocs.urls    or [])
+                    _n_ips     = len(report.iocs.ips     or [])
+                    _n_domains = len(report.iocs.domains or [])
+                    _ioc_summary = f"{_n_urls} URLs, {_n_ips} IPs, {_n_domains} domains"
+                self.scanCenterPhaseUpdate.emit(json.dumps({
+                    "phase": "iocs", "status": "done",
+                    "summary": _ioc_summary,
+                    "score": -1, "pct": 100,
+                }))
+
+                # Static analysis
+                self.scanCenterPhaseUpdate.emit(json.dumps({
+                    "phase": "static", "status": "done",
+                    "summary": "Static analysis complete",
+                    "score": -1, "pct": 100,
+                }))
+
+                # Verdict (final — must be last so UI shows the final state)
                 self.scanCenterPhaseUpdate.emit(json.dumps({
                     "phase": "verdict", "status": "done",
                     "summary": f"Score: {report.verdict.score}/100 — {report.verdict.risk}" if report.verdict else "Complete",

@@ -7,7 +7,9 @@ import "../ui"
 Item {
     id: root
     anchors.fill: parent
-    
+
+    property bool isLinux: typeof Backend !== 'undefined' && Backend ? Backend.isLinux : false
+
     // Security facts data
     property var securityFacts: [
         {
@@ -494,13 +496,20 @@ Item {
                                         Layout.fillWidth: true
                                         label: "Disk"
                                         value: SnapshotService && SnapshotService.diskPartitions && SnapshotService.diskPartitions.length > 0 ? 
-                                               Math.round(SnapshotService.diskPartitions[0].percent) + "%" : "N/A"
+                                               (SnapshotService.diskPartitions[0].usageAvailable !== false
+                                                ? Math.round(SnapshotService.diskPartitions[0].percent) + "%"
+                                                : "N/A") : "N/A"
                                         barValue: SnapshotService && SnapshotService.diskPartitions && SnapshotService.diskPartitions.length > 0 ? 
-                                                 SnapshotService.diskPartitions[0].percent / 100 : 0
+                                                 (SnapshotService.diskPartitions[0].usageAvailable !== false
+                                                  ? SnapshotService.diskPartitions[0].percent / 100
+                                                  : 0) : 0
                                         accentColor: SnapshotService && SnapshotService.diskPartitions && SnapshotService.diskPartitions.length > 0 &&
+                                                    SnapshotService.diskPartitions[0].usageAvailable !== false &&
                                                     SnapshotService.diskPartitions[0].percent > 90 ? ThemeManager.danger :
                                                     SnapshotService && SnapshotService.diskPartitions && SnapshotService.diskPartitions.length > 0 &&
-                                                    SnapshotService.diskPartitions[0].percent > 75 ? ThemeManager.warning : ThemeManager.success
+                                                    SnapshotService.diskPartitions[0].usageAvailable !== false &&
+                                                    SnapshotService.diskPartitions[0].percent > 75 ? ThemeManager.warning :
+                                                    ThemeManager.success
                                     }
                                 }
                             }
@@ -543,28 +552,74 @@ Item {
                                     
                                     SecurityStatusItem {
                                         Layout.fillWidth: true
-                                        label: "Antivirus"
+                                        label: root.isLinux ? "Endpoint Scanner" : "Antivirus"
                                         status: SnapshotService && SnapshotService.securityInfo ? 
                                                (SnapshotService.securityInfo.antivirus || "Unknown").substring(0, 20) : "Unknown"
-                                        isGood: true
+                                        isGood: SnapshotService && SnapshotService.securityInfo &&
+                                               (root.isLinux
+                                                ? SnapshotService.securityInfo.antivirus === "Realtime active"
+                                                : SnapshotService.securityInfo.antivirusEnabled === true)
+                                        isWarning: SnapshotService && SnapshotService.securityInfo &&
+                                                   root.isLinux &&
+                                                   SnapshotService.securityInfo.antivirus === "Scanner only"
                                     }
                                     
                                     SecurityStatusItem {
+                                        visible: !root.isLinux
                                         Layout.fillWidth: true
                                         label: "Secure Boot"
-                                        status: SnapshotService && SnapshotService.securityInfo ? 
+                                        status: SnapshotService && SnapshotService.securityInfo ?
                                                SnapshotService.securityInfo.secureBoot || "Unknown" : "Unknown"
-                                        isGood: SnapshotService && SnapshotService.securityInfo && 
+                                        isGood: SnapshotService && SnapshotService.securityInfo &&
                                                SnapshotService.securityInfo.secureBoot === "Enabled"
                                     }
-                                    
+
                                     SecurityStatusItem {
+                                        visible: !root.isLinux
                                         Layout.fillWidth: true
                                         label: "TPM"
-                                        status: SnapshotService && SnapshotService.securityInfo ? 
+                                        status: SnapshotService && SnapshotService.securityInfo ?
                                                SnapshotService.securityInfo.tpmPresent || "Unknown" : "Unknown"
-                                        isGood: SnapshotService && SnapshotService.securityInfo && 
+                                        isGood: SnapshotService && SnapshotService.securityInfo &&
                                                SnapshotService.securityInfo.tpmPresent === "Present"
+                                    }
+
+                                    SecurityStatusItem {
+                                        visible: root.isLinux
+                                        Layout.fillWidth: true
+                                        label: "Package Updates"
+                                        status: SnapshotService && SnapshotService.securityInfo &&
+                                                SnapshotService.securityInfo.simplified &&
+                                                SnapshotService.securityInfo.simplified.updates
+                                                ? SnapshotService.securityInfo.simplified.updates.status || "Unknown"
+                                                : "Unknown"
+                                        isGood: SnapshotService && SnapshotService.securityInfo &&
+                                                SnapshotService.securityInfo.simplified &&
+                                                SnapshotService.securityInfo.simplified.updates &&
+                                                SnapshotService.securityInfo.simplified.updates.isGood === true
+                                        isWarning: SnapshotService && SnapshotService.securityInfo &&
+                                                   SnapshotService.securityInfo.simplified &&
+                                                   SnapshotService.securityInfo.simplified.updates &&
+                                                   SnapshotService.securityInfo.simplified.updates.isWarning === true
+                                    }
+
+                                    SecurityStatusItem {
+                                        visible: root.isLinux
+                                        Layout.fillWidth: true
+                                        label: "Remote Access"
+                                        status: SnapshotService && SnapshotService.securityInfo &&
+                                                SnapshotService.securityInfo.simplified &&
+                                                SnapshotService.securityInfo.simplified.remoteAndApps
+                                                ? SnapshotService.securityInfo.simplified.remoteAndApps.status || "Unknown"
+                                                : "Unknown"
+                                        isGood: SnapshotService && SnapshotService.securityInfo &&
+                                                SnapshotService.securityInfo.simplified &&
+                                                SnapshotService.securityInfo.simplified.remoteAndApps &&
+                                                SnapshotService.securityInfo.simplified.remoteAndApps.isGood === true
+                                        isWarning: SnapshotService && SnapshotService.securityInfo &&
+                                                   SnapshotService.securityInfo.simplified &&
+                                                   SnapshotService.securityInfo.simplified.remoteAndApps &&
+                                                   SnapshotService.securityInfo.simplified.remoteAndApps.isWarning === true
                                     }
                                 }
                             }
@@ -825,14 +880,15 @@ Item {
         property string label: ""
         property string status: ""
         property bool isGood: false
-        
+        property bool isWarning: false
+
         spacing: 10
-        
+
         Rectangle {
             width: 10
             height: 10
             radius: 5
-            color: isGood ? ThemeManager.success : ThemeManager.warning
+            color: isGood ? ThemeManager.success : (isWarning ? ThemeManager.warning : ThemeManager.danger)
         }
         
         Column {

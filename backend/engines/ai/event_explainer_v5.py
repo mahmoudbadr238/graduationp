@@ -20,6 +20,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import platform
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -97,7 +98,11 @@ class ExplanationResult:
             "severity_label": self._risk_to_severity(self.risk_level),
             "recommended_actions": self.what_to_do,
             "plain_summary": self.brief_user or self.what_happened,
+            "short_title": self.title,
             "answer": self.what_happened,
+            # 6 required UI keys (always present for QML)
+            "why_it_happens": "; ".join(self.why_it_happened) if self.why_it_happened else "",
+            "what_you_can_do": "; ".join(self.what_to_do) if self.what_to_do else "",
         }
 
     def _risk_to_severity(self, risk: str) -> str:
@@ -298,9 +303,16 @@ class ExplanationWorker(QRunnable):
                 level=level,
             )
 
+        # Platform-aware fallback text
+        os_name = platform.system()
+        if os_name == "Linux":
+            fallback_text = "A Linux system daemon recorded an event"
+        else:
+            fallback_text = "Event recorded in Windows log"
+
         return ExplanationResult(
             title=f"Event {event_id}",
-            what_happened="Event recorded in Windows log",
+            what_happened=fallback_text,
             source="fallback",
             event_id=event_id,
             provider=provider,

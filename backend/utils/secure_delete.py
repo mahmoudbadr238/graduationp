@@ -16,6 +16,8 @@ import threading
 import time
 from pathlib import Path
 
+from backend.platform.paths import get_app_paths
+
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB per write chunk
@@ -242,9 +244,8 @@ def _finalize(
 
     if log_enabled and log_lines:
         try:
-            appdata = os.environ.get("APPDATA", ".")
             ts_dir = started_at.strftime("%Y%m%d_%H%M%S")
-            log_dir = Path(appdata) / "Sentinel" / "logs" / "shredder" / ts_dir
+            log_dir = get_app_paths().shredder_logs_dir / ts_dir
             log_dir.mkdir(parents=True, exist_ok=True)
             log_path = log_dir / "shredder.log"
             log_path.write_text("\n".join(log_lines), encoding="utf-8")

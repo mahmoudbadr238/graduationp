@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -40,25 +41,42 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # Hide console windows on Windows for background subprocess calls
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+if sys.platform == "win32":
+    _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+else:
+    _SUBPROCESS_FLAGS = 0  # No-op on Linux/macOS
 
 # Maximum tool-call round-trips before we force a text reply
 MAX_TOOL_ROUNDS = 5
 
-# System prompt that defines the AI persona
-SYSTEM_PROMPT = (
-    "You are Sentinel AI, a helpful security assistant integrated into an "
-    "endpoint security suite on the user's Windows machine. "
-    "You can have normal conversations AND access real system information. "
-    "When the user asks about their system (CPU, RAM, disk, processes, "
-    "network, battery, uptime, etc.), use the appropriate tool to fetch "
-    "live data and present it clearly. "
-    "You also have security tools: scan files, quarantine threats, manage "
-    "real-time protection, and install/update software via winget. "
-    "Be concise, friendly, and helpful. Use tools when the user asks for "
-    "real data — don't guess or make up numbers. For general questions, "
-    "just chat normally without calling tools."
-)
+
+def _build_system_prompt() -> str:
+    """Build a platform-aware chatbot system prompt."""
+    os_name = platform.system()
+    is_linux = os_name == "Linux"
+
+    machine_type = "Linux machine" if is_linux else "Windows machine"
+    pkg_mgr = (
+        "apt/dnf/pacman" if is_linux else "winget"
+    )
+
+    return (
+        f"You are Sentinel AI, a helpful security assistant integrated into an "
+        f"endpoint security suite on the user's {machine_type}. "
+        "You can have normal conversations AND access real system information. "
+        "When the user asks about their system (CPU, RAM, disk, processes, "
+        "network, battery, uptime, etc.), use the appropriate tool to fetch "
+        "live data and present it clearly. "
+        "You also have security tools: scan files, quarantine threats, manage "
+        f"real-time protection, and install/update software via {pkg_mgr}. "
+        "Be concise, friendly, and helpful. Use tools when the user asks for "
+        "real data — don't guess or make up numbers. For general questions, "
+        "just chat normally without calling tools."
+    )
+
+
+# Module-level prompt (evaluated once at import)
+SYSTEM_PROMPT = _build_system_prompt()
 
 
 # ===========================================================================
@@ -1320,7 +1338,62 @@ class ChatbotBridge(QObject):
     def clear_history(self) -> None:
         """Wipe the conversation memory."""
         self.chat_history.clear()
+        self._current_event_context = None
         logger.info("ChatbotBridge: conversation history cleared")
+
+    # ------------------------------------------------------------------
+    # EVENT CONTEXT HANDOFF  (Event Viewer → Chatbot)
+    # ------------------------------------------------------------------
+
+    @Slot(int, str, str)
+    def push_event_context(
+        self,
+        event_id: int,
+        provider: str,
+        plain_summary: str,
+    ) -> None:
+        """Inject the currently selected event into the chatbot's memory.
+
+        This lets the user switch to the AI Assistant tab and ask
+        follow-up questions about the event *without* re-explaining it.
+
+        The context is stored both as a synthetic assistant message in
+        ``chat_history`` (so the LLM sees it) and as structured metadata
+        in ``_current_event_context`` (for audit / resolution sessions).
+
+        Args:
+            event_id:      The numeric event identifier.
+            provider:      The log source / provider name.
+            plain_summary: Groq's ``plain_summary`` (or the KB fallback).
+        """
+        self._current_event_context = {
+            "event_id": event_id,
+            "event_source": provider,
+            "event_summary": plain_summary,
+        }
+
+        # Build a synthetic context message the LLM will see
+        os_label = "Linux" if platform.system() == "Linux" else "Windows"
+        context_msg = (
+            f"[System context] The user is looking at a {os_label} event "
+            f"(Event ID: {event_id}, Source: {provider}).\n"
+            f"Summary: {plain_summary}\n"
+            "The user may ask follow-up questions about this event."
+        )
+
+        # Avoid duplicate context messages
+        if self.chat_history and self.chat_history[-1].get("content", "").startswith(
+            "[System context]"
+        ):
+            self.chat_history[-1] = {"role": "assistant", "content": context_msg}
+        else:
+            self.chat_history.append({"role": "assistant", "content": context_msg})
+
+        logger.info(
+            "Event context pushed to chatbot: Event %s from %s",
+            event_id,
+            provider,
+        )
 
     # ------------------------------------------------------------------
     # RESOLUTION SESSION HELPERS  (delegated from backend_bridge)

@@ -5,16 +5,14 @@ import sys
 import traceback
 from pathlib import Path
 
+from backend.platform.paths import get_app_paths
+
 
 def _get_crash_log_path() -> Path:
     """Store crash traces with the rest of the app logs, not in the repo root."""
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        log_dir = Path(appdata) / "Sentinel" / "logs"
-    else:
-        log_dir = Path.home() / "AppData" / "Roaming" / "Sentinel" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "crash_traceback.txt"
+    crash_dir = get_app_paths().crash_dir
+    crash_dir.mkdir(parents=True, exist_ok=True)
+    return crash_dir / "crash_traceback.txt"
 
 
 _CRASH_PATH = _get_crash_log_path()
@@ -35,6 +33,19 @@ def _crash_excepthook(
 
 _original_excepthook = sys.excepthook
 sys.excepthook = _crash_excepthook
+
+# Platform shim MUST load before any backend module — it patches
+# subprocess.CREATE_NO_WINDOW on Linux so Windows-only modules can import.
+import backend.platform  # noqa: F401  — side-effect import
+
+# ── GPU / rendering fallback for Linux / WSL ────────────────────────────
+# Must be set *before* any Qt module is imported. On WSL, Mesa's software
+# rasterizer and missing Vulkan drivers frequently crash the scene graph.
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("QSG_RHI_BACKEND", "opengl")          # Qt6 scene-graph
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")       # fallback renderer
+    os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")         # Mesa SW rasterizer
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")             # prefer X11 on Wayland-less WSL
 
 from backend.entrypoint import main
 

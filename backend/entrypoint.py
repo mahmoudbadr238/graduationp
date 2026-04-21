@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+# Apply platform shims FIRST (patches subprocess.CREATE_NO_WINDOW on Linux)
+import backend.platform  # noqa: F401
+
 import json
 import os
 import sys
 from pathlib import Path
+
+# Load .env file early so GROQ_API_KEY and other secrets are available
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 
 def _run_cli_command(argv: list[str]) -> int | None:
@@ -54,25 +64,44 @@ def _run_cli_command(argv: list[str]) -> int | None:
 def _run_gui() -> int:
     """Launch the desktop GUI."""
     from backend.__version__ import APP_FULL_NAME, __version__
+    from backend.platform import IS_WINDOWS, IS_LINUX
+
+    # On Linux, ensure Qt platform env vars are set before QApplication
+    if IS_LINUX:
+        # Use software rendering if no GPU driver (common in VMs)
+        os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+        # Ensure DISPLAY is set for X11
+        if "DISPLAY" not in os.environ and "WAYLAND_DISPLAY" not in os.environ:
+            os.environ["DISPLAY"] = ":0"
+
     from backend.application import run
-    from backend.utils.admin import AdminPrivileges
 
     print(f"{APP_FULL_NAME} v{__version__}")
 
     skip_uac = os.environ.get("SKIP_UAC", "").lower() in ("1", "true", "yes")
 
+    if IS_WINDOWS:
+        from backend.utils.admin import AdminPrivileges
+    else:
+        from backend.platform.linux.admin import AdminPrivileges
+
     if not AdminPrivileges.is_admin() and not skip_uac:
-        print("[WARNING] Administrator privileges required for full functionality")
-        print("  Requesting UAC elevation...")
+        if IS_WINDOWS:
+            print("[WARNING] Administrator privileges required for full functionality")
+            print("  Requesting UAC elevation...")
+        else:
+            print("[WARNING] Root privileges required for full functionality")
+            print("  Requesting elevation...")
         AdminPrivileges.elevate()
         print(
             "[WARNING] Elevation declined or failed. Continuing with limited access..."
         )
         print("  Some features may be unavailable.\n")
     elif skip_uac:
-        print("[DEBUG] Skipping UAC (SKIP_UAC=1)\n")
+        print("[DEBUG] Skipping elevation (SKIP_UAC=1)\n")
     else:
-        print("[OK] Running with administrator privileges\n")
+        privilege_label = "administrator" if IS_WINDOWS else "root"
+        print(f"[OK] Running with {privilege_label} privileges\n")
 
     return run()
 

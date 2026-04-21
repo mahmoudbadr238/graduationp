@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from backend.platform.paths import get_app_paths
 from backend.config.settings import get_settings
 from backend.core.errors import ExternalToolMissing, IntegrationDisabled
 from backend.core.interfaces import INetworkScanner
@@ -31,7 +32,26 @@ VULN_SCAN_TIMEOUT = 3600  # 1 hour for vulnerability scans
 RATE_LIMIT_DELAY = 1  # Delay between scans (seconds)
 
 # Platform detection
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+_IS_WINDOWS = sys.platform == "win32"
+_IS_LINUX = sys.platform.startswith("linux")
+_SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _is_root() -> bool:
+    """Check if the current process has root/admin privileges."""
+    if _IS_WINDOWS:
+        try:
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+    return os.geteuid() == 0
+
+
+# On unprivileged Linux, raw-socket scans (-sS, -sA, -sO, -O) will hang or
+# fail silently.  We detect this at import time and swap to -sT (TCP connect)
+# which works without elevated privileges.
+_UNPRIVILEGED_LINUX = _IS_LINUX and not _is_root()
 
 # Scan type profiles - each maps to specific nmap arguments
 # User NEVER provides these flags, only the scan type
@@ -50,13 +70,15 @@ SCAN_PROFILES: dict[str, dict[str, Any]] = {
     },
     "port_scan": {
         "description": "Scan open/closed/filtered ports",
-        "args": ["-sS", "-sV", "-T4"],  # SYN scan + version detection
+        # SYN scan needs root on Linux; fall back to TCP connect
+        "args": ["-sT", "-sV", "-T4"] if _UNPRIVILEGED_LINUX else ["-sS", "-sV", "-T4"],
         "requires_host": True,
         "timeout": SCAN_TIMEOUT,
     },
     "os_detect": {
         "description": "Detect operating systems",
-        "args": ["-O", "-T4"],  # OS detection
+        # OS detection needs root on Linux; fall back to service version detection
+        "args": ["-sT", "-sV", "-T4"] if _UNPRIVILEGED_LINUX else ["-O", "-T4"],
         "requires_host": True,
         "timeout": SCAN_TIMEOUT,
     },
@@ -68,7 +90,8 @@ SCAN_PROFILES: dict[str, dict[str, Any]] = {
     },
     "firewall_detect": {
         "description": "Detect firewalls and filtering",
-        "args": ["-sA", "-T4"],  # ACK scan for firewall detection
+        # ACK scan needs root on Linux; fall back to TCP connect
+        "args": ["-sT", "-T4"] if _UNPRIVILEGED_LINUX else ["-sA", "-T4"],
         "requires_host": True,
         "timeout": SCAN_TIMEOUT,
     },
@@ -80,7 +103,8 @@ SCAN_PROFILES: dict[str, dict[str, Any]] = {
     },
     "protocol_scan": {
         "description": "Analyze IP protocols",
-        "args": ["-sO", "-T4"],  # IP protocol scan
+        # Protocol scan needs root on Linux; fall back to TCP connect
+        "args": ["-sT", "-sV", "-T4"] if _UNPRIVILEGED_LINUX else ["-sO", "-T4"],
         "requires_host": True,
         "timeout": SCAN_TIMEOUT,
     },
@@ -98,7 +122,7 @@ def check_nmap_installed() -> tuple[bool, str]:
     if nmap_path:
         return True, nmap_path
 
-    # Check Windows install paths
+    # Check platform-specific install paths
     if _IS_WINDOWS:
         common_paths = [
             r"C:\Program Files (x86)\Nmap\nmap.exe",
@@ -107,6 +131,11 @@ def check_nmap_installed() -> tuple[bool, str]:
             os.path.expandvars(r"%PROGRAMFILES(X86)%\Nmap\nmap.exe"),
         ]
         for path in common_paths:
+            if os.path.isfile(path):
+                return True, path
+    else:
+        # Linux / macOS common paths
+        for path in ["/usr/bin/nmap", "/usr/local/bin/nmap", "/snap/bin/nmap"]:
             if os.path.isfile(path):
                 return True, path
 
@@ -142,12 +171,7 @@ def get_local_subnet() -> str:
 
 def get_reports_dir() -> Path:
     """Get directory for saving scan reports."""
-    if _IS_WINDOWS:
-        base = Path(os.environ.get("APPDATA", Path.home()))
-    else:
-        base = Path.home() / ".config"
-
-    reports_dir = base / "Sentinel" / "nmap_reports"
+    reports_dir = get_app_paths().nmap_reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
     return reports_dir
 
@@ -369,11 +393,18 @@ class NmapCli(INetworkScanner):
             # Nmap not in PATH or timeout
             pass
 
-        # Check common Windows install locations
-        common_paths = [
-            r"C:\Program Files (x86)\Nmap\nmap.exe",
-            r"C:\Program Files\Nmap\nmap.exe",
-        ]
+        # Check platform-specific install locations
+        if _IS_WINDOWS:
+            common_paths = [
+                r"C:\Program Files (x86)\Nmap\nmap.exe",
+                r"C:\Program Files\Nmap\nmap.exe",
+            ]
+        else:
+            common_paths = [
+                "/usr/bin/nmap",
+                "/usr/local/bin/nmap",
+                "/snap/bin/nmap",
+            ]
 
         for path in common_paths:
             if os.path.exists(path):
@@ -472,14 +503,15 @@ class NmapCli(INetworkScanner):
 
         try:
             # Start process with streaming
-            process = subprocess.Popen(
-                cmd,
+            popen_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,  # Line buffered
-                creationflags=_SUBPROCESS_FLAGS,
             )
+            if _IS_WINDOWS:
+                popen_kwargs["creationflags"] = _SUBPROCESS_FLAGS
+            process = subprocess.Popen(cmd, **popen_kwargs)
 
             # Stream output line by line
             start_time = datetime.now()

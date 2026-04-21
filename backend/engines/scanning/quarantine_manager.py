@@ -38,13 +38,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.platform.paths import get_app_paths
+
 logger = logging.getLogger(__name__)
 
 # Default vault directory
-DEFAULT_VAULT_DIR = Path(os.environ.get(
-    "SENTINEL_QUARANTINE_DIR",
-    r"C:\ProgramData\Sentinel\Quarantine",
-))
+DEFAULT_VAULT_DIR = get_app_paths().quarantine_dir
 
 # XOR key length (bytes)
 XOR_KEY_LENGTH = 256

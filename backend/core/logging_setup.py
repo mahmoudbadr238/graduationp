@@ -4,6 +4,7 @@ Structured logging with rotating file handler, global exception hooks,
 and optional Sentry crash reporting.
 """
 
+import contextlib
 import logging
 import logging.handlers
 import os
@@ -13,6 +14,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMessageBox
 
 from .config import get_config
+from backend.platform.paths import get_app_paths
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +54,22 @@ def setup_logging(app_name: str = "Sentinel") -> None:
     """
     config = get_config()
     logs_dir = config.logs_dir
+    paths = get_app_paths()
 
     # Root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        with contextlib.suppress(Exception):
+            handler.close()
 
     # Formatter
     formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        fmt=(
+            "%(asctime)s [%(levelname)s] pid=%(process)d "
+            "thread=%(threadName)s %(name)s: %(message)s"
+        ),
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -81,7 +91,15 @@ def setup_logging(app_name: str = "Sentinel") -> None:
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-        logger.info(f"Logging initialized to {log_file}")
+        logger.info("Logging initialized to %s", log_file)
+        logger.info(
+            "Runtime paths: config=%s data=%s cache=%s state=%s logs=%s",
+            paths.config_dir,
+            paths.data_dir,
+            paths.cache_dir,
+            paths.state_dir,
+            paths.log_dir,
+        )
     except OSError as e:
         logger.exception(f"Failed to initialize file logging: {e}")
 

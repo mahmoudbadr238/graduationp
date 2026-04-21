@@ -5,6 +5,9 @@ import ctypes.wintypes
 import hashlib
 import json
 import os
+import re
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -22,7 +25,10 @@ INVALID_HANDLE_VALUE  = ctypes.wintypes.HANDLE(-1).value & 0xFFFFFFFFFFFFFFFF
 
 IOCTL_DISK_GET_DRIVE_GEOMETRY = 0x00070000
 
-kernel32 = ctypes.windll.kernel32
+if sys.platform == "win32":
+    kernel32 = ctypes.windll.kernel32
+else:
+    kernel32 = None  # Linux — Win32 APIs unavailable
 
 # ── Signature definitions ────────────────────────────────────────────────
 SIGNATURES = {
@@ -40,10 +46,56 @@ DEMO_BLOB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "test_
 
 
 def _is_admin() -> bool:
+    if sys.platform != "win32":
+        return False
     try:
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
     except Exception:
         return False
+
+
+def _is_root() -> bool:
+    """Root on Linux, Administrator on Windows."""
+    if sys.platform == "win32":
+        return _is_admin()
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+
+def _detect_linux_root_device() -> str:
+    """
+    Parse `lsblk` to find the block device that hosts /.
+    Falls back to the first detected disk if the mount-point walk fails.
+    """
+    try:
+        result = subprocess.run(
+            ["lsblk", "-o", "NAME,TYPE,MOUNTPOINT", "--noheadings", "--raw"],
+            capture_output=True, text=True, timeout=5,
+        )
+        parent_disk = ""
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            name, dev_type = parts[0], parts[1]
+            mount = parts[2] if len(parts) > 2 else ""
+            if dev_type == "part" and mount == "/":
+                # Strip trailing partition suffix: sda1→sda, nvme0n1p1→nvme0n1
+                parent_disk = re.sub(r"p?\d+$", "", name)
+                break
+            if dev_type == "disk" and not parent_disk:
+                parent_disk = name  # running fallback
+        if parent_disk:
+            return f"/dev/{parent_disk}"
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    # Hard fallback: first present common device
+    for candidate in ("/dev/sda", "/dev/vda", "/dev/nvme0n1", "/dev/hda"):
+        if os.path.exists(candidate):
+            return candidate
+    return ""
 
 
 # ── Win32 disk helpers ───────────────────────────────────────────────────
@@ -465,6 +517,204 @@ class _ScanWorker(QThread):
             self._last_batch_time = time.monotonic()
 
 
+# ── Linux raw block scanner ─────────────────────────────────────────────
+
+_LINUX_SIGNATURES = {
+    "jpg":  (b"\xFF\xD8\xFF",          b"\xFF\xD9",               25 * 1024 * 1024, ".jpg"),
+    "pdf":  (b"%PDF-",                 b"%%EOF",                  50 * 1024 * 1024, ".pdf"),
+    "png":  (b"\x89PNG\r\n\x1a\n",    b"IEND\xaeB`\x82",         25 * 1024 * 1024, ".png"),
+    "mp4":  (b"ftyp",                  None,                     200 * 1024 * 1024, ".mp4"),
+    "zip":  (b"PK\x03\x04",           None,                     100 * 1024 * 1024, ".zip"),
+    "docx": (b"PK\x03\x04",           None,                      50 * 1024 * 1024, ".docx"),
+}
+
+_LINUX_CHUNK_SIZE  = 1 * 1024 * 1024   # 1 MiB per read
+_LINUX_OVERLAP     = 1024              # cross-boundary guard bytes
+_LINUX_MAX_CHUNKS  = 500               # 500 MB cap keeps demo scans fast
+
+
+class _LinuxScanWorker(QThread):
+    """Raw block scanner for Linux.  Uses direct open('/dev/sdX','rb')."""
+
+    progressChanged = Signal(str)
+    candidateFound  = Signal(str)
+    candidateBatch  = Signal(str)
+    finished        = Signal(str)
+    error           = Signal(str)
+
+    BATCH_INTERVAL = 0.4
+
+    def __init__(self, target_type: str, device: str = ""):
+        super().__init__()
+        self.target_type = target_type.lower().strip().lstrip(".")
+        self.device      = device
+        self._cancel     = threading.Event()
+        self._pending_batch: list  = []
+        self._last_batch_time: float = 0.0
+
+    def cancel(self):
+        self._cancel.set()
+
+    def run(self):
+        try:
+            if not _is_root():
+                self.error.emit(
+                    "Root privileges required for raw disk access. "
+                    "Re-run Sentinel with: sudo python main.py"
+                )
+                return
+
+            device = self.device or _detect_linux_root_device()
+            if not device:
+                self.error.emit(
+                    "Could not detect a block device. "
+                    "Pass a device explicitly (e.g. /dev/sda)."
+                )
+                return
+
+            sigs = self._get_sigs()
+            candidates: list[dict] = []
+            cid = 0
+
+            self.progressChanged.emit(json.dumps({
+                "percent": 0, "stage": f"Opening {device}",
+                "drive": device, "found_count": 0, "speed_mbps": 0,
+            }))
+
+            try:
+                fh = open(device, "rb")  # noqa: SIM115 — intentional raw open
+            except PermissionError:
+                self.error.emit(
+                    f"Permission denied: {device}. "
+                    "Sentinel must run as root for raw disk access."
+                )
+                return
+            except OSError as exc:
+                self.error.emit(f"Cannot open {device}: {exc}")
+                return
+
+            with fh:
+                t0        = time.monotonic()
+                read_pos  = 0
+                leftover  = b""
+
+                for chunk_idx in range(_LINUX_MAX_CHUNKS):
+                    if self._cancel.is_set():
+                        break
+
+                    try:
+                        chunk = fh.read(_LINUX_CHUNK_SIZE)
+                    except OSError:
+                        # Unreadable sector — skip one chunk forward
+                        try:
+                            fh.seek(_LINUX_CHUNK_SIZE, 1)
+                        except OSError:
+                            break
+                        read_pos += _LINUX_CHUNK_SIZE
+                        continue
+
+                    if not chunk:
+                        break  # EOF
+
+                    leftover_len = len(leftover)
+                    buf      = leftover + chunk
+                    leftover = buf[-_LINUX_OVERLAP:] if len(buf) > _LINUX_OVERLAP else buf
+
+                    try:
+                        for sig_name, (header, footer, max_sz, _ext) in sigs.items():
+                            search = 0
+                            while search < len(buf):
+                                idx = buf.find(header, search)
+                                if idx == -1:
+                                    break
+                                abs_off  = max(0, read_pos + idx - leftover_len)
+                                end_off  = self._find_end(buf, idx, header, footer,
+                                                          min(max_sz, len(buf) - idx))
+                                size_guess = end_off - idx
+                                has_footer = bool(footer and buf[idx:end_off].endswith(footer))
+                                confidence = 80 if has_footer else 42
+                                sha = hashlib.sha256(
+                                    buf[idx: idx + min(4096, size_guess)]
+                                ).hexdigest()[:16]
+                                cand_obj = {
+                                    "id":               cid,
+                                    "drive":            device,
+                                    "offset_start":     abs_off,
+                                    "offset_end_guess": abs_off + size_guess,
+                                    "offset_hex":       f"0x{abs_off:X}",
+                                    "type":             sig_name,
+                                    "size_guess":       size_guess,
+                                    "confidence":       confidence,
+                                    "preview_text":     buf[idx: idx + 16].hex(" ").upper(),
+                                    "sha256_guess":     sha,
+                                }
+                                candidates.append(cand_obj)
+                                self._emit_candidate(cand_obj)
+                                cid    += 1
+                                search  = end_off
+                    except Exception:
+                        pass  # malformed region — keep scanning
+
+                    read_pos += len(chunk)
+
+                    if chunk_idx % 4 == 0:
+                        elapsed = time.monotonic() - t0
+                        speed   = (read_pos / (1024 * 1024)) / max(elapsed, 0.001)
+                        self.progressChanged.emit(json.dumps({
+                            "percent":     min(int(chunk_idx * 100 / _LINUX_MAX_CHUNKS), 99),
+                            "stage":       f"Scanning {device} — {read_pos // (1024 * 1024)} MiB",
+                            "drive":       device,
+                            "found_count": len(candidates),
+                            "speed_mbps":  round(speed, 1),
+                        }))
+
+            self._flush_batch()
+            self.progressChanged.emit(json.dumps({
+                "percent": 100, "stage": "Scan complete",
+                "drive": device, "found_count": len(candidates), "speed_mbps": 0,
+            }))
+            default_dir = os.environ.get("SENTINEL_RECOVERY_DIR", "/tmp/Sentinel_Recovery")
+            self.finished.emit(json.dumps({
+                "candidates": candidates,
+                "output_dir": default_dir,
+                "stats": {
+                    "total_candidates": len(candidates),
+                    "drives_scanned":   1,
+                },
+            }))
+
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+    # ── helpers ──────────────────────────────────────────────────────────
+
+    def _get_sigs(self) -> dict:
+        if self.target_type == "any" or self.target_type not in _LINUX_SIGNATURES:
+            return _LINUX_SIGNATURES
+        return {self.target_type: _LINUX_SIGNATURES[self.target_type]}
+
+    @staticmethod
+    def _find_end(data: bytes, start: int, header: bytes,
+                  footer: bytes | None, max_window: int) -> int:
+        end_limit = min(start + max_window, len(data))
+        if footer:
+            idx = data.find(footer, start + len(header), end_limit)
+            if idx != -1:
+                return idx + len(footer)
+        return end_limit
+
+    def _emit_candidate(self, cand_obj: dict):
+        self._pending_batch.append(cand_obj)
+        if time.monotonic() - self._last_batch_time >= self.BATCH_INTERVAL:
+            self._flush_batch()
+
+    def _flush_batch(self):
+        if self._pending_batch:
+            self.candidateBatch.emit(json.dumps(self._pending_batch))
+            self._pending_batch      = []
+            self._last_batch_time    = time.monotonic()
+
+
 # ── Recover worker ───────────────────────────────────────────────────────
 
 class _RecoverWorker(QThread):
@@ -527,10 +777,10 @@ class _RecoverWorker(QThread):
             self.error.emit(str(exc))
 
     def _read_candidate(self, cand):
-        start = cand["offset_start"]
-        end = cand["offset_end_guess"]
+        start  = cand["offset_start"]
+        end    = cand["offset_end_guess"]
         length = end - start
-        drive = cand["drive"]
+        drive  = cand["drive"]
 
         if drive == "demo_blob" or self.demo:
             if DEMO_BLOB_PATH.exists():
@@ -538,7 +788,16 @@ class _RecoverWorker(QThread):
                 return all_data[start:end]
             return None
 
-        # Use Win32 CreateFile for real disk access
+        # Linux raw device (path starts with /dev/)
+        if sys.platform != "win32":
+            try:
+                with open(drive, "rb") as fh:
+                    fh.seek(start)
+                    return fh.read(length)
+            except (PermissionError, OSError):
+                return None
+
+        # Windows — Win32 CreateFile sector-aligned read
         device_path = f"\\\\.\\{drive}"
         handle = _open_raw_device(device_path)
         try:
@@ -571,13 +830,27 @@ class RecoveryController(QObject):
 
     @Slot(result=bool)
     def checkAdmin(self):
-        is_admin = _is_admin()
+        is_admin = _is_root()
         self.recoveryAdminStatus.emit(is_admin)
         return is_admin
 
     @Slot(result=str)
     def getAvailableDrives(self):
-        """Return JSON array of available drive letters."""
+        """Return JSON array of available drives (letters on Windows, /dev/sdX on Linux)."""
+        if sys.platform != "win32":
+            try:
+                result = subprocess.run(
+                    ["lsblk", "-o", "NAME,TYPE", "--noheadings", "--raw"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                drives = [
+                    f"/dev/{parts[0]}"
+                    for line in result.stdout.splitlines()
+                    if len((parts := line.split())) >= 2 and parts[1] == "disk"
+                ]
+                return json.dumps(drives if drives else [])
+            except Exception:
+                return json.dumps([])
         try:
             import psutil
             drives = []
@@ -597,16 +870,23 @@ class RecoveryController(QObject):
             self.recoveryScanError.emit("Scan already running.")
             return
 
-        demo = not _is_admin()
-        if demo and not DEMO_BLOB_PATH.exists():
-            self.recoveryScanError.emit(
-                "Administrator privileges required for raw disk access. "
-                "No demo data available."
-            )
-            return
-
         self._candidates = []
-        self._scan_worker = _ScanWorker(target_type, demo=demo, target_drive=drive)
+
+        if sys.platform != "win32":
+            # Linux path — raw open() via _LinuxScanWorker
+            device = drive if drive.startswith("/dev/") else ""
+            self._scan_worker = _LinuxScanWorker(target_type, device=device)
+        else:
+            # Windows path — Win32 CreateFile via _ScanWorker
+            demo = not _is_admin()
+            if demo and not DEMO_BLOB_PATH.exists():
+                self.recoveryScanError.emit(
+                    "Administrator privileges required for raw disk access. "
+                    "No demo data available."
+                )
+                return
+            self._scan_worker = _ScanWorker(target_type, demo=demo, target_drive=drive)
+
         self._scan_worker.progressChanged.connect(self.recoveryScanProgressChanged.emit)
         self._scan_worker.candidateFound.connect(self._on_candidate_found)
         self._scan_worker.candidateBatch.connect(self._on_candidate_batch)
@@ -646,7 +926,8 @@ class RecoveryController(QObject):
             self.recoveryRecoverError.emit("No candidates selected.")
             return
 
-        output_dir = os.environ.get("SENTINEL_RECOVERY_DIR", r"C:\Sentinel_Recovery")
+        _default = "/tmp/Sentinel_Recovery" if sys.platform != "win32" else r"C:\Sentinel_Recovery"
+        output_dir = os.environ.get("SENTINEL_RECOVERY_DIR", _default)
         demo = any(c["drive"] == "demo_blob" for c in selected)
 
         self._recover_worker = _RecoverWorker(selected, output_dir, demo=demo)
@@ -665,5 +946,12 @@ class RecoveryController(QObject):
         folder = Path(path)
         if folder.is_file():
             folder = folder.parent
-        if folder.exists():
-            os.startfile(str(folder))  # noqa: S606 — Windows only
+        if not folder.exists():
+            return
+        if sys.platform == "win32":
+            os.startfile(str(folder))  # noqa: S606
+        else:
+            try:
+                subprocess.Popen(["xdg-open", str(folder)])
+            except (FileNotFoundError, OSError):
+                pass

@@ -8,6 +8,11 @@ Rectangle {
     
     property string driveName: ""
     property string driveLetter: ""
+    property string mountLabel: ""
+    property string detail: ""
+    property string category: ""
+    property bool readOnly: false
+    property bool usageAvailable: true
     property real total: 0
     property real used: 0
     property real percent: 0
@@ -33,22 +38,33 @@ Rectangle {
                 spacing: 2
 
                 Text {
-                    text: driveName + " (" + driveLetter + ":)"
+                    property string location: mountLabel || driveLetter
+                    text: location ? (driveName + " (" + location + ")") : driveName
                     color: ThemeManager.foreground()
                     font.pixelSize: ThemeManager.fontSize_small
                     font.bold: true
                 }
 
                 Text {
-                    text: used.toFixed(1) + " GB / " + total.toFixed(1) + " GB"
+                    text: card.usageAvailable
+                          ? (used.toFixed(1) + " GB / " + total.toFixed(1) + " GB")
+                          : "Usage unavailable"
                     color: ThemeManager.muted()
                     font.pixelSize: ThemeManager.fontSize_small
+                }
+
+                Text {
+                    text: detail || (category ? category : "")
+                    color: ThemeManager.muted()
+                    font.pixelSize: ThemeManager.fontSize_caption
+                    visible: text !== ""
                 }
             }
 
             Text {
-                text: percent.toFixed(0) + "%"
-                color: percent > 80 ? ThemeManager.danger :
+                text: card.usageAvailable ? (percent.toFixed(0) + "%") : "N/A"
+                color: !card.usageAvailable ? ThemeManager.muted() :
+                       percent > 80 ? ThemeManager.danger :
                        percent > 60 ? ThemeManager.warning :
                        ThemeManager.success
                 font.pixelSize: ThemeManager.fontSize_h4
@@ -64,7 +80,7 @@ Rectangle {
 
             Rectangle {
                 height: parent.height
-                width: parent.width * (card.percent / 100)
+                width: card.usageAvailable ? parent.width * (card.percent / 100) : 0
                 color: card.percent > 80 ? ThemeManager.danger :
                        card.percent > 60 ? ThemeManager.warning :
                        ThemeManager.success

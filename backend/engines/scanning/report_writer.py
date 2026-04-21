@@ -2,13 +2,14 @@
 Report Writer - Generate Scan Reports
 
 Creates TXT reports for file and URL scans.
-Reports are saved to ~/Sentinel/scan_reports/
+Reports are saved to the platform-appropriate Sentinel data directory.
 """
 
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
+
+from backend.platform.paths import get_app_paths
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,14 @@ class ReportWriter:
 
         Args:
             reports_dir: Optional path to reports directory.
-                        Defaults to ~/Sentinel/scan_reports/
+                        Defaults to the platform Sentinel reports directory.
         """
         self._reports_dir = reports_dir or self._get_default_reports_dir()
         self._ensure_dir_exists()
 
     def _get_default_reports_dir(self) -> Path:
         """Get the default reports directory."""
-        home = Path.home()
-        return home / "Sentinel" / "scan_reports"
+        return get_app_paths().scan_reports_dir
 
     def _ensure_dir_exists(self) -> None:
         """Ensure the reports directory exists."""
@@ -410,8 +410,5 @@ def get_report_writer() -> ReportWriter:
 
 
 def get_platform_reports_dir() -> Path:
-    """
-    Get the Windows reports directory: %APPDATA%/Sentinel/scan_reports/
-    """
-    base = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
-    return base / "Sentinel" / "scan_reports"
+    """Get the platform-appropriate reports directory."""
+    return get_app_paths().scan_reports_dir

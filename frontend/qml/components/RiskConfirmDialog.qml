@@ -39,10 +39,11 @@ Popup {
     }
 
     function _labelFor(fId) {
+        var onLinux = (typeof Backend !== 'undefined' && Backend && Backend.isLinux)
         switch (fId) {
-            case "firewall": return "Windows Firewall"
+            case "firewall": return onLinux ? "System Firewall (UFW)" : "Windows Firewall"
             case "rdp":      return "Remote Desktop"
-            case "uac":      return "User Account Control"
+            case "uac":      return onLinux ? "Privilege Escalation (sudo)" : "User Account Control"
             default:         return fId
         }
     }

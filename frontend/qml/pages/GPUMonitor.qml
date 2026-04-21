@@ -21,6 +21,96 @@ Item {
             GPUService.start(5000)  // 5 second interval for efficiency
         }
     }
+
+    function _gpuMetricStatus(obj, key) {
+        if (!obj) return "unavailable"
+        var metricStatus = obj.metricStatus || {}
+        if (metricStatus[key]) return metricStatus[key]
+        var value = obj[key]
+        if (value === undefined || value === null) return "unavailable"
+        var number = Number(value)
+        return isFinite(number) ? "ok" : "unavailable"
+    }
+
+    function _gpuStatusLabel(status) {
+        switch (status) {
+        case "ok":             return "Live"
+        case "unsupported":    return "Unsupported"
+        case "permission_denied": return "Permission required"
+        case "not_exposed":    return "Not exposed"
+        case "backend_error":  return "Backend error"
+        case "shared_memory":  return "Shared memory"
+        default:               return "Unavailable"
+        }
+    }
+
+    function _gpuMetricMessage(obj, key) {
+        if (!obj) return "Unavailable"
+        var metricMessages = obj.metricMessages || {}
+        if (metricMessages[key]) return metricMessages[key]
+        return _gpuStatusLabel(_gpuMetricStatus(obj, key))
+    }
+
+    function _gpuMetricNumber(obj, key) {
+        if (_gpuMetricStatus(obj, key) !== "ok") return null
+        var number = Number(obj[key])
+        return isFinite(number) ? number : null
+    }
+
+    function _gpuMetricText(obj, key, decimals, suffix) {
+        var number = _gpuMetricNumber(obj, key)
+        if (number === null) return _gpuMetricMessage(obj, key)
+        return number.toFixed(decimals !== undefined ? decimals : 0) + (suffix || "")
+    }
+
+    function _gpuMemoryText(obj, key, decimals) {
+        var number = _gpuMetricNumber(obj, key)
+        if (number === null) return _gpuMetricMessage(obj, key)
+        return (number / 1024).toFixed(decimals !== undefined ? decimals : 1) + " GB"
+    }
+
+    function _gpuPcieText(obj) {
+        var gen = _gpuMetricNumber(obj, "pcieGen")
+        var width = _gpuMetricNumber(obj, "pcieWidth")
+        if (gen === null || width === null || gen <= 0 || width <= 0) {
+            return _gpuMetricMessage(obj, gen === null || gen <= 0 ? "pcieGen" : "pcieWidth")
+        }
+        return "Gen" + gen + " x" + width
+    }
+
+    function _gpuRatio(obj, key, maxKey, fallbackMax) {
+        var value = _gpuMetricNumber(obj, key)
+        if (value === null) return 0
+        var maxValue = maxKey ? _gpuMetricNumber(obj, maxKey) : fallbackMax
+        if (maxValue === null || maxValue === undefined || maxValue <= 0) return 0
+        return Math.max(0, Math.min(1, value / maxValue))
+    }
+
+    function _gpuMetricColor(obj, key, warningAt, dangerAt, okColor) {
+        var value = _gpuMetricNumber(obj, key)
+        if (value === null) return ThemeManager.muted()
+        if (dangerAt !== undefined && value >= dangerAt) return ThemeManager.danger
+        if (warningAt !== undefined && value >= warningAt) return ThemeManager.warning
+        return okColor || ThemeManager.success
+    }
+
+    function _gpuProviderSummary(obj) {
+        if (!obj) return ""
+        var providerNames = {
+            "nvml":          "NVML",
+            "nvidia-smi":    "nvidia-smi",
+            "amdgpu-sysfs":  "amdgpu (sysfs)",
+            "rocm-smi":      "rocm-smi",
+            "pyadl":         "pyadl",
+            "lspci":         "lspci",
+            "powershell-wmi": "PowerShell bridge"
+        }
+        var provider = providerNames[obj.provider] || obj.provider || "unknown"
+        var status = _gpuStatusLabel(obj.providerStatus || "unavailable")
+        var detail = obj.providerDetail || ""
+        var summary = "Telemetry: " + provider + " | " + status
+        return detail ? summary + " | " + detail : summary
+    }
     
     // Don't stop on destruction - keep running for quick return to page
     // The service will be cleaned up when the app exits
@@ -254,6 +344,15 @@ Item {
                                         color: ThemeManager.muted()
                                         font.pixelSize: ThemeManager.fontSize_small
                                     }
+
+                                    Text {
+                                        text: currentGpu ? root._gpuProviderSummary(currentGpu) : ""
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_caption
+                                        visible: text !== ""
+                                        elide: Text.ElideRight
+                                        width: parent.width
+                                    }
                                     
                                     Text {
                                         text: currentGpu && currentGpu.vendor === "NVIDIA" && currentGpu.cudaVersion ? 
@@ -276,7 +375,7 @@ Item {
                                             font.pixelSize: ThemeManager.fontSize_caption
                                         }
                                         Text {
-                                            text: currentGpu ? Math.round(currentGpu.usage) + "%" : "N/A"
+                                            text: root._gpuMetricText(currentGpu, "usage", 0, "%")
                                             color: ThemeManager.accent
                                             font.pixelSize: ThemeManager.fontSize_h3
                                             font.bold: true
@@ -291,9 +390,8 @@ Item {
                                             font.pixelSize: ThemeManager.fontSize_caption
                                         }
                                         Text {
-                                            text: currentGpu && currentGpu.tempC > 0 ? currentGpu.tempC + "°C" : "N/A"
-                                            color: currentGpu && currentGpu.tempC > 80 ? ThemeManager.danger :
-                                                   currentGpu && currentGpu.tempC > 60 ? ThemeManager.warning : ThemeManager.success
+                                            text: root._gpuMetricText(currentGpu, "tempC", 0, " C")
+                                            color: root._gpuMetricColor(currentGpu, "tempC", 60, 80, ThemeManager.success)
                                             font.pixelSize: ThemeManager.fontSize_h3
                                             font.bold: true
                                         }
@@ -307,7 +405,7 @@ Item {
                                             font.pixelSize: ThemeManager.fontSize_caption
                                         }
                                         Text {
-                                            text: currentGpu && currentGpu.powerW > 0 ? Math.round(currentGpu.powerW) + "W" : "N/A"
+                                            text: root._gpuMetricText(currentGpu, "powerW", 0, "W")
                                             color: ThemeManager.warning
                                             font.pixelSize: ThemeManager.fontSize_h3
                                             font.bold: true
@@ -317,12 +415,14 @@ Item {
                                     Column {
                                         spacing: 2
                                         Text {
-                                            text: "VRAM"
+                                            text: "Memory"
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_caption
                                         }
                                         Text {
-                                            text: currentGpu ? (currentGpu.memUsedMB / 1024).toFixed(1) + " GB" : "N/A"
+                                            text: root._gpuMetricStatus(currentGpu, "memUsedMB") === "shared_memory"
+                                                  ? "Shared"
+                                                  : root._gpuMemoryText(currentGpu, "memUsedMB", 1)
                                             color: ThemeManager.success
                                             font.pixelSize: ThemeManager.fontSize_h3
                                             font.bold: true
@@ -349,29 +449,29 @@ Item {
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "GPU Usage"
-                                value: currentGpu ? currentGpu.usage.toFixed(1) + "%" : "N/A"
-                                barValue: currentGpu ? currentGpu.usage / 100 : 0
+                                value: root._gpuMetricText(currentGpu, "usage", 1, "%")
+                                barValue: root._gpuRatio(currentGpu, "usage", "", 100)
                                 accentColor: ThemeManager.accent
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Memory Ctrl"
-                                value: currentGpu ? (currentGpu.memControllerUtil || 0).toFixed(1) + "%" : "N/A"
-                                barValue: currentGpu ? (currentGpu.memControllerUtil || 0) / 100 : 0
+                                value: root._gpuMetricText(currentGpu, "memControllerUtil", 1, "%")
+                                barValue: root._gpuRatio(currentGpu, "memControllerUtil", "", 100)
                                 accentColor: "#6366F1"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Video Encode"
-                                value: currentGpu ? (currentGpu.encoderUtil || 0) + "%" : "N/A"
-                                barValue: currentGpu ? (currentGpu.encoderUtil || 0) / 100 : 0
+                                value: root._gpuMetricText(currentGpu, "encoderUtil", 0, "%")
+                                barValue: root._gpuRatio(currentGpu, "encoderUtil", "", 100)
                                 accentColor: "#8B5CF6"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Video Decode"
-                                value: currentGpu ? (currentGpu.decoderUtil || 0) + "%" : "N/A"
-                                barValue: currentGpu ? (currentGpu.decoderUtil || 0) / 100 : 0
+                                value: root._gpuMetricText(currentGpu, "decoderUtil", 0, "%")
+                                barValue: root._gpuRatio(currentGpu, "decoderUtil", "", 100)
                                 accentColor: "#A78BFA"
                             }
                         }
@@ -384,32 +484,30 @@ Item {
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Core Clock"
-                                value: currentGpu && currentGpu.clockMHz > 0 ? currentGpu.clockMHz + " MHz" : "N/A"
-                                barValue: currentGpu && currentGpu.maxClockMHz > 0 ? currentGpu.clockMHz / currentGpu.maxClockMHz : 0
+                                value: root._gpuMetricText(currentGpu, "clockMHz", 0, " MHz")
+                                barValue: root._gpuRatio(currentGpu, "clockMHz", "maxClockMHz", 0)
                                 accentColor: "#F59E0B"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Memory Clock"
-                                value: currentGpu && currentGpu.clockMemMHz > 0 ? currentGpu.clockMemMHz + " MHz" : "N/A"
-                                barValue: currentGpu && currentGpu.maxClockMemMHz > 0 ? currentGpu.clockMemMHz / currentGpu.maxClockMemMHz : 0
+                                value: root._gpuMetricText(currentGpu, "clockMemMHz", 0, " MHz")
+                                barValue: root._gpuRatio(currentGpu, "clockMemMHz", "maxClockMemMHz", 0)
                                 accentColor: "#EAB308"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "GPU Temp"
-                                value: currentGpu && currentGpu.tempC > 0 ? currentGpu.tempC + "°C" : "N/A"
-                                barValue: currentGpu && currentGpu.tempC > 0 ? currentGpu.tempC / 100 : 0
-                                accentColor: currentGpu && currentGpu.tempC > 80 ? ThemeManager.danger :
-                                            currentGpu && currentGpu.tempC > 60 ? ThemeManager.warning : ThemeManager.success
+                                value: root._gpuMetricText(currentGpu, "tempC", 0, " C")
+                                barValue: root._gpuRatio(currentGpu, "tempC", "", 100)
+                                accentColor: root._gpuMetricColor(currentGpu, "tempC", 60, 80, ThemeManager.success)
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Hotspot"
-                                value: currentGpu && currentGpu.tempHotspot > 0 ? currentGpu.tempHotspot + "°C" : "N/A"
-                                barValue: currentGpu && currentGpu.tempHotspot > 0 ? currentGpu.tempHotspot / 110 : 0
-                                accentColor: currentGpu && currentGpu.tempHotspot > 90 ? ThemeManager.danger :
-                                            currentGpu && currentGpu.tempHotspot > 70 ? ThemeManager.warning : ThemeManager.success
+                                value: root._gpuMetricText(currentGpu, "tempHotspot", 0, " C")
+                                barValue: root._gpuRatio(currentGpu, "tempHotspot", "", 110)
+                                accentColor: root._gpuMetricColor(currentGpu, "tempHotspot", 70, 90, ThemeManager.success)
                             }
                         }
                         
@@ -421,29 +519,29 @@ Item {
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Power Draw"
-                                value: currentGpu && currentGpu.powerW > 0 ? currentGpu.powerW.toFixed(0) + " W" : "N/A"
-                                barValue: currentGpu && currentGpu.powerLimitW > 0 ? currentGpu.powerW / currentGpu.powerLimitW : 0
+                                value: root._gpuMetricText(currentGpu, "powerW", 0, " W")
+                                barValue: root._gpuRatio(currentGpu, "powerW", "powerLimitW", 0)
                                 accentColor: "#EF4444"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "TDP %"
-                                value: currentGpu && currentGpu.powerPercent > 0 ? currentGpu.powerPercent.toFixed(0) + "%" : "N/A"
-                                barValue: currentGpu && currentGpu.powerPercent > 0 ? currentGpu.powerPercent / 120 : 0
+                                value: root._gpuMetricText(currentGpu, "powerPercent", 0, "%")
+                                barValue: root._gpuRatio(currentGpu, "powerPercent", "", 120)
                                 accentColor: "#F87171"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Fan Speed"
-                                value: currentGpu ? currentGpu.fanPercent + "%" : "N/A"
-                                barValue: currentGpu ? currentGpu.fanPercent / 100 : 0
+                                value: root._gpuMetricText(currentGpu, "fanPercent", 0, "%")
+                                barValue: root._gpuRatio(currentGpu, "fanPercent", "", 100)
                                 accentColor: "#06B6D4"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "Fan RPM"
-                                value: currentGpu && currentGpu.fanRPM > 0 ? currentGpu.fanRPM + " RPM" : "N/A"
-                                barValue: currentGpu && currentGpu.fanRPM > 0 ? currentGpu.fanRPM / 4000 : 0
+                                value: root._gpuMetricText(currentGpu, "fanRPM", 0, " RPM")
+                                barValue: root._gpuRatio(currentGpu, "fanRPM", "", 4000)
                                 accentColor: "#22D3EE"
                             }
                         }
@@ -456,32 +554,31 @@ Item {
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "VRAM Used"
-                                value: currentGpu ? (currentGpu.memUsedMB / 1024).toFixed(2) + " GB" : "N/A"
-                                barValue: currentGpu && currentGpu.memTotalMB > 0 ? currentGpu.memUsedMB / currentGpu.memTotalMB : 0
+                                value: root._gpuMemoryText(currentGpu, "memUsedMB", 2)
+                                barValue: root._gpuRatio(currentGpu, "memUsedMB", "memTotalMB", 0)
                                 accentColor: "#10B981"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "VRAM Total"
-                                value: currentGpu ? (currentGpu.memTotalMB / 1024).toFixed(0) + " GB" : "N/A"
-                                barValue: 1
+                                value: root._gpuMemoryText(currentGpu, "memTotalMB", 0)
+                                barValue: root._gpuMetricNumber(currentGpu, "memTotalMB") !== null ? 1 : 0
                                 accentColor: "#34D399"
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "VRAM %"
-                                value: currentGpu ? currentGpu.memPercent.toFixed(1) + "%" : "N/A"
-                                barValue: currentGpu ? currentGpu.memPercent / 100 : 0
-                                accentColor: currentGpu && currentGpu.memPercent > 90 ? ThemeManager.danger :
-                                            currentGpu && currentGpu.memPercent > 70 ? ThemeManager.warning : "#10B981"
+                                value: root._gpuMetricText(currentGpu, "memPercent", 1, "%")
+                                barValue: root._gpuRatio(currentGpu, "memPercent", "", 100)
+                                accentColor: root._gpuMetricColor(currentGpu, "memPercent", 70, 90, "#10B981")
                             }
                             MetricTile { 
                                 width: (parent.width - 36) / 4
                                 title: "PCIe"
-                                value: currentGpu && currentGpu.pcieGen > 0 ? "Gen" + currentGpu.pcieGen + " x" + currentGpu.pcieWidth : "N/A"
+                                value: root._gpuPcieText(currentGpu)
                                 barValue: 0
                                 showBar: false
-                                accentColor: "#94A3B8"
+                                accentColor: root._gpuMetricStatus(currentGpu, "pcieGen") === "ok" ? "#94A3B8" : ThemeManager.muted()
                             }
                         }
                         
@@ -499,7 +596,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             title: "GPU Usage"
-                            currentValue: currentGpu ? currentGpu.usage.toFixed(1) + "%" : "N/A"
+                            currentValue: root._gpuMetricText(currentGpu, "usage", 1, "%")
                             historyData: root.usageHistory
                             maxValue: 100
                             lineColor: ThemeManager.accent
@@ -510,10 +607,10 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             title: "Temperature"
-                            currentValue: currentGpu && currentGpu.tempC > 0 ? currentGpu.tempC + "°C" : "N/A"
+                            currentValue: root._gpuMetricText(currentGpu, "tempC", 0, " C")
                             historyData: root.tempHistory
                             maxValue: 100
-                            lineColor: currentGpu && currentGpu.tempC > 75 ? ThemeManager.danger : ThemeManager.warning
+                            lineColor: root._gpuMetricColor(currentGpu, "tempC", 60, 75, ThemeManager.warning)
                         }
                         
                         // Power Chart
@@ -521,9 +618,9 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             title: "Power Draw"
-                            currentValue: currentGpu && currentGpu.powerW > 0 ? currentGpu.powerW.toFixed(0) + "W" : "N/A"
+                            currentValue: root._gpuMetricText(currentGpu, "powerW", 0, "W")
                             historyData: root.powerHistory
-                            maxValue: currentGpu && currentGpu.powerLimitW > 0 ? currentGpu.powerLimitW : 350
+                            maxValue: root._gpuMetricNumber(currentGpu, "powerLimitW") || 350
                             lineColor: "#EF4444"
                         }
                         
@@ -534,11 +631,11 @@ Item {
                             title: "Clock Speeds"
                             label1: "Core"
                             label2: "Memory"
-                            value1: currentGpu ? currentGpu.clockMHz + " MHz" : "N/A"
-                            value2: currentGpu ? (currentGpu.clockMemMHz || 0) + " MHz" : "N/A"
+                            value1: root._gpuMetricText(currentGpu, "clockMHz", 0, " MHz")
+                            value2: root._gpuMetricText(currentGpu, "clockMemMHz", 0, " MHz")
                             historyData1: root.clockCoreHistory
                             historyData2: root.clockMemHistory
-                            maxValue: Math.max(3000, currentGpu ? Math.max(currentGpu.maxClockMHz || 0, currentGpu.maxClockMemMHz || 0) : 3000)
+                            maxValue: Math.max(3000, root._gpuMetricNumber(currentGpu, "maxClockMHz") || 0, root._gpuMetricNumber(currentGpu, "maxClockMemMHz") || 0)
                             lineColor1: "#F59E0B"
                             lineColor2: "#22C55E"
                         }
@@ -548,7 +645,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             title: "VRAM Usage"
-                            currentValue: currentGpu ? currentGpu.memPercent.toFixed(1) + "%" : "N/A"
+                            currentValue: root._gpuMetricText(currentGpu, "memPercent", 1, "%")
                             historyData: root.memHistory
                             maxValue: 100
                             lineColor: "#10B981"
@@ -559,7 +656,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 180
                             title: "Fan Speed"
-                            currentValue: currentGpu ? currentGpu.fanPercent + "%" : "N/A"
+                            currentValue: root._gpuMetricText(currentGpu, "fanPercent", 0, "%")
                             historyData: root.fanHistory
                             maxValue: 100
                             lineColor: "#06B6D4"

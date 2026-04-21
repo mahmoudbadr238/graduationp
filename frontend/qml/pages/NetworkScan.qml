@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../ui"
@@ -38,7 +38,10 @@ Item {
         }
         
         if (!Backend.nmapAvailable) {
-            Backend.toast("error", "Nmap is not installed. Please install Nmap from https://nmap.org and restart Sentinel.")
+            var msg = Backend.isLinux
+                ? "Nmap is not installed. Run: sudo apt install nmap"
+                : "Nmap is not installed. Please install Nmap from https://nmap.org and restart Sentinel."
+            Backend.toast("error", msg)
             return
         }
         
@@ -102,7 +105,9 @@ Item {
                     }
                     
                     Text {
-                        text: "Nmap is not installed. Please download and install Nmap from nmap.org, then restart Sentinel."
+                        text: (Backend && Backend.isLinux)
+                              ? "Nmap is not installed. Run: sudo apt install nmap"
+                              : "Nmap is not installed. Please download and install Nmap from nmap.org, then restart Sentinel."
                         color: "#FFFFFF"
                         font.pixelSize: ThemeManager.fontSize_small
                         Layout.fillWidth: true

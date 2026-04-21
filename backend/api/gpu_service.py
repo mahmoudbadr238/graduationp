@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 # History configuration
 HISTORY_MAX_POINTS = 60  # 60 data points for charts (1 minute at 1s interval)
 
+HISTORY_FIELDS = {
+    "usage": "usage",
+    "memUsage": "memPercent",
+    "temperature": "tempC",
+    "power": "powerW",
+    "powerPercent": "powerPercent",
+    "clockCore": "clockMHz",
+    "clockMem": "clockMemMHz",
+    "fanSpeed": "fanPercent",
+    "memController": "memControllerUtil",
+}
+
+METRIC_STATUS_OK = "ok"
+
 
 class GPUServiceBridge(QObject):
     """
@@ -93,7 +107,14 @@ class GPUServiceBridge(QObject):
             self._proc.setArguments(args)
             return True
 
-        args = ["-u", "-m", "backend.engines.gpu.telemetry_worker"]
+        # Platform-aware worker module
+        from backend.platform import IS_LINUX
+        if IS_LINUX:
+            worker_module = "backend.platform.linux.telemetry_worker"
+        else:
+            worker_module = "backend.engines.gpu.telemetry_worker"
+
+        args = ["-u", "-m", worker_module]
         if interval_ms is not None:
             args.append(str(interval_ms))
 
@@ -123,17 +144,36 @@ class GPUServiceBridge(QObject):
             self._init_gpu_history(gpu_id)
 
             hist = self._history[gpu_id]
-            hist["usage"].append(gpu.get("usage", 0))
-            hist["memUsage"].append(gpu.get("memPercent", 0))
-            hist["temperature"].append(gpu.get("tempC", 0))
-            hist["power"].append(gpu.get("powerW", 0))
-            hist["powerPercent"].append(gpu.get("powerPercent", 0))
-            hist["clockCore"].append(gpu.get("clockMHz", 0))
-            hist["clockMem"].append(gpu.get("clockMemMHz", 0))
-            hist["fanSpeed"].append(gpu.get("fanPercent", 0))
-            hist["memController"].append(gpu.get("memControllerUtil", 0))
+            for history_key, metric_key in HISTORY_FIELDS.items():
+                sample = self._history_sample(gpu, metric_key)
+                if sample is not None:
+                    hist[history_key].append(sample)
+                elif hist[history_key]:
+                    # Keep the last known good value instead of injecting a fake zero
+                    # when a backend temporarily loses access to a sensor.
+                    hist[history_key].append(hist[history_key][-1])
 
         self.historyUpdated.emit()
+
+    def _history_sample(self, gpu: dict[str, Any], metric_key: str) -> float | None:
+        """Return a numeric history sample only when a metric is actually available."""
+        metric_status = gpu.get("metricStatus") or {}
+        status = metric_status.get(metric_key)
+        if status not in (None, METRIC_STATUS_OK):
+            return None
+
+        value = gpu.get(metric_key)
+        if value is None:
+            return None
+
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+
+        if number != number:  # NaN guard
+            return None
+        return number
 
     # Properties
     @Property(str, notify=statusChanged)
@@ -229,15 +269,30 @@ class GPUServiceBridge(QObject):
             "id": gpu_id,
             "name": "Unknown",
             "vendor": "Unknown",
-            "usage": 0.0,
-            "memUsedMB": 0,
-            "memTotalMB": 0,
-            "memPercent": 0.0,
-            "tempC": 0,
-            "powerW": 0.0,
-            "powerLimitW": 0.0,
-            "clockMHz": 0,
-            "fanPercent": 0,
+            "usage": None,
+            "memUsedMB": None,
+            "memTotalMB": None,
+            "memPercent": None,
+            "tempC": None,
+            "powerW": None,
+            "powerLimitW": None,
+            "clockMHz": None,
+            "fanPercent": None,
+            "provider": "none",
+            "providerStatus": "unavailable",
+            "providerDetail": "No GPU telemetry is available.",
+            "metricStatus": {
+                "usage": "unavailable",
+                "memUsedMB": "unavailable",
+                "memTotalMB": "unavailable",
+                "memPercent": "unavailable",
+                "tempC": "unavailable",
+                "powerW": "unavailable",
+                "powerLimitW": "unavailable",
+                "clockMHz": "unavailable",
+                "fanPercent": "unavailable",
+            },
+            "metricMessages": {},
         }
 
     @Slot(result=list)
