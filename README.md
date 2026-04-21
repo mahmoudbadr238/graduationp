@@ -1,121 +1,419 @@
 # Sentinel — Endpoint Security Suite
 
-Sentinel is a cross-platform desktop endpoint security application built with PySide6/QML and Python. It provides real-time system telemetry, security posture assessment, file scanning, network scanning, and optional AI-assisted analysis — designed as a graduation project and hardened toward a credible enterprise-ready desktop product.
+Sentinel is a cross-platform desktop endpoint security application built with **PySide6/QML** and **Python**. It provides real-time system telemetry, security posture assessment, event log analysis, file scanning, sandbox detonation, network scanning, and AI-assisted threat analysis — designed as a graduation project and hardened toward a credible, enterprise-ready desktop product.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Platform Support](#platform-support)
+- [Technology Stack](#technology-stack)
+- [Pages and UI](#pages-and-ui)
+- [Feature Detail](#feature-detail)
+  - [System Snapshot](#system-snapshot)
+  - [GPU Monitor](#gpu-monitor)
+  - [Event Viewer](#event-viewer)
+  - [Scan Center](#scan-center)
+  - [Sandbox Lab](#sandbox-lab)
+  - [File Function](#file-function)
+  - [Network Scan](#network-scan)
+  - [Real-Time Protection](#real-time-protection)
+  - [AI Analysis](#ai-analysis)
+  - [Security Posture](#security-posture)
+- [Quick Start](#quick-start)
+- [Optional Providers and Degraded Mode](#optional-providers-and-degraded-mode)
+- [Runtime Paths](#runtime-paths)
+- [Architecture](#architecture)
+- [Diagnostics](#diagnostics)
+- [Testing](#testing)
+- [Current Boundaries](#current-boundaries)
+- [Documentation](#documentation)
+- [License](#license)
 
 ---
 
 ## Features
 
-### System Snapshot
-- Live CPU, RAM, storage, and network metrics
-- Tabbed view: System Overview, GPU Monitor, Network, Security
-- Per-mount storage classification with hidden-mount debug toggle
-- Security posture summary with platform-native provider diagnostics
-
-### GPU Monitor
-- MSI Afterburner–style real-time charts (usage, temperature, power, VRAM, clocks, fan)
-- Multi-GPU support with navigation arrows to switch between cards
-- Provider-based architecture with explicit metric availability states
-- **AMD** — native sysfs/DRM/hwmon collection, no ROCm or external tools required
-- **NVIDIA** — pynvml primary, nvidia-smi fallback, auto-detected via DRM + lspci on hybrid laptops
-- Hybrid laptop support: NVIDIA dGPU detected via lspci even when driver or nvidia-smi is absent
-- No fake zero values — every metric carries an explicit status (Live, Unavailable, Unsupported, Not exposed, Shared memory, Permission required, Backend error)
-
-### Security Posture
-- Firewall detection: ufw, firewalld, nftables, iptables
-- Antivirus/scanner: ClamAV realtime daemon vs. scanner-only vs. not installed
-- Secure Boot, disk encryption, TPM presence
-- AppArmor / SELinux enforcement state
-- Package update state and remote-access exposure (Linux)
-- Windows Defender, UAC, TPM flows (Windows)
-- Three-state indicators: good / warning / bad
-
-### Scan Center
-- File and URL scanning with quarantine management
-- Secure delete for quarantined files
-- Scan history with clear action
-- Recovery controller for file restoration
-
-### Network Scan
-- Nmap-backed host and port discovery
-- Device enumeration UI with diagnostic output
-
-### AI Analysis
-- Groq API integration (LLaMA models) for event explanation and security chatbot
-- Offline knowledge base fallback
-- AI-generated security reports
-
-### File Function
-- File recovery workflow with checkboxes
-- Secure-delete integration
-
-### Diagnostics
-- Runtime path validation
-- Optional provider health checks
-- Crash capture and export
+| Feature | Windows | Linux |
+| --- | :---: | :---: |
+| System Snapshot (CPU, RAM, Storage, Network) | ✅ | ✅ |
+| GPU Monitor — NVIDIA | ✅ | ✅ |
+| GPU Monitor — AMD | ✅ | ✅ (native sysfs, no ROCm) |
+| GPU Monitor — Hybrid multi-GPU laptop | ✅ | ✅ |
+| Event Viewer (system event logs) | ✅ Windows Event Log | ✅ systemd journal |
+| Security Posture Assessment | ✅ | ✅ |
+| File Scanning (static + AI NGAV) | ✅ | ✅ |
+| ClamAV Integration | ✅ | ✅ |
+| Sandbox Detonation (VMware) | ✅ | ❌ |
+| File Shredding (secure delete) | ✅ | ✅ |
+| File Carving / Recovery | ✅ | ✅ |
+| Network Scan (Nmap) | ✅ | ✅ |
+| URL Scanning | ✅ | ✅ |
+| Real-Time Process Protection | ✅ (WMI) | ❌ |
+| AI Analysis (Groq / Claude / OpenAI) | ✅ | ✅ |
+| AI Security Chatbot | ✅ | ✅ |
+| Quarantine Manager | ✅ | ✅ |
+| XDG Runtime Paths | ❌ | ✅ |
+| Scan History (SQLite) | ✅ | ✅ |
 
 ---
 
 ## Platform Support
 
-| Capability | Windows | Linux |
-| --- | --- | --- |
-| System snapshot | Supported | Supported |
-| GPU monitoring — NVIDIA | Supported (pynvml / WMI) | Supported (pynvml / nvidia-smi / DRM+lspci) |
-| GPU monitoring — AMD | Supported (ADL SDK) | Supported (native sysfs — no ROCm needed) |
-| GPU monitoring — hybrid laptop | Supported | Supported (DRM + lspci supplement) |
-| Security posture page | Supported | Supported (platform-native checks) |
-| File scanning and quarantine | Supported | Supported |
-| Network scan UI | Supported | Supported |
-| AI analysis (Groq) | Supported | Supported |
-| XDG runtime paths | N/A | Supported |
-| Event Viewer integration | Supported | Not available |
-| VMware sandbox flows | Supported | Not available on Linux host |
+### Windows
+
+- Full feature set including VMware sandbox, Real-Time Protection (WMI process monitoring), Windows Event Log, Windows Defender and UAC integration
+- GPU monitoring via ADL SDK (AMD) and NVML/nvidia-smi (NVIDIA)
+- AppData-based runtime paths
+- PyInstaller-packaged into a standalone executable
+
+### Linux
+
+- First-class support for system snapshot, GPU monitoring, security posture, file scanning, network scanning, event logs, and AI analysis
+- GPU monitoring via native sysfs/DRM (AMD, no ROCm required), NVML/nvidia-smi (NVIDIA), and a hybrid-laptop supplement that detects GPUs via DRM and lspci regardless of driver state
+- Event logs via `journalctl` with full parity to the Windows Event Viewer interface
+- Security posture via `ufw`, `iptables`, `firewalld`, `nftables`, ClamAV, AppArmor, SELinux, `mokutil`
+- XDG-compliant runtime paths
+- VMware sandbox and Real-Time Protection not available (Windows-only subsystems)
 
 ---
 
-## GPU Monitoring Detail
+## Technology Stack
 
-### Detection priority
+### Core Framework
 
-| Priority | Provider | Vendor | Notes |
-| --- | --- | --- | --- |
-| 1 | pynvml / NVML | NVIDIA | Full metrics |
-| 2 | nvidia-smi | NVIDIA | Fallback when pynvml absent |
-| 3 | amdgpu sysfs | AMD | Native kernel interface, no ROCm |
-| 4 | rocm-smi | AMD | When ROCm is installed |
-| 5 | pyadl | AMD | WSL only (Windows ADL SDK) |
-| 6 | DRM supplement | Any | Driver loaded, no SMI tool |
-| 7 | lspci supplement | Any | No driver loaded (PRIME power-off) |
+| Technology | Version | Purpose |
+| --- | --- | --- |
+| Python | 3.11+ | Application runtime |
+| PySide6 (Qt 6) | ≥ 6.6.0 | GUI framework — QML engine, signals/slots, QProcess |
+| psutil | ≥ 5.9.0 | Cross-platform CPU, RAM, disk, network, process metrics |
+| SQLite 3 | stdlib | Scan history, events database (WAL mode, indexed) |
+| python-dotenv | ≥ 1.0.0 | `.env` API key and config management |
 
-### Metric availability states
+### AI / LLM Providers
+
+| Provider | Model | Use |
+| --- | --- | --- |
+| Groq (primary) | `llama-3.3-70b-versatile` | Event explanation, deep threat analysis |
+| Groq (primary) | `llama-3.1-8b-instant` | Security chatbot, fast interactive queries |
+| Anthropic Claude | Latest via API | Fallback AI provider |
+| OpenAI GPT | Latest via API | Fallback AI provider |
+
+- Rate limiting: 30 req/min with 2 s minimum interval
+- Retry: 3 attempts with exponential backoff (1 s → 30 s)
+- Privacy engine: strips IPs, usernames, file paths before sending to AI
+
+### GPU Monitoring
+
+| Technology | Platform | Provider |
+| --- | --- | --- |
+| `nvidia-ml-py` (NVML) | Windows + Linux | NVIDIA primary — full metrics |
+| `nvidia-smi` CLI | Windows + Linux | NVIDIA fallback when NVML absent |
+| `pyadl` (AMD ADL SDK) | Windows / WSL | AMD primary on Windows |
+| Linux DRM sysfs | Linux | AMD primary — `/sys/class/drm/card*/device/` |
+| hwmon sysfs | Linux | AMD temperature, power, fan |
+| `/sys/module/amdgpu/version` | Linux | AMD driver version |
+| `lspci` | Linux | GPU name resolution + hybrid supplement |
+| DRM card enumeration | Linux | Detects all vendors regardless of driver state |
+
+### Windows-Only Technologies
+
+| Technology | Purpose |
+| --- | --- |
+| `pywin32` (win32evtlog, win32con) | Windows Event Log reading |
+| `WMI` | Process creation monitoring (Real-Time Protection), system inventory |
+| VMware Workstation + `vmrun` CLI | Sandbox detonation and live preview |
+| `pefile` | PE (Portable Executable) binary static analysis |
+| `imageio[ffmpeg]` | Sandbox live video capture (GIF/MP4) |
+| `pywebview` | URL detonation in isolated WebView2 |
+
+### Linux-Only Technologies
+
+| Technology | Purpose |
+| --- | --- |
+| `journalctl` (systemd) | System event log collection |
+| `ufw` / `firewalld` / `nftables` / `iptables` | Firewall status detection |
+| `clamscan` / `clamd` | ClamAV antivirus and real-time scanner |
+| `mokutil` | Secure Boot state |
+| `aa-status` | AppArmor enforcement state |
+| `getenforce` | SELinux enforcement state |
+| `lspci` | PCI GPU enumeration (hybrid laptop detection) |
+| `/sys/class/drm/` | DRM GPU enumeration |
+| `/sys/class/drm/cardN/device/hwmon/` | AMD temperature, power, fan sensors |
+| `modinfo amdgpu` | AMD kernel module version |
+
+### Scanning and Security Engines
+
+| Technology | Purpose | Platform |
+| --- | --- | --- |
+| Groq AI NGAV | AI-powered Next-Gen AV analysis | Both |
+| `pefile` | PE static analysis (imports, entropy, suspicious indicators) | Windows |
+| ClamAV (`clamscan`) | Signature-based antivirus | Both |
+| Nmap CLI | Network host, port, OS, and service discovery | Both |
+| VirusTotal API (optional) | External threat intelligence | Both |
+| Google Safe Browsing API (optional) | URL reputation | Both |
+| SHA-256 / MD5 | File integrity hashing | Both |
+
+### Build and Tooling
+
+| Tool | Version | Purpose |
+| --- | --- | --- |
+| PyInstaller | ≥ 6.0.0 | Standalone binary packaging |
+| Ruff | ≥ 0.1.0 | Linting and formatting |
+| MyPy | ≥ 1.0.0 | Static type checking |
+| Bandit | ≥ 1.7.0 | Security linting |
+| pytest + pytest-qt | ≥ 8.0.0 | Unit and integration testing |
+
+---
+
+## Pages and UI
+
+| Page | Description |
+| --- | --- |
+| **Home** | Security health dashboard — threat status, quick stats, system overview |
+| **System Monitor** | Real-time charts for CPU, RAM, disk I/O, and network throughput |
+| **GPU Monitor** | NVIDIA / AMD GPU telemetry — usage, temperature, power, VRAM, clocks, fan, PCIe; multi-GPU navigation |
+| **Event Viewer** | Windows Event Log (Windows) or systemd journal (Linux) — filtered event list with AI-powered explanations |
+| **Scan Center** | File scanning — drag-and-drop, multi-engine analysis, verdict scoring, scan history |
+| **Sandbox Lab** | VMware Workstation detonation — live desktop preview, process/file/network delta report (Windows only) |
+| **File Function** | Secure file shredding (3-pass) and forensic file carving/recovery |
+| **Network Scan** | Nmap-based host discovery, port scan, OS detection, service version, vulnerability scan |
+| **Security Assistant** | Groq-powered AI chatbot for interactive threat queries and remediation guidance |
+| **AI Report** | AI-generated explanation of scan findings with actionable recommendations |
+| **System Snapshot** | Full system inventory across six sub-pages: Overview, Hardware, OS Info, Security, Network, Adapters |
+| **Settings** | API key management, sandbox configuration, UI preferences, provider status |
+
+---
+
+## Feature Detail
+
+### System Snapshot
+
+Six tabbed sub-pages covering complete system state:
+
+- **Overview** — OS name, version, hostname, uptime, logged-in user, domain
+- **Hardware** — CPU model, core/thread count, RAM capacity, disk geometry, GPU specs
+- **OS Info** — Kernel/build version, patch level, install date, architecture
+- **Security** — Firewall status, antivirus presence, Secure Boot, disk encryption, remote access exposure, AppArmor/SELinux (Linux)
+- **Network** — IP addresses, DNS servers, default gateway, routing table
+- **Adapters** — NIC name, MAC, link speed, driver, duplex mode
+
+Storage view filters pseudo-filesystems, loop mounts, Snap `squashfs` images, and container overlays by default. A debug toggle in the storage section exposes all mounts for advanced inspection.
+
+---
+
+### GPU Monitor
+
+MSI Afterburner–style real-time monitoring with rolling 60-point history charts.
+
+**Collected metrics:**
+
+| Metric | AMD (Linux sysfs) | NVIDIA (NVML/nvidia-smi) |
+| --- | --- | --- |
+| GPU utilization % | `gpu_busy_percent` | NVML utilization rates |
+| GPU temperature °C | `hwmon/temp1_input` | NVML temperature sensor |
+| Power draw W | `hwmon/power1_average` | NVML power usage |
+| Fan speed % | `hwmon/pwm1` (0–255) | NVML fan speed |
+| Fan RPM | `hwmon/fan1_input` | — |
+| VRAM used / total | `mem_info_vram_*` | NVML memory info |
+| Core clock MHz | — | NVML clock (graphics) |
+| Memory clock MHz | — | NVML clock (memory) |
+| PCIe Gen / Width | — | NVML PCIe info |
+| Encoder / Decoder % | — | NVML encoder/decoder |
+| Driver version | `/sys/module/amdgpu/version` | NVML system driver |
+| GPU name | `lspci -s <pci> -nn` | NVML device name |
+
+**Metric availability states** — no metric ever shows a fake `0` value:
 
 | State | UI label | Meaning |
 | --- | --- | --- |
 | `ok` | Live | Metric actively collected |
-| `unsupported` | Unsupported | Hardware or driver does not expose this metric |
+| `unsupported` | Unsupported | Hardware or driver does not expose this |
 | `unavailable` | Unavailable | Metric expected but could not be read |
 | `not_exposed` | Not exposed | Sensor exists but driver does not surface it |
 | `permission_denied` | Permission required | Elevated privileges needed |
 | `backend_error` | Backend error | Query failed with an error |
-| `shared_memory` | Shared memory | AMD iGPU/APU uses shared system RAM — no dedicated VRAM |
+| `shared_memory` | Shared memory | AMD iGPU/APU — no dedicated VRAM |
 
-### AMD iGPU / APU notes
-AMD APUs (Renoir, Cezanne, Rembrandt, Phoenix, …) report little or no dedicated VRAM. Sentinel detects this and labels VRAM tiles **Shared memory** rather than showing 0 B or Unavailable. GPU utilization, temperature, and fan metrics (where exposed by the hwmon driver) are still collected normally.
+**Hybrid laptop detection (Linux):** Three-layer detection ensures both GPUs appear with navigation arrows:
+1. Primary — pynvml (NVIDIA) / amdgpu sysfs (AMD)
+2. Vendor fallback — nvidia-smi (when pynvml absent), pyadl (WSL/Windows)
+3. DRM supplement — scans `/sys/class/drm` for any driver-loaded GPU not yet found
+4. lspci supplement — scans PCI bus for GPUs with no driver loaded at all (PRIME power-off mode)
 
 ---
 
-## Linux Notes
+### Event Viewer
 
-Sentinel is first-class on Linux for snapshot, security posture, diagnostics, storage classification, and core scanning flows.
+Unified event log viewer with identical interface on both platforms.
 
-- Filters pseudo filesystems, loop mounts, Snap squashfs images, and container overlays from the default storage view
-- Exposes a debug toggle in System Snapshot → Storage to show hidden mounts
-- Uses platform-native checks for firewall, package updates, Secure Boot, disk encryption, remote access, and MAC enforcement
-- Uses XDG-style runtime paths instead of Windows `APPDATA` fallbacks
-- GPU normalization prevents any missing Linux sensor from appearing as a fake `0%` or `0 C`
+**Windows** — reads from Windows Event Log via `pywin32` (`win32evtlog`):
+- Sources: System, Application, Security channels
+- Parses Event ID, level, source, timestamp, message
+- Built-in Event ID knowledge base with 73+ known event types
+- Human-readable friendly message generation
 
-See [docs/guides/LINUX_SUPPORT.md](docs/guides/LINUX_SUPPORT.md) for full Linux details and current limitations.
+**Linux** — reads from systemd journal via `journalctl --output=json`:
+- Sources: all unit logs (equivalent to System + Application)
+- Priority mapping: Emergency/Alert/Critical/Error/Warning/Notice/Info/Debug → standardized levels
+- Same `EventItem` schema as Windows for UI consistency
+- Handles binary/non-UTF-8 journal data safely
+
+Both platforms support:
+- Level filtering (Critical, Error, Warning, Information)
+- Up to 200 events per query
+- **AI-powered event explanation** via Groq — each event can be explained in plain English with severity assessment and remediation steps
+
+---
+
+### Scan Center
+
+Multi-engine file scanning pipeline with 11 sequential stages:
+
+1. Input validation and file access check
+2. Hash computation (SHA-256, MD5) and file metadata collection
+3. PE header analysis — imports, exports, sections, entropy, suspicious indicators (`pefile`)
+4. String extraction — up to 200 meaningful strings, IOC detection
+5. **Groq AI NGAV** — behavioral analysis prompt with static indicators
+6. ClamAV signature scan (if installed and in PATH)
+7. Signature verification (Authenticode on Windows)
+8. IOC extraction — embedded IPs, domains, URLs
+9. Verdict scoring — deterministic aggregation (no LLM for final verdict)
+10. Optional VMware sandbox detonation (Windows only)
+11. Report generation (JSON) and SQLite history insert
+
+**Supported file types:** All files for static analysis. PE-specific deep analysis for `.exe`, `.dll`, `.sys`, `.scr`, `.com`, `.pif`, `.msi`.
+
+---
+
+### Sandbox Lab
+
+Dynamic malware detonation using **VMware Workstation** — Windows only.
+
+**Workflow:**
+1. Restore VM to clean snapshot
+2. Copy sample into guest via `vmrun copyFileFromHostToGuest`
+3. Execute detonation script inside guest (PowerShell)
+4. Capture live desktop screenshots every 500 ms (12 frames max)
+5. Collect before/after deltas: running processes, created files, network connections
+6. Parse `summary.json` from guest
+7. Render results in Sandbox Lab page with live video preview
+
+**Configuration (environment variables):**
+```
+VMRUN_PATH     Path to vmrun.exe
+VMX_PATH       Path to .vmx VM image
+VM_SNAPSHOT    Snapshot name to restore (default: "Clean Base")
+VM_GUEST_USER  Guest OS username
+VM_GUEST_PASS  Guest OS password
+```
+
+**Not available on Linux** — VMware Workstation and vmrun.exe are Windows-only dependencies.
+
+---
+
+### File Function
+
+Two independent capabilities:
+
+**Secure File Shredding:**
+- 3-pass overwrite: random bytes → random bytes → zeros
+- File renamed to random 16-character string before deletion (destroys MFT/directory record)
+- Works on both Windows (NTFS) and Linux (ext4, btrfs, etc.)
+- Non-blocking — runs on Qt thread pool with progress reporting
+
+**Forensic File Carving / Recovery:**
+- Sector-by-sector scan of a disk or partition image
+- Magic number detection for JPEG, PNG, PDF (header + footer matching)
+- Sector size: 512 bytes; carved file cap: 20 MiB per file
+- Recovered files written to platform recovery directory
+
+---
+
+### Network Scan
+
+Nmap-backed host and service discovery.
+
+**Scan profiles:**
+
+| Profile | Nmap flags | Description |
+| --- | --- | --- |
+| Host discovery | `-sn` | Live host ping sweep |
+| Network map | `-sn --traceroute` | Host discovery + route tracing |
+| Port scan | `-sS` / `-sT` | SYN scan (root) or TCP connect (unprivileged) |
+| OS detection | `-O` | Operating system fingerprinting |
+| Service version | `-sV` | Service and version identification |
+| Vulnerability scan | `--script vuln` | NSE vulnerability scripts |
+| Firewall detection | `-f --data-length` | Firewall/IDS probing |
+
+On Linux without root, SYN scan automatically falls back to TCP connect scan. Full OS detection and SYN scan require root.
+
+**URL scanning** — separate pipeline:
+- Offline heuristics: blocklist matching, typosquatting detection, suspicious TLD check
+- HTTP content fetch and analysis
+- Optional VirusTotal and Google Safe Browsing API integration
+- AI classification via Groq
+
+---
+
+### Real-Time Protection
+
+Continuous process monitoring that intercepts and terminates malicious processes before they execute — **Windows only**.
+
+**How it works:**
+1. WMI subscribes to `Win32_Process.__InstanceCreation` events
+2. New process PID and executable path captured
+3. Static scanner + Groq AI NGAV analysis runs on executable
+4. If threat score ≥ threshold:
+   - Process terminated via `psutil` with elevated privileges
+   - Threat event logged to database
+   - QML notification emitted
+
+**ThreatEvent data:** PID, process name, executable path, matched rules, threat score (0–100), action taken, timestamp, SHA-256.
+
+**Not available on Linux** — WMI process creation events are Windows-only.
+
+---
+
+### AI Analysis
+
+**Groq integration:**
+- Primary model `llama-3.3-70b-versatile` for deep event explanation and threat analysis
+- Faster model `llama-3.1-8b-instant` for interactive chatbot queries
+- Offline knowledge base fallback when API is unavailable
+
+**Privacy engine:** Automatically redacts IP addresses, usernames, file paths, and other sensitive identifiers from all data sent to AI providers.
+
+**AI features:**
+- **Event explanation** — plain-English summary of any Event Viewer / journalctl entry with severity rating and remediation steps
+- **Security chatbot** — interactive threat query interface
+- **Scan report explanation** — detailed narrative of scan findings with actionable recommendations
+- **URL threat classification** — human-readable verdict with confidence score
+
+**Fallback chain:** Groq → Anthropic Claude → OpenAI GPT. Any provider can be disabled individually via environment variables.
+
+---
+
+### Security Posture
+
+Platform-native checks with three-state indicators: good (green) / warning (amber) / bad (red).
+
+**Windows checks:**
+- Windows Defender status — real-time protection, tamper protection, behavior monitoring, signature age, last scan time
+- Windows Firewall — Domain, Private, and Public profile states
+- UAC level
+- TPM presence
+- Secure Boot state
+
+**Linux checks:**
+- Firewall — `ufw status verbose`, `iptables -L`, `firewalld`, `nftables` (first found is used)
+- Antivirus — ClamAV: daemon active (Realtime active) vs. scanner-only vs. not installed
+- Secure Boot — `mokutil --sb-state`
+- Disk encryption — backing device detection for root and home
+- Package updates — pending security updates via package manager
+- Remote access exposure — open SSH, RDP, VNC ports
+- Mandatory access control — AppArmor (`aa-status`) or SELinux (`getenforce`)
 
 ---
 
@@ -125,21 +423,21 @@ See [docs/guides/LINUX_SUPPORT.md](docs/guides/LINUX_SUPPORT.md) for full Linux 
 
 - Python 3.11+
 - Git
-- PySide6-compatible desktop environment (X11 or Wayland)
+- PySide6-compatible desktop environment
 
-### Optional integrations
+### Optional tools that improve coverage
 
-| Tool | Purpose |
-| --- | --- |
-| Groq API key | AI-assisted features |
-| Nmap | Network scanning |
-| ClamAV (`clamd` / `clamscan`) | Linux antivirus detection |
-| `ufw`, `firewalld`, `nftables`, `iptables` | Richer firewall reporting |
-| `pynvml` | Best Linux NVIDIA GPU telemetry |
-| `nvidia-smi` | NVIDIA GPU fallback telemetry |
-| `rocm-smi` | Improved Linux AMD GPU telemetry |
-| `mokutil` | Secure Boot state |
-| `aa-status` | AppArmor enforcement state |
+| Tool | Purpose | Platform |
+| --- | --- | --- |
+| Groq API key | AI event explanation, chatbot, scan reports | Both |
+| Nmap | Network scanning | Both |
+| ClamAV (`clamscan` / `clamd`) | Signature-based file scanning | Both |
+| `pynvml` / `nvidia-smi` | NVIDIA GPU telemetry | Both |
+| `rocm-smi` | AMD GPU telemetry (alternative to sysfs) | Linux |
+| `ufw` / `firewalld` | Firewall posture reporting | Linux |
+| `mokutil` | Secure Boot state | Linux |
+| `aa-status` | AppArmor enforcement state | Linux |
+| VMware Workstation + vmrun | Sandbox detonation | Windows |
 
 ### Windows
 
@@ -150,7 +448,7 @@ cd graduationp
 python -m venv .venv
 .venv\Scripts\activate
 
-python -m pip install --upgrade pip
+pip install --upgrade pip
 pip install -r requirements.txt
 
 python -m backend --diagnose
@@ -174,20 +472,41 @@ python -m backend --diagnose
 python main.py
 ```
 
-You can also use [run_linux.sh](run_linux.sh) to provision a Linux dev environment from the repo, and [build_linux.sh](build_linux.sh) to create a PyInstaller build.
+Use [run_linux.sh](run_linux.sh) to set up a Linux dev environment automatically, and [build_linux.sh](build_linux.sh) to create a PyInstaller build.
+
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+GROQ_API_KEY=your_groq_key
+ANTHROPIC_API_KEY=your_claude_key       # optional fallback
+OPENAI_API_KEY=your_openai_key          # optional fallback
+
+# Windows sandbox (optional)
+VMRUN_PATH=C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe
+VMX_PATH=D:\vm\windows10\Windows 10 x64.vmx
+VM_SNAPSHOT=Clean Base
+VM_GUEST_USER=IEUser
+VM_GUEST_PASS=Passw0rd!
+```
 
 ---
 
 ## Optional Providers and Degraded Mode
 
-Sentinel stays usable when optional providers are missing:
+Sentinel stays fully usable when optional tools are absent:
 
-- **No GPU backend** — GPU page still shows the device name and marks all metrics as Unavailable or Unsupported; no fake `0%` values
-- **No firewall tool on Linux** — security page reports that no supported firewall stack was detected
-- **No ClamAV on Linux** — security page reports "Not installed" instead of claiming protection
-- **No package manager probe** — package-update status becomes Unavailable rather than defaulting to green
-- **No Groq API key** — AI features are hidden; offline knowledge base remains available
-- **No Nmap** — network scan UI stays visible with a clear "Nmap not found" message
+| Missing tool | Behavior |
+| --- | --- |
+| No GPU backend | GPU page shows device name, all metrics marked Unavailable/Unsupported — no fake `0%` |
+| No Groq API key | AI features hidden; offline knowledge base still active |
+| No ClamAV | Scan Center skips ClamAV engine; Groq NGAV and static analysis still run |
+| No Nmap | Network Scan page shows "Nmap not found" — other features unaffected |
+| No firewall tool (Linux) | Security page reports "No supported firewall stack detected" |
+| No `mokutil` (Linux) | Secure Boot shown as Unavailable |
+| VMware not configured | Sandbox Lab page disabled; all other scan engines still run |
+| No NVML on Linux | NVIDIA detected via nvidia-smi fallback, then DRM/lspci if also absent |
 
 ---
 
@@ -200,8 +519,60 @@ Sentinel stays usable when optional providers are missing:
 | Logs | `%APPDATA%\Sentinel\logs` | `$XDG_STATE_HOME/sentinel/logs` |
 | Crash logs | `%APPDATA%\Sentinel\crashes` | `$XDG_STATE_HOME/sentinel/crashes` |
 | Quarantine | `%PROGRAMDATA%\Sentinel\Quarantine` | `$XDG_DATA_HOME/sentinel/quarantine` |
+| Scan reports | `%APPDATA%\Sentinel\scan_reports` | `$XDG_DATA_HOME/sentinel/scan_reports` |
+| Database | `%APPDATA%\.sentinel\sentinel.db` | `~/.sentinel/sentinel.db` |
 
-Linux keeps legacy compatibility lookups for older `~/.config/Sentinel`, `~/.local/share/Sentinel`, and `~/.sentinel` locations, but new writes use the normalized XDG layout.
+Linux keeps legacy compatibility lookups for `~/.config/Sentinel`, `~/.local/share/Sentinel`, and `~/.sentinel`. New writes always use the XDG layout.
+
+---
+
+## Architecture
+
+```text
+backend/
+  api/              QML-facing services and bridges
+                      GPUServiceBridge — QProcess worker, heartbeat watchdog, circuit breaker
+                      BackendBridge — scanning, AI, network, snapshot APIs
+                      SnapshotService — pre-warmed system and security caches
+  core/             Config, logging, DI container, startup, performance monitor
+  engines/
+    ai/             Groq / Claude / OpenAI providers, event explainer, chatbot, report
+    filefunction/   Secure delete (3-pass), file carving/recovery
+    sandbox_vmware/ VMware Workstation detonation (Windows only)
+    scancenter/     11-stage multi-engine scan pipeline
+    scanning/       URL scanner, quarantine manager, report writer
+  infra/            Nmap CLI, SQLite repository, optional integration helpers
+  platform/
+    paths.py        XDG / AppData cross-platform path resolver
+    linux/          All Linux-specific implementations (see below)
+  tests/            Automated tests (27+ cases for Linux GPU and posture)
+  utils/            Secure delete, logging utilities
+
+backend/platform/linux/
+  drm_enumeration.py       /sys/class/drm card scanner — vendor, driver, PCI address
+  amd_sysfs_provider.py    AMD GPU metrics from sysfs/hwmon (no ROCm required)
+  gpu_normalization.py     Cross-vendor metric normalization with status system
+  telemetry_worker.py      GPU telemetry subprocess (JSON-line protocol)
+  events_linux.py          journalctl event reader — same interface as Windows
+  security_posture.py      UFW, iptables, ClamAV, AppArmor, SELinux detection
+  security_snapshot.py     Security state snapshot for System Snapshot page
+  system_monitor_psutil.py psutil-based CPU, RAM, disk, network metrics
+  system_snapshot_service.py Hardware and OS inventory
+  secure_delete.py         3-pass file shredding on Linux filesystems
+  storage.py               SQLite with XDG paths
+  admin.py                 Root privilege detection and graceful degradation
+
+frontend/qml/
+  components/       Shared QML components (cards, dialogs, chart widgets)
+  pages/            Top-level application pages
+  ui/ theme/        ThemeManager — color tokens, typography, spacing
+```
+
+**Key service patterns:**
+
+- **GPUServiceBridge** — spawns the platform telemetry worker as a `QProcess`, parses newline-delimited JSON, maintains 60-point rolling deque per metric, implements 60 s heartbeat watchdog and 3-fault circuit breaker
+- **Subprocess isolation** — GPU worker, URL detonator, and sandbox runner all execute in child processes so a crash never blocks the UI
+- **Provider degraded mode** — every optional integration has an explicit unavailable/unsupported state reported to QML rather than a silent failure
 
 ---
 
@@ -213,7 +584,7 @@ python -m backend --export-diagnostics diagnostics.json
 python -m backend --reset-settings
 ```
 
-Diagnostics validate optional integrations, runtime paths, and degraded providers before launching the UI. Run them first when troubleshooting a missing feature.
+Diagnostics validate optional integrations, runtime paths, database connectivity, and degraded provider state before the UI starts. Run them first when troubleshooting.
 
 ---
 
@@ -229,54 +600,28 @@ Diagnostics validate optional integrations, runtime paths, and degraded provider
 .venv/bin/python -m pytest backend/tests -q
 ```
 
-The test suite covers:
+Test coverage includes:
 
-- Linux GPU DRM enumeration and connector filtering
-- AMD sysfs provider: discrete VRAM, iGPU shared-memory, hwmon sensors
-- GPU metric normalization: status preservation, key mapping, regression guards
-- Linux mount filtering and storage normalization
+- DRM GPU enumeration — connector filtering, vendor/driver reads, iGPU class detection, multi-card
+- AMD sysfs provider — discrete VRAM, iGPU shared-memory, hwmon temperature/power/fan, missing hwmon
+- GPU metric normalization — status preservation (`shared_memory`, `permission_denied`), key mapping, provider status, regression guards for Windows NVIDIA payloads
+- Linux storage filtering — pseudo-filesystem exclusion, loop device exclusion, debug toggle
 - Cross-platform runtime path selection
 - Linux security posture mapping
 
 ---
 
-## Architecture
-
-```text
-backend/
-  api/          QML-facing services and bridges (GPUService, BackendBridge, …)
-  core/         Config, logging, DI container, startup, performance monitoring
-  engines/      Scanning, AI, sandbox, file recovery workflows
-  infra/        Optional integration helpers (Nmap, SQLite, …)
-  platform/     OS-specific abstractions
-    linux/      DRM enumeration, AMD sysfs provider, GPU normalization,
-                security posture, storage classification, telemetry worker
-  tests/        Automated tests
-
-frontend/qml/
-  components/   Shared QML components (cards, dialogs, charts)
-  pages/        Top-level pages (HomePage, GPUMonitor, ScanCenter, …)
-  ui/ theme/    ThemeManager, global typography and color tokens
-```
-
-Key service boundaries:
-
-- **GPUServiceBridge** — spawns the platform-appropriate telemetry worker as a `QProcess`, parses JSON-line output, maintains 60-point rolling history per metric, implements heartbeat watchdog and circuit breaker
-- **BackendBridge** — exposes scanning, AI, network, and snapshot APIs to QML
-- **SnapshotService** — pre-warms security and system snapshot caches on startup
-- **RTPBridge** — real-time protection controller
-
----
-
 ## Current Boundaries
 
-These are intentionally out of scope on Linux:
+These are intentionally out of scope on Linux at the moment:
 
-- Windows Event Viewer collection
-- Windows Defender / UAC / TPM privilege flows
-- VMware sandbox execution from a Linux host
+| Capability | Status |
+| --- | --- |
+| VMware sandbox detonation | Windows only — requires vmrun.exe |
+| Real-Time Protection (WMI process monitoring) | Windows only — requires WMI |
+| Windows Defender / UAC / TPM integration | Windows only |
 
-Linux support is explicit about partial coverage. Sentinel reports unavailable or unsupported states instead of pretending those controls exist.
+Linux support is explicit about partial coverage. Sentinel reports unavailable or unsupported states rather than pretending these controls exist.
 
 ---
 
@@ -287,17 +632,6 @@ Linux support is explicit about partial coverage. Sentinel reports unavailable o
 - [docs/api/README_BACKEND.md](docs/api/README_BACKEND.md)
 - [docs/sandbox_vmware.md](docs/sandbox_vmware.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
-
----
-
-## Contributing
-
-Before opening a PR:
-
-```bash
-python -m backend --diagnose
-.venv/bin/python -m pytest backend/tests -q
-```
 
 ---
 
