@@ -1,6 +1,6 @@
 param(
-    [string]$SourceRoot = $PSScriptRoot,
-    [string]$Destination = (Join-Path $PSScriptRoot "graduationp_linux_build.zip")
+    [string]$SourceRoot = (Join-Path $PSScriptRoot "..\.."),
+    [string]$Destination = (Join-Path $PSScriptRoot "..\..\archive\graduationp_linux_build.zip")
 )
 
 $source = (Resolve-Path $SourceRoot).Path

@@ -68,12 +68,12 @@ Sentinel is packaged into a standalone, portable desktop application using **PyI
 Due to WMI and `pywin32` dependencies, the Windows build must be executed on a Windows host.
 ```powershell
 # Create the standalone executable (hidden console)
-pyinstaller sentinel_agent.spec
+pyinstaller scripts/build/sentinel_agent.spec
 ```
 
 ### Packaging on Linux
 A helper script is provided to automate the virtual environment, install dependencies, and build a localized `dist` folder.
 ```bash
-./build_linux.sh
+scripts/build/build_linux.sh
 ```
 *Note: Due to Qt/PySide6 dynamic linking (`.so` files), the Linux build is most compatible when packaged on older distributions (like Ubuntu 20.04/22.04) to ensure glibc backward compatibility on the target machine.*

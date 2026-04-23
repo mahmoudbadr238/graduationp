@@ -1,65 +1,96 @@
 #!/bin/bash
-# Sentinel - Endpoint Security Suite
-# Linux run script
+# ══════════════════════════════════════════════════════════════════════
+# Sentinel Linux Setup & Run Script
+# ══════════════════════════════════════════════════════════════════════
+set -e
 
-# Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
 
-echo -e "${GREEN}Sentinel - Endpoint Security Suite v1.0.0${NC}"
-echo "================================================"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║          Sentinel Security Suite — Linux Setup              ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
 
-# Check if Python is installed
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}Error: Python 3 is not installed${NC}"
-    echo "Install Python 3.10+ using your package manager:"
-    echo "  Ubuntu/Debian: sudo apt install python3 python3-pip"
-    echo "  Fedora: sudo dnf install python3 python3-pip"
-    echo "  Arch: sudo pacman -S python python-pip"
+# ── Step 1: Check Python ─────────────────────────────────────────────
+PYTHON=""
+for cmd in python3.11 python3.10 python3.12 python3; do
+    if command -v "$cmd" &>/dev/null; then
+        PYTHON="$cmd"
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "[ERROR] Python 3.10+ not found. Install it first:"
+    echo "  Ubuntu/Debian: sudo apt install python3 python3-pip python3-venv"
+    echo "  Fedora:        sudo dnf install python3 python3-pip"
     exit 1
 fi
 
-# Check Python version
-PYTHON_VERSION=$(python3 --version | awk '{print $2}')
-echo -e "Python version: ${GREEN}$PYTHON_VERSION${NC}"
+PY_VERSION=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+echo "[OK] Found Python $PY_VERSION ($PYTHON)"
 
-# Check if virtualenv exists
-if [ ! -d ".venv" ]; then
-    echo -e "${YELLOW}Creating virtual environment...${NC}"
-    python3 -m venv .venv
-fi
-
-# Activate virtualenv
-echo "Activating virtual environment..."
-source .venv/bin/activate
-
-# Install/upgrade dependencies
-echo -e "${YELLOW}Checking dependencies...${NC}"
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
-
-# Check if psutil is installed
-if ! python3 -c "import psutil" &> /dev/null; then
-    echo -e "${RED}Error: psutil not installed${NC}"
-    echo "Installing psutil..."
-    pip install psutil
-fi
-
-# Check if PySide6 is installed
-if ! python3 -c "import PySide6" &> /dev/null; then
-    echo -e "${RED}Error: PySide6 not installed${NC}"
-    echo "Installing PySide6..."
-    pip install PySide6
-fi
-
+# ── Step 2: Install system dependencies ──────────────────────────────
 echo ""
-echo -e "${GREEN}Starting Sentinel...${NC}"
+echo "── Installing system dependencies ──"
+if command -v apt &>/dev/null; then
+    echo "[INFO] Detected apt package manager"
+    sudo apt update -qq
+    sudo apt install -y -qq \
+        python3-venv \
+        libxcb-xinerama0 \
+        libxcb-cursor0 \
+        libgl1-mesa-dev \
+        libegl1 \
+        libxkbcommon0 \
+        libdbus-1-3 \
+        ufw \
+        clamav \
+        coreutils \
+        2>/dev/null || echo "[WARNING] Some packages may not have installed"
+    echo "[OK] System packages installed"
+elif command -v dnf &>/dev/null; then
+    echo "[INFO] Detected dnf package manager"
+    sudo dnf install -y \
+        python3-virtualenv \
+        mesa-libGL \
+        libxkbcommon \
+        dbus-libs \
+        ufw \
+        clamav \
+        coreutils \
+        2>/dev/null || echo "[WARNING] Some packages may not have installed"
+    echo "[OK] System packages installed"
+else
+    echo "[WARNING] Unknown package manager — install Qt6 dependencies manually"
+fi
+
+# ── Step 3: Create virtual environment ───────────────────────────────
+echo ""
+echo "── Setting up Python virtual environment ──"
+if [ ! -d "$VENV_DIR" ]; then
+    $PYTHON -m venv "$VENV_DIR"
+    echo "[OK] Virtual environment created at $VENV_DIR"
+else
+    echo "[OK] Virtual environment already exists"
+fi
+
+source "$VENV_DIR/bin/activate"
+pip install --upgrade pip -q
+
+# ── Step 4: Install Python dependencies ──────────────────────────────
+echo ""
+echo "── Installing Python dependencies ──"
+pip install -r "$SCRIPT_DIR/linux_requirements.txt" -q
+echo "[OK] Python packages installed"
+
+# ── Step 5: Run the application ──────────────────────────────────────
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║              Starting Sentinel...                           ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Run the application
-python3 main.py
-
-# Deactivate virtualenv on exit
-deactivate
+cd "$SCRIPT_DIR"
+$PYTHON main.py "$@"
