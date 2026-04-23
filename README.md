@@ -1,6 +1,6 @@
 # Sentinel — Endpoint Security Suite
 
-Sentinel is a cross-platform desktop endpoint security application built with **PySide6/QML** and **Python**. It provides real-time system telemetry, security posture assessment, event log analysis, file scanning, sandbox detonation, network scanning, and AI-assisted threat analysis — designed as a graduation project and hardened toward a credible, enterprise-ready desktop product.
+Sentinel is a cross-platform desktop endpoint security application built with **PySide6/QML** and **Python**. It provides real-time system telemetry, security posture assessment, event log analysis, file scanning, sandbox detonation, network scanning, and AI-assisted threat analysis with explicit degraded-mode reporting and truthful platform capability boundaries.
 
 ---
 
@@ -36,26 +36,26 @@ Sentinel is a cross-platform desktop endpoint security application built with **
 ## Features
 
 | Feature | Windows | Linux |
-| --- | :---: | :---: |
-| System Snapshot (CPU, RAM, Storage, Network) | ✅ | ✅ |
-| GPU Monitor — NVIDIA | ✅ | ✅ |
-| GPU Monitor — AMD | ✅ | ✅ (native sysfs, no ROCm) |
-| GPU Monitor — Hybrid multi-GPU laptop | ✅ | ✅ |
-| Event Viewer (system event logs) | ✅ Windows Event Log | ✅ systemd journal |
-| Security Posture Assessment | ✅ | ✅ |
-| File Scanning (static + AI NGAV) | ✅ | ✅ |
-| ClamAV Integration | ✅ | ✅ |
-| Sandbox Detonation (VMware) | ✅ | ❌ |
-| File Shredding (secure delete) | ✅ | ✅ |
-| File Carving / Recovery | ✅ | ✅ |
-| Network Scan (Nmap) | ✅ | ✅ |
-| URL Scanning | ✅ | ✅ |
-| Real-Time Process Protection | ✅ (WMI) | ❌ |
-| AI Analysis (Groq / Claude / OpenAI) | ✅ | ✅ |
-| AI Security Chatbot | ✅ | ✅ |
-| Quarantine Manager | ✅ | ✅ |
-| XDG Runtime Paths | ❌ | ✅ |
-| Scan History (SQLite) | ✅ | ✅ |
+| --- | --- | --- |
+| System Snapshot (CPU, RAM, Storage, Network) | Yes | Yes |
+| GPU Monitor - NVIDIA | Yes | Yes |
+| GPU Monitor - AMD | Yes | Yes (native sysfs, no ROCm required) |
+| GPU Monitor - Hybrid multi-GPU laptop | Yes | Yes |
+| Event Viewer (system event logs) | Windows Event Log | systemd journal |
+| Security Posture Assessment | Yes | Yes |
+| File Scanning (static + AI NGAV) | Yes | Yes |
+| ClamAV Integration | Yes | Yes |
+| Sandbox Detonation (VMware) | Yes | No |
+| File Shredding (secure delete) | Yes | Yes |
+| File Carving / Recovery | Yes | Yes |
+| Network Scan (Nmap) | Yes | Yes |
+| URL Scanning | Yes | Yes |
+| Real-Time Process Protection | Yes (WMI watcher) | Yes (process polling) |
+| AI Analysis (Groq) | Yes | Yes |
+| AI Security Chatbot | Yes | Yes |
+| Quarantine Manager | Yes | Yes |
+| XDG Runtime Paths | No | Yes |
+| Scan History (SQLite) | Yes | Yes |
 
 ---
 
@@ -66,16 +66,16 @@ Sentinel is a cross-platform desktop endpoint security application built with **
 - Full feature set including VMware sandbox, Real-Time Protection (WMI process monitoring), Windows Event Log, Windows Defender and UAC integration
 - GPU monitoring via ADL SDK (AMD) and NVML/nvidia-smi (NVIDIA)
 - AppData-based runtime paths
-- PyInstaller-packaged into a standalone executable
+- Portable PyInstaller packaging is supported; validate the packaged build on a clean Windows machine before publishing
 
 ### Linux
 
-- First-class support for system snapshot, GPU monitoring, security posture, file scanning, network scanning, event logs, and AI analysis
+- First-class support for system snapshot, GPU monitoring, security posture, file scanning, network scanning, event logs, AI analysis, and Real-Time Protection via process polling
 - GPU monitoring via native sysfs/DRM (AMD, no ROCm required), NVML/nvidia-smi (NVIDIA), and a hybrid-laptop supplement that detects GPUs via DRM and lspci regardless of driver state
-- Event logs via `journalctl` with full parity to the Windows Event Viewer interface
+- Event logs via `journalctl` presented through the shared Event Viewer UI with normalized fields
 - Security posture via `ufw`, `iptables`, `firewalld`, `nftables`, ClamAV, AppArmor, SELinux, `mokutil`
 - XDG-compliant runtime paths
-- VMware sandbox and Real-Time Protection not available (Windows-only subsystems)
+- VMware sandbox is not available on Linux
 
 ---
 
@@ -95,10 +95,10 @@ Sentinel is a cross-platform desktop endpoint security application built with **
 
 | Provider | Model | Use |
 | --- | --- | --- |
-| Groq (primary) | `llama-3.3-70b-versatile` | Event explanation, deep threat analysis |
-| Groq (primary) | `llama-3.1-8b-instant` | Security chatbot, fast interactive queries |
-| Anthropic Claude | Latest via API | Fallback AI provider |
-| OpenAI GPT | Latest via API | Fallback AI provider |
+| Groq (required for AI features) | `llama-3.3-70b-versatile` | Event explanation, deep threat analysis |
+| Groq (required for AI features) | `llama-3.1-8b-instant` | Security chatbot, fast interactive queries |
+
+> AI features require a `GROQ_API_KEY` set in the `.env` file. Without it, event explanations, AI scan summaries, and the security chatbot will be unavailable. All non-AI features (scanning, monitoring, event log, network scan) work offline.
 
 - Rate limiting: 30 req/min with 2 s minimum interval
 - Retry: 3 attempts with exponential backoff (1 s → 30 s)
@@ -182,7 +182,8 @@ Sentinel is a cross-platform desktop endpoint security application built with **
 | **Security Assistant** | Groq-powered AI chatbot for interactive threat queries and remediation guidance |
 | **AI Report** | AI-generated explanation of scan findings with actionable recommendations |
 | **System Snapshot** | Full system inventory across six sub-pages: Overview, Hardware, OS Info, Security, Network, Adapters |
-| **Settings** | API key management, sandbox configuration, UI preferences, provider status |
+| **History** | Unified scan history, incident history, quarantine records, security events, and URL scan history |
+| **Settings** | UI preferences, telemetry refresh, startup behavior, tray behavior, and local diagnostics guidance |
 
 ---
 
@@ -205,7 +206,7 @@ Storage view filters pseudo-filesystems, loop mounts, Snap `squashfs` images, an
 
 ### GPU Monitor
 
-MSI Afterburner–style real-time monitoring with rolling 60-point history charts.
+Real-time GPU telemetry with rolling 60-point history charts.
 
 **Collected metrics:**
 
@@ -246,7 +247,7 @@ MSI Afterburner–style real-time monitoring with rolling 60-point history chart
 
 ### Event Viewer
 
-Unified event log viewer with identical interface on both platforms.
+Unified event log viewer with a shared interface on both platforms.
 
 **Windows** — reads from Windows Event Log via `pywin32` (`win32evtlog`):
 - Sources: System, Application, Security channels
@@ -359,20 +360,23 @@ On Linux without root, SYN scan automatically falls back to TCP connect scan. Fu
 
 ### Real-Time Protection
 
-Continuous process monitoring that intercepts and terminates malicious processes before they execute — **Windows only**.
+Continuous process monitoring that scans newly launched processes and can terminate them when the final enforcement decision requires blocking.
 
 **How it works:**
-1. WMI subscribes to `Win32_Process.__InstanceCreation` events
-2. New process PID and executable path captured
-3. Static scanner + Groq AI NGAV analysis runs on executable
-4. If threat score ≥ threshold:
-   - Process terminated via `psutil` with elevated privileges
-   - Threat event logged to database
-   - QML notification emitted
+1. Windows uses a WMI watcher for `Win32_Process.__InstanceCreation`
+2. Linux uses process polling to detect newly launched executables
+3. New process PID and executable path are captured
+4. Static scanner plus optional Groq AI NGAV analysis runs on the executable
+5. Enforcement uses the normalized final decision object:
+   - `allow` -> log only
+   - `block` -> terminate the process and log the incident
 
 **ThreatEvent data:** PID, process name, executable path, matched rules, threat score (0–100), action taken, timestamp, SHA-256.
 
-**Not available on Linux** — WMI process creation events are Windows-only.
+Platform note:
+- Windows RTP depends on `pywin32` and `wmi`
+- Linux RTP depends on `psutil`
+- The UI reports configured state separately from runtime health so a saved preference is never confused with a running monitor
 
 ---
 
@@ -391,7 +395,7 @@ Continuous process monitoring that intercepts and terminates malicious processes
 - **Scan report explanation** — detailed narrative of scan findings with actionable recommendations
 - **URL threat classification** — human-readable verdict with confidence score
 
-**Fallback chain:** Groq → Anthropic Claude → OpenAI GPT. Any provider can be disabled individually via environment variables.
+Groq is the only cloud AI provider currently wired into the application. If `GROQ_API_KEY` is not set, cloud AI features stay unavailable and the app falls back to local/non-AI behavior where implemented.
 
 ---
 
@@ -479,9 +483,7 @@ Use [run_linux.sh](run_linux.sh) to set up a Linux dev environment automatically
 Create a `.env` file in the project root:
 
 ```env
-GROQ_API_KEY=your_groq_key
-ANTHROPIC_API_KEY=your_claude_key       # optional fallback
-OPENAI_API_KEY=your_openai_key          # optional fallback
+GROQ_API_KEY=your_groq_key              # enables Groq-backed AI features
 
 # Windows sandbox (optional)
 VMRUN_PATH=C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe
@@ -500,7 +502,7 @@ Sentinel stays fully usable when optional tools are absent:
 | Missing tool | Behavior |
 | --- | --- |
 | No GPU backend | GPU page shows device name, all metrics marked Unavailable/Unsupported — no fake `0%` |
-| No Groq API key | AI features hidden; offline knowledge base still active |
+| No Groq API key | Groq-backed AI features stay unavailable; non-AI features continue working |
 | No ClamAV | Scan Center skips ClamAV engine; Groq NGAV and static analysis still run |
 | No Nmap | Network Scan page shows "Nmap not found" — other features unaffected |
 | No firewall tool (Linux) | Security page reports "No supported firewall stack detected" |
@@ -520,9 +522,9 @@ Sentinel stays fully usable when optional tools are absent:
 | Crash logs | `%APPDATA%\Sentinel\crashes` | `$XDG_STATE_HOME/sentinel/crashes` |
 | Quarantine | `%PROGRAMDATA%\Sentinel\Quarantine` | `$XDG_DATA_HOME/sentinel/quarantine` |
 | Scan reports | `%APPDATA%\Sentinel\scan_reports` | `$XDG_DATA_HOME/sentinel/scan_reports` |
-| Database | `%APPDATA%\.sentinel\sentinel.db` | `~/.sentinel/sentinel.db` |
+| Database | `%APPDATA%\Sentinel\sentinel.db` | `$XDG_DATA_HOME/sentinel/sentinel.db` |
 
-Linux keeps legacy compatibility lookups for `~/.config/Sentinel`, `~/.local/share/Sentinel`, and `~/.sentinel`. New writes always use the XDG layout.
+Sentinel keeps legacy compatibility lookups for older locations such as `~/.sentinel` so existing local data remains readable after upgrade.
 
 ---
 
@@ -536,7 +538,7 @@ backend/
                       SnapshotService — pre-warmed system and security caches
   core/             Config, logging, DI container, startup, performance monitor
   engines/
-    ai/             Groq / Claude / OpenAI providers, event explainer, chatbot, report
+    ai/             Groq provider, event explainer, chatbot, report
     filefunction/   Secure delete (3-pass), file carving/recovery
     sandbox_vmware/ VMware Workstation detonation (Windows only)
     scancenter/     11-stage multi-engine scan pipeline
@@ -618,20 +620,25 @@ These are intentionally out of scope on Linux at the moment:
 | Capability | Status |
 | --- | --- |
 | VMware sandbox detonation | Windows only — requires vmrun.exe |
-| Real-Time Protection (WMI process monitoring) | Windows only — requires WMI |
 | Windows Defender / UAC / TPM integration | Windows only |
+| Linux Event Viewer source | systemd journal only — requires `journalctl` |
+| Central management / policy server | Not included in this release |
+| Native installer packages | Portable/CLI build flow only — no MSI, DEB, or RPM installer in this repo |
 
-Linux support is explicit about partial coverage. Sentinel reports unavailable or unsupported states rather than pretending these controls exist.
+Sentinel reports unavailable or unsupported states instead of pretending these controls exist.
 
 ---
 
 ## Documentation
 
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/releases/FINAL_RELEASE_CHECKLIST.md](docs/releases/FINAL_RELEASE_CHECKLIST.md)
 - [docs/guides/LINUX_SUPPORT.md](docs/guides/LINUX_SUPPORT.md)
 - [docs/api/README_BACKEND.md](docs/api/README_BACKEND.md)
 - [docs/sandbox_vmware.md](docs/sandbox_vmware.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Historical design notes under `docs/project/` and `docs/development/` are kept for traceability, but they are not the release source of truth.
 
 ---
 

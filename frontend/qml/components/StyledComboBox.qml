@@ -5,51 +5,58 @@ import "../ui"
 ComboBox {
     id: control
 
-    clip: true
+    implicitWidth: 200
+    implicitHeight: 36
     font.pixelSize: ThemeManager.fontSize_body
-
     leftPadding: 12
-    rightPadding: indicator.width + 8
-    topPadding: 8
-    bottomPadding: 8
+    rightPadding: 30
 
-    // ── Editable text input ────────────────────────────────────────────────
-    contentItem: TextInput {
-        text: control.editable ? control.editText : control.displayText
+    contentItem: Text {
+        text: control.displayText
         color: control.enabled ? ThemeManager.foreground() : ThemeManager.muted()
         font: control.font
+        leftPadding: 12
+        rightPadding: 30
         verticalAlignment: Text.AlignVCenter
-        selectByMouse: true
-        selectionColor: ThemeManager.selectionBackground
-        selectedTextColor: ThemeManager.selectionForeground
-        readOnly: !control.editable
-        clip: true
+        elide: Text.ElideRight
     }
 
-    // ── Drop-down arrow indicator ──────────────────────────────────────────
     indicator: Text {
         x: control.width - width - 10
         y: (control.height - height) / 2
-        text: "\u25BE"                 // ▾ small down triangle
-        font.pixelSize: ThemeManager.fontSize_body
+        text: "\u25BE"
+        font.pixelSize: ThemeManager.fontSize_small
         color: control.enabled ? ThemeManager.muted() : ThemeManager.border()
     }
 
-    // ── Background rectangle ───────────────────────────────────────────────
     background: Rectangle {
-        implicitWidth: 200
-        implicitHeight: 36
         radius: 8
         color: control.enabled ? ThemeManager.elevated() : ThemeManager.surface()
-        border.color: control.activeFocus   ? ThemeManager.accent
-                     : control.hovered      ? ThemeManager.muted()
-                                            : ThemeManager.border()
+        border.color: control.pressed ? ThemeManager.accent : ThemeManager.border()
         border.width: control.activeFocus ? 2 : 1
 
         Behavior on border.color { ColorAnimation { duration: 120 } }
     }
 
-    // ── Dropdown popup ─────────────────────────────────────────────────────
+    delegate: ItemDelegate {
+        width: control.width
+        height: 36
+
+        contentItem: Text {
+            text: modelData
+            color: highlighted ? ThemeManager.selectionForeground : ThemeManager.foreground()
+            font: control.font
+            leftPadding: 12
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        background: Rectangle {
+            color: highlighted ? ThemeManager.accent : ThemeManager.elevated()
+        }
+
+        highlighted: control.highlightedIndex === index
+    }
+
     popup: Popup {
         y: control.height + 4
         width: control.width
@@ -59,8 +66,8 @@ ComboBox {
         background: Rectangle {
             color: ThemeManager.panel()
             border.color: ThemeManager.border()
+            border.width: 1
             radius: 8
-            layer.enabled: true
         }
 
         contentItem: ListView {
@@ -70,29 +77,5 @@ ComboBox {
             currentIndex: control.highlightedIndex
             ScrollIndicator.vertical: ScrollIndicator {}
         }
-    }
-
-    // ── Delegate for each row ──────────────────────────────────────────────
-    delegate: ItemDelegate {
-        width: control.width
-        height: 36
-
-        contentItem: Text {
-            text: modelData
-            color: highlighted ? ThemeManager.selectionForeground
-                               : ThemeManager.foreground()
-            font: control.font
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: 12
-        }
-
-        background: Rectangle {
-            color: highlighted ? ThemeManager.accent
-                 : hovered     ? ThemeManager.elevated()
-                               : "transparent"
-            radius: 4
-        }
-
-        highlighted: control.highlightedIndex === index
     }
 }

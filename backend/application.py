@@ -1,7 +1,10 @@
 """Sentinel Desktop Security Application - Optimized for fast startup."""
 
+import logging
 import os
 import sys
+
+_log = logging.getLogger(__name__)
 
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QIcon
@@ -64,9 +67,8 @@ class DesktopSecurityApplication:
         # organizationDomain is required on some platforms to initialize QSettings
         try:
             self.app.setOrganizationDomain("sentinel.local")
-        except Exception:
-            # Non-critical: if setting domain fails, continue with defaults
-            pass
+        except RuntimeError as exc:
+            _log.debug("Could not set organization domain: %s", exc)
 
         # Configure thread pool for background tasks
         self.thread_pool = QThreadPool.globalInstance()
@@ -103,7 +105,7 @@ class DesktopSecurityApplication:
 
         # Set working directory
         os.chdir(workspace_root)
-        print(f"Working directory set to: {workspace_root}")
+        _log.debug("Working directory set to: %s", workspace_root)
 
         # Add QML import paths
         qml_path = os.path.join(workspace_root, "frontend", "qml")
@@ -122,17 +124,16 @@ class DesktopSecurityApplication:
         self.engine.rootContext().setContextProperty("componentPath", components_path)
         self.engine.rootContext().setContextProperty("themePath", theme_path)
 
-        print(f"Component path: {os.path.join(qml_path, 'components')}")
-        print(f"QML import paths: {self.engine.importPathList()}")
+        _log.debug("QML import paths configured (%d paths)", len(self.engine.importPathList()))
 
     def _setup_backend(self):
         """Initialize backend with deferred loading for fast startup."""
         try:
-            print("Initializing backend services...")
+            _log.info("Initializing backend services")
 
             # IMMEDIATE: Configure DI container (required for app structure)
             configure()
-            print("[OK] Dependency injection container configured")
+            _log.info("Dependency injection container configured")
 
             # IMMEDIATE: Create backend instance (but defer heavy initialization)
             # This allows QML to reference Backend immediately on load
@@ -152,18 +153,18 @@ class DesktopSecurityApplication:
                         self.engine.rootContext().setContextProperty(
                             "SandboxPreview", preview_controller
                         )
-                        print("[OK] Sandbox preview provider registered")
+                        _log.info("Sandbox preview provider registered")
                 except ImportError as e:
-                    print(f"[WARNING] Sandbox preview provider not available: {e}")
+                    _log.warning("Sandbox preview provider not available: %s", e)
 
             # DEFERRED: Heavy backend initialization (100ms after startup)
             def init_backend_heavy():
                 try:
                     # Start live monitoring after UI is ready
                     self.backend.startLive()
-                    print("[OK] Backend monitoring started")
+                    _log.info("Backend monitoring started")
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] Backend monitoring failed: {e}")
+                    _log.warning("Backend monitoring failed: %s", e)
 
             self.orchestrator.schedule_deferred(
                 100, "Backend Monitoring", init_backend_heavy
@@ -178,9 +179,9 @@ class DesktopSecurityApplication:
                     root_context.setContextProperty("GPUService", self.gpu_service)
                     # GPU service is registered but NOT started
                     # It will start when the GPU Monitor page is opened via GPUService.start()
-                    print("[OK] GPU service registered (lazy-load - starts on demand)")
+                    _log.info("GPU service registered (lazy-load — starts on demand)")
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] GPU service initialization failed: {e}")
+                    _log.warning("GPU service initialization failed: %s", e)
                     self.gpu_service = None
 
             self.orchestrator.schedule_deferred(1000, "GPU Backend", init_gpu)
@@ -199,13 +200,15 @@ class DesktopSecurityApplication:
                         "SnapshotService", self.snapshot_service
                     )
                     self.snapshot_service.start(5000)
-                    print(
-                        f"[OK] System Snapshot service: CPU={self.snapshot_service.cpuUsage:.1f}%, MEM={self.snapshot_service.memoryUsage:.1f}%"
+                    _log.info(
+                        "System Snapshot service ready (CPU=%.1f%%, MEM=%.1f%%)",
+                        self.snapshot_service.cpuUsage,
+                        self.snapshot_service.memoryUsage,
                     )
                     if self.backend:
                         self.backend.set_snapshot_service(self.snapshot_service)
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] System Snapshot service failed: {e}")
+                    _log.warning("System Snapshot service failed: %s", e)
                     self.snapshot_service = None
 
             self.orchestrator.schedule_deferred(200, "Snapshot Service", init_snapshot)
@@ -220,9 +223,9 @@ class DesktopSecurityApplication:
                     self.engine.rootContext().setContextProperty(
                         "SecurityController", self.security_controller
                     )
-                    print("[OK] Security Controller registered")
+                    _log.info("Security Controller registered")
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] Security Controller failed: {e}")
+                    _log.warning("Security Controller failed: %s", e)
                     self.security_controller = None
 
             self.orchestrator.schedule_deferred(300, "Security Controller", init_security_controller)
@@ -241,10 +244,13 @@ class DesktopSecurityApplication:
                 self.settings_service.globalFontChanged.connect(
                     self._apply_global_font
                 )
+                self.settings_service.closeToTrayChanged.connect(
+                    self._apply_close_behavior
+                )
 
-                print("[OK] Settings service initialized and exposed to QML")
+                _log.info("Settings service initialized")
             except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] Settings service failed: {e}")
+                _log.warning("Settings service failed: %s", e)
                 self.settings_service = None
 
             # IMMEDIATE: VMware Sandbox Lab controller (Windows only)
@@ -256,15 +262,15 @@ class DesktopSecurityApplication:
                     self.engine.rootContext().setContextProperty(
                         "SandboxLab", self.sandbox_lab
                     )
-                    print("[OK] Sandbox Lab controller registered")
+                    _log.info("Sandbox Lab controller registered")
                 except Exception as e:
-                    print(f"[WARNING] Sandbox Lab controller failed: {e}")
+                    _log.warning("Sandbox Lab controller failed: %s", e)
                     self.sandbox_lab = None
                     self.engine.rootContext().setContextProperty("SandboxLab", None)
             else:
                 self.sandbox_lab = None
                 self.engine.rootContext().setContextProperty("SandboxLab", None)
-                print("[OK] Sandbox Lab skipped (Linux)")
+                _log.debug("Sandbox Lab not available on this platform")
 
             # IMMEDIATE: File Function Service (shred + recovery)
             try:
@@ -285,9 +291,9 @@ class DesktopSecurityApplication:
                 self.engine.rootContext().setContextProperty(
                     "backend", self.file_function_service
                 )
-                print("[OK] File Function service registered")
+                _log.info("File Function service registered")
             except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] File Function service failed: {e}")
+                _log.warning("File Function service failed: %s", e)
                 self.file_function_service = None
 
             # IMMEDIATE: Recovery Controller
@@ -300,9 +306,9 @@ class DesktopSecurityApplication:
                 self.engine.rootContext().setContextProperty(
                     "RecoveryService", self.recovery_controller
                 )
-                print("[OK] Recovery controller registered")
+                _log.info("Recovery controller registered")
             except Exception as e:
-                print(f"[WARNING] Recovery controller failed: {e}")
+                _log.warning("Recovery controller failed: %s", e)
                 self.recovery_controller = None
                 self.engine.rootContext().setContextProperty("RecoveryService", None)
 
@@ -317,7 +323,7 @@ class DesktopSecurityApplication:
                     self.engine.rootContext().setContextProperty(
                         "NotificationService", self.notification_service
                     )
-                    print("[OK] Notification service initialized and exposed to QML")
+                    _log.info("Notification service initialized")
 
                     self.notification_manager = NotificationManager(
                         self.notification_service
@@ -325,15 +331,15 @@ class DesktopSecurityApplication:
                     self.engine.rootContext().setContextProperty(
                         "NotificationManager", self.notification_manager
                     )
-                    print("[OK] NotificationManager created (tray icon pending)")
+                    _log.info("NotificationManager created")
 
                     if self.snapshot_service:
                         self.snapshot_service.set_notification_service(
                             self.notification_service
                         )
-                        print("[OK] Security notifications connected")
+                        _log.info("Security notifications connected")
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] Notification service failed: {e}")
+                    _log.warning("Notification service failed: %s", e)
                     self.notification_service = None
 
             self.orchestrator.schedule_deferred(400, "Notifications", init_notifications)
@@ -351,9 +357,9 @@ class DesktopSecurityApplication:
                         "ResourceMonitor", self.resource_monitor
                     )
                     self.resource_monitor.start()
-                    print("[OK] Resource Monitor registered and started")
+                    _log.info("Resource Monitor registered and started")
                 except (ImportError, RuntimeError, OSError) as e:
-                    print(f"[WARNING] Resource Monitor failed: {e}")
+                    _log.warning("Resource Monitor failed: %s", e)
                     self.resource_monitor = None
 
             self.orchestrator.schedule_deferred(500, "Resource Monitor", init_resource_monitor)
@@ -366,44 +372,31 @@ class DesktopSecurityApplication:
                 self.engine.rootContext().setContextProperty(
                     "RTPBridge", self.rtp_bridge
                 )
-                print("[OK] RTP Bridge registered")
-
-                # Auto-start RTP after QML loads (deferred to avoid blocking UI)
-                def _auto_start_rtp():
-                    if not self.rtp_bridge:
-                        return
-                    from PySide6.QtCore import QSettings
-                    qs = QSettings("SentinelSecurity", "SentinelApp")
-                    rtp_enabled = qs.value("rtpEnabled", True, type=bool)
-                    if rtp_enabled:
-                        self.rtp_bridge.enable()
-                        print("[OK] RTP auto-started (rtpEnabled=True)")
-                    else:
-                        print("[OK] RTP skipped (rtpEnabled=False in settings)")
+                _log.info("RTP Bridge registered")
 
                 self.orchestrator.schedule_deferred(
-                    500, "RTP Auto-Start", _auto_start_rtp
+                    500, "RTP Auto-Start", self._auto_start_rtp_if_configured
                 )
             except (ImportError, RuntimeError, OSError) as e:
-                print(f"[WARNING] RTP Bridge failed: {e}")
+                _log.warning("RTP Bridge failed: %s", e)
                 self.rtp_bridge = None
 
         except (ImportError, RuntimeError, UnicodeEncodeError) as e:
-            print(f"[ERROR] Critical backend setup failed: {e}")
-            print("Application will continue with limited functionality")
+            _log.critical("Critical backend setup failed: %s", e)
+            _log.warning("Application will continue with limited functionality")
 
     def _apply_global_font(self, pixel_size: int):
         """Set the application-wide default font size (affects all QML text)."""
         font = self.app.font()
         font.setPixelSize(pixel_size)
         self.app.setFont(font)
-        print(f"[Settings] Global font size set to {pixel_size}px")
+        _log.debug("Global font size set to %dpx", pixel_size)
 
     def _create_qml_engine(self):
         """Load main QML file and create engine."""
         # Load main.qml
         qml_file = os.path.join(os.getcwd(), "frontend", "qml", "main.qml")
-        print(f"Loading QML: {qml_file}")
+        _log.info("Loading QML: %s", qml_file)
 
         # Load the main QML file
         self.engine.load(qml_file)
@@ -482,9 +475,9 @@ class DesktopSecurityApplication:
                 )
             self.app.installNativeEventFilter(self._drop_filter)
 
-            print("[OK] Drag-and-drop enabled for elevated process (UIPI + WM_DROPFILES)")
+            _log.info("Drag-and-drop enabled for elevated process (UIPI + WM_DROPFILES)")
         except Exception as e:
-            print(f"[WARNING] Could not enable drag-and-drop UIPI bypass: {e}")
+            _log.warning("Could not enable drag-and-drop UIPI bypass: %s", e)
 
     def _init_vmware_embedder(self):
         """Create the VMware window embedder and wire it to the backend bridge."""
@@ -502,14 +495,14 @@ class DesktopSecurityApplication:
             if self.backend is not None:
                 self.backend.set_vmware_embedder(self.vmware_embedder)
 
-            print("[OK] VMware window embedder registered (QWindow.fromWinId mode)")
+            _log.info("VMware window embedder registered")
         except Exception as e:
-            print(f"[WARNING] VMware window embedder failed: {e}")
+            _log.warning("VMware window embedder failed: %s", e)
 
     def _setup_system_tray(self):
         """Set up QSystemTrayIcon with context menu and alert forwarding."""
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("[WARNING] System tray not available")
+            _log.warning("System tray not available")
             return
 
         # Icon — try to load app icon, fall back to built-in
@@ -563,7 +556,7 @@ class DesktopSecurityApplication:
         # Bind the tray icon to the NotificationManager so toasts work
         if self.notification_manager:
             self.notification_manager.set_tray_icon(self.tray_icon)
-            print("[OK] NotificationManager linked to system tray icon")
+            _log.info("NotificationManager linked to system tray icon")
 
         # Connect resource alerts → unified notification manager (QML + toast)
         if self.resource_monitor:
@@ -590,7 +583,37 @@ class DesktopSecurityApplication:
                 )
 
         self.tray_icon.show()
-        print("[OK] System tray icon active")
+        _log.info("System tray icon active")
+
+    def _close_to_tray_supported(self) -> bool:
+        """Return True when the current session can keep running in the tray."""
+        return bool(self.tray_icon and self.tray_icon.isVisible())
+
+    def _apply_close_behavior(self) -> None:
+        """Apply the user's close-window behavior safely.
+
+        If the tray is unavailable, closing the main window should still quit
+        even when the setting is enabled.
+        """
+        close_to_tray_requested = bool(
+            self.settings_service
+            and getattr(self.settings_service, "closeToTray", False)
+        )
+        keep_running_in_tray = (
+            close_to_tray_requested and self._close_to_tray_supported()
+        )
+
+        self.app.setQuitOnLastWindowClosed(not keep_running_in_tray)
+
+        if close_to_tray_requested and not self._close_to_tray_supported():
+            _log.info(
+                "Close-to-tray requested but system tray is unavailable; closing the window will quit Sentinel"
+            )
+        else:
+            _log.debug(
+                "Window close behavior set to: %s",
+                "tray" if keep_running_in_tray else "quit",
+            )
 
     def _on_tray_activated(self, reason):
         """Handle tray icon activation (double-click, etc.)."""
@@ -628,7 +651,7 @@ class DesktopSecurityApplication:
             window.raise_()
         if hasattr(window, "requestActivate"):
             window.requestActivate()
-        print("[OK] Main window shown on startup")
+        _log.info("Main window shown on startup")
 
     def _show_and_navigate(self, route):
         """Show the main window and navigate to a specific page."""
@@ -654,9 +677,23 @@ class DesktopSecurityApplication:
             self.tray_icon.hide()
         self.app.quit()
 
+    def _auto_start_rtp_if_configured(self) -> None:
+        """Start RTP on launch using the persisted user preference."""
+        if not self.rtp_bridge:
+            return
+
+        if self.rtp_bridge.shouldStartOnLaunch():
+            self.rtp_bridge.enable()
+            if self.rtp_bridge.getStatus():
+                _log.info("RTP auto-started")
+            else:
+                _log.info("RTP startup requested by saved preference but runtime is unavailable")
+        else:
+            _log.info("RTP skipped (disabled by saved user preference)")
+
     def _on_app_quit(self):
         """Handle application quit event."""
-        print("Application shutting down...")
+        _log.info("Application shutting down")
 
         # Stop live monitoring if active
         if self.backend:
@@ -666,41 +703,41 @@ class DesktopSecurityApplication:
         if self.resource_monitor:
             try:
                 self.resource_monitor.stop()
-                print("[OK] Resource monitor stopped")
+                _log.info("Resource monitor stopped")
             except Exception as e:
-                print(f"[WARNING] Resource monitor cleanup failed: {e}")
+                _log.warning("Resource monitor cleanup failed: %s", e)
 
         # Stop RTP
         if self.rtp_bridge:
             try:
-                self.rtp_bridge.disable()
-                print("[OK] RTP stopped")
+                self.rtp_bridge.shutdownRuntime()
+                _log.info("RTP stopped")
             except Exception as e:
-                print(f"[WARNING] RTP cleanup failed: {e}")
+                _log.warning("RTP cleanup failed: %s", e)
 
         # Stop GPU service and cleanup subprocess
         if self.gpu_service:
             try:
                 self.gpu_service.cleanup()
-                print("[OK] GPU service stopped")
+                _log.info("GPU service stopped")
             except Exception as e:
-                print(f"[WARNING] GPU cleanup failed: {e}")
+                _log.warning("GPU cleanup failed: %s", e)
 
         # Stop snapshot service timer
         if self.snapshot_service:
             try:
                 self.snapshot_service.stop()
-                print("[OK] Snapshot service stopped")
+                _log.info("Snapshot service stopped")
             except Exception as e:
-                print(f"[WARNING] Snapshot service cleanup failed: {e}")
+                _log.warning("Snapshot service cleanup failed: %s", e)
 
         # Stop Sandbox Lab timers
         if self.sandbox_lab:
             try:
                 self.sandbox_lab.shutdown()
-                print("[OK] Sandbox Lab controller stopped")
+                _log.info("Sandbox Lab controller stopped")
             except Exception as e:
-                print(f"[WARNING] Sandbox Lab cleanup failed: {e}")
+                _log.warning("Sandbox Lab cleanup failed: %s", e)
 
         # Hide tray icon
         if self.tray_icon:
@@ -711,12 +748,11 @@ class DesktopSecurityApplication:
         try:
             # Check admin rights - single source of truth
             if not is_admin():
-                print("[WARNING] Not running with administrative privileges")
-                print("  Some security features may be limited")
+                _log.warning("Not running with administrative privileges — some features may be limited")
             else:
-                print("[OK] Running with administrator privileges")
+                _log.info("Running with administrator privileges")
 
-            # Print integration status (nmap, VT, etc.)
+            # Log integration status (nmap, etc.)
             print_integration_status()
 
             # Create QML engine and load UI
@@ -724,27 +760,22 @@ class DesktopSecurityApplication:
             # Set up system tray (AFTER QML loads so the window exists)
             self._setup_system_tray()
 
-            # Stay alive in tray when window is closed
-            self.app.setQuitOnLastWindowClosed(False)
+            # Honor the user's close behavior once tray availability is known.
+            self._apply_close_behavior()
 
             # QML's visible:true is not always enough for packaged elevated builds.
             # Force the root window to a normal foreground state once the event loop starts.
             QTimer.singleShot(0, self._show_main_window_on_startup)
 
-            print("[OK] QML UI loaded successfully")
-            print("\n=== Sentinel Desktop Security Suite ===")
-            print("Application ready. Entering event loop...\n")
+            _log.info("QML UI loaded — entering event loop")
 
             # Start event loop
             exit_code = self.app.exec()
-            print(f"\nEvent loop exited with code: {exit_code}")
+            _log.info("Event loop exited with code %d", exit_code)
             return exit_code
 
         except (RuntimeError, OSError, ImportError) as e:
-            print(f"[ERROR] Error: {e}", file=sys.stderr)
-            import traceback
-
-            traceback.print_exc()
+            _log.critical("Fatal startup error: %s", e, exc_info=True)
             return 1
 
 

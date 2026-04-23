@@ -158,19 +158,19 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
 
     api_key = os.environ.get("VIRUSTOTAL_API_KEY", "").strip()
     if not api_key:
-        print("[ClamAV-VT] ERROR: VIRUSTOTAL_API_KEY env var is empty or missing")
+        logger.warning("VIRUSTOTAL_API_KEY not set — VirusTotal lookup skipped")
         return None
 
     try:
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
     except Exception as exc:
-        print(f"[ClamAV-VT] ERROR: Could not hash file {path}: {exc}")
+        logger.error("Could not hash file %s: %s", path, exc)
         return None
 
     try:
         import requests
     except ImportError as exc:
-        print(f"[ClamAV-VT] ERROR: 'requests' library not installed: {exc}")
+        logger.error("'requests' library not installed: %s", exc)
         return None
 
     try:
@@ -184,11 +184,11 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
             timeout=15,
         )
     except Exception as exc:
-        print(f"[ClamAV-VT] ERROR: HTTP request failed: {exc}")
+        logger.error("VirusTotal HTTP request failed: %s", exc)
         return None
 
     if resp.status_code == 404:
-        print(f"[ClamAV-VT] File not in VT database (SHA256={sha256[:16]}…)")
+        logger.debug("File not in VT database (SHA256=%s…)", sha256[:16])
         return EngineResult(
             name="ClamAV",
             status="clean",
@@ -196,13 +196,13 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
             score=0,
         )
     if resp.status_code != 200:
-        print(f"[ClamAV-VT] ERROR: VT returned HTTP {resp.status_code}")
+        logger.error("VirusTotal returned HTTP %d", resp.status_code)
         return None
 
     try:
         body = resp.json()
     except Exception as exc:
-        print(f"[ClamAV-VT] ERROR: Failed to parse JSON response: {exc}")
+        logger.error("Failed to parse VirusTotal JSON response: %s", exc)
         return None
 
     data = body.get("data", {})
@@ -210,7 +210,7 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
     results = attrs.get("last_analysis_results", {})
 
     if not isinstance(results, dict):
-        print(f"[ClamAV-VT] ERROR: last_analysis_results is not a dict: {type(results)}")
+        logger.error("VT last_analysis_results is not a dict: %s", type(results))
         return None
 
     # Look for ClamAV specifically (exact key first, then case-insensitive)
@@ -225,7 +225,7 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
         # ClamAV not in VT results — use aggregate stats as proxy
         stats = attrs.get("last_analysis_stats", {})
         malicious = stats.get("malicious", 0)
-        print(f"[ClamAV-VT] ClamAV engine absent from VT; aggregate malicious={malicious}")
+        logger.debug("ClamAV engine absent from VT; aggregate malicious=%d", malicious)
         if isinstance(malicious, int) and malicious >= 5:
             return EngineResult(
                 name="ClamAV",
@@ -242,13 +242,13 @@ def _vt_clamav_fallback(path: Path) -> EngineResult | None:
 
     # Parse ClamAV's specific result from VT
     if not isinstance(clamav_result, dict):
-        print(f"[ClamAV-VT] ERROR: ClamAV result is not a dict: {type(clamav_result)}")
+        logger.error("VT ClamAV result is not a dict: %s", type(clamav_result))
         return None
 
     category = str(clamav_result.get("category", "")).lower()
     vt_result_str = str(clamav_result.get("result") or "")
 
-    print(f"[ClamAV-VT] ClamAV verdict: category={category!r}, result={vt_result_str!r}")
+    logger.debug("ClamAV VT verdict: category=%r, result=%r", category, vt_result_str)
 
     if category in ("malicious", "suspicious") or vt_result_str:
         return EngineResult(
@@ -306,14 +306,13 @@ def run_clamav(path: Path) -> EngineResult:
                 name="ClamAV", status="error", details="Scan timed out (90s)"
             )
         except Exception as exc:
-            print(f"[ClamAV] ERROR: Local scan crashed: {exc}")
-            logger.warning("ClamAV error: %s", exc)
+            logger.error("ClamAV local scan error: %s", exc)
             return EngineResult(
                 name="ClamAV", status="error", details=str(exc)[:200],
             )
 
     # ── Local ClamAV not installed ────────────────────────────────────────
-    print("[ClamAV] clamscan / clamdscan not found on PATH")
+    logger.info("clamscan / clamdscan not found on PATH — ClamAV not available")
     return EngineResult(
         name="ClamAV",
         status="not_installed",

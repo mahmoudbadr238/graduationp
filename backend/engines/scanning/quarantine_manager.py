@@ -16,8 +16,10 @@ Vault Layout
 
 Security Notes
 ~~~~~~~~~~~~~~
-* Files are XOR-encrypted with a 256-byte random key so they cannot
-  accidentally execute if opened.
+* Files are XOR-obfuscated with a 256-byte random key per file so they
+  cannot accidentally execute if opened or double-clicked. This is
+  **not** cryptographic encryption — it prevents accidental execution,
+  not a determined adversary with filesystem access.
 * The original file is **deleted** after quarantine.
 * The ledger records the original path, timestamp, SHA-256, and file
   size so an analyst can audit and restore if needed.
@@ -32,6 +34,8 @@ import os
 import secrets
 import shutil
 import stat
+import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -51,6 +55,9 @@ XOR_KEY_LENGTH = 256
 # Ledger filename
 LEDGER_FILENAME = "vault_ledger.json"
 
+# Metadata schema version for modern quarantine entries.
+QUARANTINE_METADATA_VERSION = 2
+
 
 # ===========================================================================
 # XOR Helpers
@@ -61,6 +68,272 @@ def _xor_bytes(data: bytes, key: bytes) -> bytes:
     """XOR *data* with a repeating *key*."""
     key_len = len(key)
     return bytes(b ^ key[i % key_len] for i, b in enumerate(data))
+
+
+def _as_optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_optional_bool(value: Any) -> bool | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y"}:
+        return True
+    if text in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def _canonical_path(path: str | Path) -> str:
+    try:
+        return str(Path(path).resolve(strict=False)).lower()
+    except OSError:
+        return os.path.abspath(str(path)).lower()
+
+
+def _system_root() -> str:
+    return _canonical_path(os.environ.get("SystemRoot") or r"C:\Windows")
+
+
+def _is_windows_system_path(path: str | Path) -> bool:
+    normalized = _canonical_path(path)
+    root = _system_root()
+    if not normalized or not root:
+        return False
+    return normalized == root or normalized.startswith(root + os.sep)
+
+
+def _is_trusted_windows_install_path(path: str | Path) -> bool:
+    normalized = _canonical_path(path)
+    if not normalized:
+        return False
+
+    trusted_roots: list[str] = []
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            trusted_roots.append(_canonical_path(value))
+
+    local_programs = os.path.join(
+        os.environ.get("LocalAppData", "").strip(),
+        "Programs",
+    ).strip("\\/")
+    if local_programs:
+        trusted_roots.append(_canonical_path(local_programs))
+
+    return any(
+        normalized == root or normalized.startswith(root + os.sep)
+        for root in trusted_roots
+        if root
+    )
+
+
+def _path_trust_class(path: str | Path) -> str:
+    normalized = _canonical_path(path)
+    if not normalized:
+        return "unknown"
+    if _is_windows_system_path(normalized):
+        return "windows_system"
+    if _is_trusted_windows_install_path(normalized):
+        return "program_files"
+    return "user_space"
+
+
+def _probe_windows_signature(path: str | Path) -> tuple[bool | None, str]:
+    """Best-effort Authenticode probe for quarantine safety and metadata."""
+    if sys.platform != "win32":
+        return None, ""
+
+    literal_path = str(path).replace("'", "''")
+    command = (
+        "$s = Get-AuthenticodeSignature -LiteralPath '"
+        + literal_path
+        + "'; "
+        "$subject = ''; "
+        "if ($s.SignerCertificate) { $subject = $s.SignerCertificate.Subject }; "
+        "Write-Output ($s.Status.ToString() + '|' + $subject)"
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                command,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, ""
+
+    output = (result.stdout or "").strip()
+    if "|" not in output:
+        return None, ""
+
+    status, subject = output.split("|", 1)
+    status_text = status.strip().lower()
+    publisher = subject.strip()
+
+    if status_text == "valid":
+        return True, publisher
+    if status_text in {"notsigned", "unknownerror", "notsupportedfileformat"}:
+        return None, publisher
+    return False, publisher
+
+
+def _normalize_source_key(metadata: dict[str, Any]) -> str:
+    raw_source = str(metadata.get("enforcement_source") or "").strip().lower()
+    source_detail = str(metadata.get("source_detail") or "").strip().lower()
+    reason_text = str(metadata.get("action_reason") or "").strip().lower()
+
+    if raw_source in {"rtp", "real_time_protection"}:
+        return "rtp"
+    if raw_source in {"scan_center", "scancenter"}:
+        return "scan_center"
+    if raw_source in {"manual", "security_assistant", "ai_assistant"}:
+        return "manual"
+    if raw_source in {"legacy", "imported"}:
+        return "legacy"
+    if source_detail in {"security_assistant", "manual"}:
+        return "manual"
+    if "rtp" in reason_text or "real-time protection" in reason_text:
+        return "rtp"
+    if "manual" in reason_text or "security assistant" in reason_text:
+        return "manual"
+    if not metadata:
+        return "manual"
+    return "unknown"
+
+
+def _has_decision_metadata(metadata: dict[str, Any]) -> bool:
+    return any(
+        metadata.get(key) not in (None, "")
+        for key in ("decision_score", "decision_verdict", "decision_action")
+    )
+
+
+def _metadata_quality(source_key: str, metadata: dict[str, Any]) -> str:
+    if source_key == "legacy":
+        return "legacy_incomplete"
+    if source_key == "manual" and not _has_decision_metadata(metadata):
+        return "manual_record"
+    if (
+        _has_decision_metadata(metadata)
+        and metadata.get("file_action")
+        and metadata.get("action_reason")
+        and metadata.get("enforcement_source")
+    ):
+        return "complete"
+    if not _has_decision_metadata(metadata) and not metadata.get("action_reason"):
+        return "legacy_incomplete"
+    return "partial"
+
+
+def _default_action_reason(source_key: str) -> str:
+    if source_key == "rtp":
+        return "Real-time protection quarantined the file after enforcement."
+    if source_key == "scan_center":
+        return "Scan Center quarantine requested after analyst review."
+    if source_key == "manual":
+        return "Manual quarantine requested by the analyst."
+    if source_key == "legacy":
+        return "This legacy quarantine entry predates complete incident metadata."
+    return "No enforcement reason was recorded for this quarantine entry."
+
+
+def _default_metadata_note(source_key: str, quality: str) -> str:
+    if quality == "legacy_incomplete":
+        return (
+            "This quarantine record predates complete incident metadata. "
+            "Score, verdict, and source details were not recorded at quarantine time."
+        )
+    if source_key == "manual":
+        return (
+            "Manual quarantine entry. A file action was recorded, but no scan score or verdict "
+            "was captured for this action."
+        )
+    if quality == "partial":
+        return "This quarantine record has partial incident metadata."
+    return ""
+
+
+def _should_block_manual_system_quarantine(
+    file_path: Path,
+    *,
+    source_key: str,
+    strong_evidence: bool,
+    allow_system_quarantine: bool,
+    signature_valid: bool | None,
+) -> bool:
+    if sys.platform != "win32":
+        return False
+    if allow_system_quarantine or strong_evidence:
+        return False
+    if source_key not in {"manual", "scan_center", "unknown"}:
+        return False
+    if not _is_windows_system_path(file_path):
+        return False
+    return signature_valid is not False
+
+
+def _is_protected_trusted_windows_binary(
+    file_path: Path,
+    *,
+    signature_valid: bool | None,
+) -> bool:
+    if sys.platform != "win32":
+        return False
+    if _is_windows_system_path(file_path):
+        return signature_valid is not False
+    if _is_trusted_windows_install_path(file_path):
+        return signature_valid is True
+    return False
+
+
+def _automatic_quarantine_requires_complete_decision(
+    *,
+    source_key: str,
+    decision_action: str,
+    decision_score: int | None,
+    decision_verdict: str,
+    file_action: str,
+    explicit_override: bool,
+) -> tuple[bool, str]:
+    if source_key not in {"rtp", "scan_center", "unknown"}:
+        return True, ""
+    if explicit_override:
+        return True, ""
+    if decision_action != "block":
+        return False, "Blocked: automatic quarantine requires a final block decision."
+    if decision_score is None or decision_score <= 0:
+        return False, "Blocked: automatic quarantine requires a positive final threat score."
+    if decision_verdict.strip().lower() in {"", "unknown", "safe", "suspicious"}:
+        return (
+            False,
+            "Blocked: automatic quarantine requires a high-confidence final verdict.",
+        )
+    if file_action != "quarantine_file":
+        return (
+            False,
+            "Blocked: automatic quarantine requires the normalized file action 'quarantine_file'.",
+        )
+    return True, ""
 
 
 # ===========================================================================
@@ -144,7 +417,12 @@ class QuarantineVault:
     # Public API — Quarantine
     # ------------------------------------------------------------------
 
-    def quarantine_file(self, file_path: str | Path) -> dict[str, Any]:
+    def quarantine_file(
+        self,
+        file_path: str | Path,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Neutralise and vault a file.
 
         Steps
@@ -170,6 +448,7 @@ class QuarantineVault:
             ``entry``         — dict (ledger entry) or None on failure
         """
         file_path = Path(file_path)
+        raw_metadata = dict(metadata or {})
         result: dict[str, Any] = {
             "success": False,
             "quarantine_id": "",
@@ -211,6 +490,145 @@ class QuarantineVault:
         # ---- Compute metadata ----
         file_hash = hashlib.sha256(original_bytes).hexdigest()
         file_size = len(original_bytes)
+
+        source_key = _normalize_source_key(raw_metadata)
+        decision_score = _as_optional_int(raw_metadata.get("decision_score"))
+        decision_verdict = str(raw_metadata.get("decision_verdict") or "").strip()
+        decision_action = str(raw_metadata.get("decision_action") or "").strip().lower()
+        file_action = str(raw_metadata.get("file_action") or "quarantine_file").strip().lower()
+        if not file_action:
+            file_action = "quarantine_file"
+        source_detail = str(raw_metadata.get("source_detail") or "").strip()
+        publisher = str(raw_metadata.get("publisher") or "").strip()
+        signature_valid = _as_optional_bool(raw_metadata.get("signature_valid"))
+        strong_evidence = bool(raw_metadata.get("strong_evidence"))
+        allow_protected_quarantine = bool(
+            raw_metadata.get("allow_protected_quarantine")
+            or raw_metadata.get("allow_system_quarantine")
+        )
+        decision_enforcement_source = str(
+            raw_metadata.get("decision_enforcement_source") or ""
+        ).strip().lower()
+        override_type = str(raw_metadata.get("override_type") or "").strip().lower()
+        explicit_override = bool(
+            decision_enforcement_source == "explicit_override" or override_type
+        )
+        path_class = _path_trust_class(file_path)
+        path_note = (
+            "Protected Windows system path. Quarantine requires corroborated evidence."
+            if path_class == "windows_system"
+            else ""
+        )
+
+        if sys.platform == "win32" and (signature_valid is None or not publisher):
+            probed_valid, probed_publisher = _probe_windows_signature(file_path)
+            if signature_valid is None and probed_valid is not None:
+                signature_valid = probed_valid
+            if not publisher and probed_publisher:
+                publisher = probed_publisher
+
+        decision_is_complete, decision_block_reason = (
+            _automatic_quarantine_requires_complete_decision(
+                source_key=source_key,
+                decision_action=decision_action,
+                decision_score=decision_score,
+                decision_verdict=decision_verdict,
+                file_action=file_action,
+                explicit_override=explicit_override,
+            )
+        )
+        if not decision_is_complete:
+            result["message"] = decision_block_reason
+            logger.warning(
+                "Refused automatic quarantine for %s due to incomplete decision metadata "
+                "(source=%s action=%s score=%s verdict=%s file_action=%s)",
+                file_path,
+                source_key,
+                decision_action or "missing",
+                decision_score,
+                decision_verdict or "missing",
+                file_action or "missing",
+            )
+            return result
+
+        if _should_block_manual_system_quarantine(
+            file_path,
+            source_key=source_key,
+            strong_evidence=strong_evidence,
+            allow_system_quarantine=allow_protected_quarantine,
+            signature_valid=signature_valid,
+        ):
+            result["message"] = (
+                "Blocked: protected Windows system binaries cannot be quarantined from weak or "
+                "manual evidence alone. Review the file through a full scan or provide explicit "
+                "corroborated evidence before quarantining it."
+            )
+            logger.warning(
+                "Refused quarantine for protected system file %s (source=%s, publisher=%s, signature=%s)",
+                file_path,
+                source_key,
+                publisher or "unknown",
+                signature_valid,
+            )
+            return result
+
+        if (
+            _is_protected_trusted_windows_binary(
+                file_path,
+                signature_valid=signature_valid,
+            )
+            and not allow_protected_quarantine
+            and not explicit_override
+        ):
+            result["message"] = (
+                "Blocked: trusted signed Windows applications require an explicit override "
+                "before quarantine. Sentinel will not quarantine protected installed software "
+                "from weak, incomplete, or single-source evidence."
+            )
+            logger.warning(
+                "Refused quarantine for protected signed binary %s (source=%s, publisher=%s, signature=%s)",
+                file_path,
+                source_key,
+                publisher or "unknown",
+                signature_valid,
+            )
+            return result
+
+        normalized_metadata = {
+            "metadata_version": QUARANTINE_METADATA_VERSION,
+            "enforcement_source": source_key,
+            "source_detail": source_detail,
+            "decision_score": decision_score,
+            "decision_verdict": decision_verdict,
+            "decision_action": decision_action,
+            "file_action": file_action,
+            "file_action_taken": "quarantined",
+            "action_reason": str(raw_metadata.get("action_reason") or "").strip() or _default_action_reason(source_key),
+            "publisher": publisher,
+            "signature_valid": signature_valid,
+            "strong_evidence": strong_evidence,
+            "decision_enforcement_source": decision_enforcement_source,
+            "override_type": override_type,
+            "path_class": path_class,
+            "path_trust_note": path_note,
+            "system_protected": path_class == "windows_system",
+            "process_action": str(raw_metadata.get("process_action") or "").strip().lower(),
+            "process_name": str(raw_metadata.get("process_name") or "").strip(),
+            "pid": _as_optional_int(raw_metadata.get("pid")),
+            "metadata_quality": "",
+            "metadata_note": "",
+        }
+        if "requested_by" in raw_metadata:
+            normalized_metadata["requested_by"] = str(raw_metadata.get("requested_by") or "").strip()
+        quality = _metadata_quality(source_key, normalized_metadata)
+        normalized_metadata["metadata_quality"] = quality
+        normalized_metadata["metadata_note"] = (
+            str(raw_metadata.get("metadata_note") or "").strip()
+            or _default_metadata_note(source_key, quality)
+        )
+        for key, value in raw_metadata.items():
+            if key not in normalized_metadata:
+                normalized_metadata[key] = value
 
         # ---- Encrypt (XOR) ----
         qid = str(uuid.uuid4())
@@ -257,6 +675,7 @@ class QuarantineVault:
             "vault_file": str(vault_file),
             "status": "quarantined",
         }
+        entry.update(normalized_metadata)
         self._append_entry(entry)
 
         result.update({
@@ -309,6 +728,16 @@ class QuarantineVault:
 
         if entry.get("status") == "restored":
             result["message"] = f"Entry {quarantine_id} was already restored."
+            return result
+        if entry.get("status") == "deleted":
+            result["message"] = (
+                f"Entry {quarantine_id} was permanently deleted and cannot be restored."
+            )
+            return result
+        if entry.get("status") != "quarantined":
+            result["message"] = (
+                f"Entry {quarantine_id} is not in an active quarantined state."
+            )
             return result
 
         # ---- Read encrypted payload ----
@@ -371,15 +800,15 @@ class QuarantineVault:
 
         result.update({
             "success": True,
-            "message": (
-                f"File restored successfully.\n"
-                f"  Original: {original_path}\n"
-                f"  SHA256:   {restored_hash}\n"
-                f"  Integrity: {'VERIFIED ✓' if restored_hash == entry.get('sha256') else 'MISMATCH ⚠'}"
-            ),
+            "message": "File restored successfully.",
+            "original_name": str(entry.get("original_name") or original_path.name),
+            "original_path": str(original_path),
+            "restored_sha256": restored_hash,
+            "integrity_verified": restored_hash == entry.get("sha256"),
+            "status": "restored",
         })
 
-        logger.info("RESTORED: %s → %s", quarantine_id, original_path)
+        logger.info("RESTORED: %s -> %s", quarantine_id, original_path)
         return result
 
     # ------------------------------------------------------------------
@@ -393,9 +822,42 @@ class QuarantineVault:
             if e.get("status") == "quarantined"
         ]
 
+    def list_entries(self) -> list[dict[str, Any]]:
+        """Return the full quarantine ledger newest-first for audit/history views."""
+        entries = [dict(entry) for entry in self._load_ledger()]
+        entries.sort(
+            key=lambda entry: (
+                entry.get("deleted_at")
+                or entry.get("restored_at")
+                or entry.get("quarantined_at")
+                or ""
+            ),
+            reverse=True,
+        )
+        return entries
+
     def delete_permanently(self, quarantine_id: str) -> dict[str, Any]:
         """Permanently delete a quarantined file (no recovery)."""
         result: dict[str, Any] = {"success": False, "message": ""}
+
+        ledger = self._load_ledger()
+        entry = next((e for e in ledger if e.get("id") == quarantine_id), None)
+        if entry is None:
+            result["message"] = f"No quarantine entry found for ID: {quarantine_id}"
+            return result
+        if entry.get("status") == "deleted":
+            result["message"] = f"Entry {quarantine_id} was already permanently deleted."
+            return result
+        if entry.get("status") == "restored":
+            result["message"] = (
+                f"Entry {quarantine_id} was already restored; there is no vaulted payload left to delete."
+            )
+            return result
+        if entry.get("status") != "quarantined":
+            result["message"] = (
+                f"Entry {quarantine_id} is not in an active quarantined state."
+            )
+            return result
 
         vault_file = self._vault_dir / f"{quarantine_id}.quarantine"
         key_file = self._vault_dir / f"{quarantine_id}.key"
@@ -414,7 +876,11 @@ class QuarantineVault:
 
         result.update({
             "success": True,
-            "message": f"Quarantine entry {quarantine_id} permanently deleted.",
+            "message": "Vault payload permanently deleted.",
+            "status": "deleted",
+            "audit_retained": True,
+            "original_name": str(entry.get("original_name") or ""),
+            "original_path": str(entry.get("original_path") or ""),
         })
         logger.info("DELETED: %s permanently removed", quarantine_id)
         return result

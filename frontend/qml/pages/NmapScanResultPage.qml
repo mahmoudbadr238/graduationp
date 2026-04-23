@@ -12,6 +12,7 @@ import "../ui"
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
     
     // Properties passed from NetworkScan page
     property string scanType: ""
@@ -27,7 +28,7 @@ Item {
     
     // Connect to backend signals
     Connections {
-        target: Backend || null
+        target: root.backend
         enabled: target !== null && root.visible
         
         function onNmapScanOutput(id, text) {
@@ -148,7 +149,7 @@ Item {
                             if (root.scanStatus === "completed") return "Completed"
                             return "Failed"
                         }
-                        color: "#FFFFFF"
+                        color: ThemeManager.selectionForeground
                         font.pixelSize: ThemeManager.fontSize_small
                         font.bold: true
                     }
@@ -283,8 +284,8 @@ Item {
                             outputArea.selectAll()
                             outputArea.copy()
                             outputArea.deselect()
-                            if (Backend) {
-                                Backend.toast("success", "Output copied to clipboard")
+                            if (root.backend) {
+                                root.backend.toast("success", "Output copied to clipboard")
                             }
                         }
                     }
@@ -301,7 +302,7 @@ Item {
                         id: saveBtn
                         anchors.centerIn: parent
                         text: root.reportPath ? "📁 Open Report" : "💾 Save as .txt"
-                        color: "#FFFFFF"
+                        color: ThemeManager.selectionForeground
                         font.pixelSize: ThemeManager.fontSize_small
                         font.bold: true
                     }
@@ -312,13 +313,13 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (Backend) {
+                            if (root.backend) {
                                 if (root.reportPath) {
                                     // Open existing report
-                                    Backend.openNmapReport(root.reportPath)
+                                    root.backend.openNmapReport(root.reportPath)
                                 } else {
                                     // Request export
-                                    Backend.exportNmapScanReport(root.scanId)
+                                    root.backend.exportNmapScanReport(root.scanId)
                                 }
                             }
                         }

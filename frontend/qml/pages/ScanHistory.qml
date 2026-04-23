@@ -6,6 +6,7 @@ import "../ui"
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
 
     // ── State ───────────────────────────────────────────────────────────────
     property var    historyItems: []
@@ -14,17 +15,17 @@ Item {
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
     Component.onCompleted: {
-        if (typeof Backend !== "undefined") {
+        if (root.backend) {
             var rid = "scan-history-" + Date.now()
             _histReqId = rid
             loading = true
-            Backend.listScanHistory(200, rid)
+            root.backend.listScanHistory(200, rid)
         }
     }
 
     // ── Backend wiring ───────────────────────────────────────────────────────
     Connections {
-        target: Backend || null
+        target: root.backend
         enabled: target !== null
 
         function onScanHistoryLoaded(request_id, items) {
@@ -69,11 +70,11 @@ Item {
                 text: "Refresh"
                 Layout.preferredWidth: 88; Layout.preferredHeight: 32
                 onClicked: {
-                    if (Backend) {
+                    if (root.backend) {
                         var rrid = "scan-history-" + Date.now()
                         _histReqId = rrid
                         loading = true
-                        Backend.listScanHistory(200, rrid)
+                        root.backend.listScanHistory(200, rrid)
                     }
                 }
                 background: Rectangle {
@@ -222,8 +223,8 @@ Item {
                                 Layout.preferredWidth: 64; Layout.preferredHeight: 28
                                 enabled: !!(modelData.report_path) && modelData.verdict_risk !== "Failed"
                                 onClicked: {
-                                    if (Backend && modelData.report_path)
-                                        Backend.loadScanReport(modelData.report_path)
+                                    if (root.backend && modelData.report_path)
+                                        root.backend.loadScanReport(modelData.report_path)
                                 }
                                 background: Rectangle {
                                     color: parent.enabled
@@ -233,7 +234,7 @@ Item {
                                 }
                                 contentItem: Text {
                                     text: parent.text
-                                    color: parent.enabled ? "#ffffff" : ThemeManager.muted()
+                                    color: parent.enabled ? ThemeManager.selectionForeground : ThemeManager.muted()
                                     font.pixelSize: 11; font.bold: true
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
@@ -247,8 +248,8 @@ Item {
                             cursorShape: modelData.report_path ? Qt.PointingHandCursor : Qt.ArrowCursor
                             z: -1
                             onClicked: {
-                                if (Backend && modelData.report_path)
-                                    Backend.loadScanReport(modelData.report_path)
+                                if (root.backend && modelData.report_path)
+                                    root.backend.loadScanReport(modelData.report_path)
                             }
                         }
                     }

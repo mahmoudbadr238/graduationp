@@ -6,14 +6,14 @@ Sentinel respects your privacy. This document describes what data we collect and
 
 ### Data We DO NOT Collect
 
-- **No cloud uploads** – All analysis runs locally on your machine
+- **No background cloud uploads by default** – Core monitoring, scanning, and event collection run locally unless you explicitly enable optional cloud-backed AI or crash reporting
 - **No user tracking** – No analytics or tracking cookies
 - **No browsing history** – We don't monitor or store your activity
 - **No automatic file uploads** – All scanning is local unless explicitly configured
 
 ### Data We Collect Locally
 
-**Stored on your computer** (`~/.sentinel/` and `%APPDATA%/Sentinel/`):
+**Stored on your computer** in Sentinel's platform-native local data paths:
 - System metrics (CPU, memory, disk, network)
 - Windows security event logs
 - Network adapter information
@@ -31,11 +31,11 @@ Sentinel respects your privacy. This document describes what data we collect and
 - **How to enable**: Set `SENTRY_DSN` environment variable
 - **Opt-out**: Do not set `SENTRY_DSN`
 
-#### AI Services (Claude/OpenAI)
+#### AI Services (Groq)
 - **When**: You request AI-powered security explanations
 - **What**: Event descriptions and context
-- **How to enable**: Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` environment variable
-- **Opt-out**: Do not set AI API keys
+- **How to enable**: Set `GROQ_API_KEY` environment variable
+- **Opt-out**: Do not set `GROQ_API_KEY`
 
 #### Nmap (Network Scanning)
 - **When**: You manually scan a network (optional feature, disabled by default)
@@ -47,29 +47,20 @@ Sentinel respects your privacy. This document describes what data we collect and
 
 ### Configuration Files
 
-**Location**: `%APPDATA%/Sentinel/settings.json` (Windows) or `~/.local/share/sentinel/settings.json` (Linux)
+**Location**: Sentinel stores settings in the platform-native settings store used by Qt `QSettings`:
+- Windows: user registry hive under the Sentinel application keys
+- Linux: local Qt settings files under the user's home/config directories
 
 **Contains**:
-```json
-{
-  "sampling_rates": {
-    "cpu_interval_ms": 1000,
-    "gpu_interval_ms": 2000
-  },
-  "feature_toggles": {
-    "enable_gpu_monitoring": true,
-    "enable_network_scanner": false,
-    "enable_crash_reporting": false
-  },
-  "ui": {
-    "theme": "dark"
-  }
-}
-```
+- Theme and font preferences
+- Startup and tray behavior preferences
+- Monitoring intervals and feature toggles
 
 ### Log Files
 
-**Location**: `%APPDATA%/Sentinel/logs/sentinel.log`
+**Location**:
+- Windows: `%APPDATA%\Sentinel\logs\sentinel.log`
+- Linux: `$XDG_STATE_HOME/sentinel/logs/sentinel.log`
 
 **Retention**: 10 rotating files, 1 MB each
 
@@ -83,7 +74,12 @@ Sentinel respects your privacy. This document describes what data we collect and
 
 ### Database
 
-**Location**: `~/.sentinel/` (SQLite)
+**Location**:
+- Windows: `%APPDATA%\Sentinel\sentinel.db`
+- Linux: `$XDG_DATA_HOME/sentinel/sentinel.db`
+
+Legacy compatibility lookups for older locations such as `~/.sentinel` remain
+readable so upgrades do not silently lose local data.
 
 **Contains**: Scan results, event history
 
@@ -103,23 +99,17 @@ Sentinel respects your privacy. This document describes what data we collect and
 ## Your Rights
 
 - **Access**: All data is human-readable JSON/logs on your computer
-- **Deletion**: Delete `%APPDATA%/Sentinel/` or `~/.local/share/sentinel/` to remove all data
+- **Deletion**: Delete the Sentinel config/data/state directories for your platform to remove local data
 - **Control**: Use `--reset-settings` CLI flag or delete `settings.json` manually
 - **Portability**: Settings are standard JSON; logs are text; easily exported
 
 ## Third-Party Services
 
-### Anthropic (Claude AI)
+### Groq
 
-- **Website**: https://www.anthropic.com
-- **Privacy**: https://www.anthropic.com/privacy
-- **Data**: Event descriptions when you request AI explanations
-
-### OpenAI
-
-- **Website**: https://openai.com
-- **Privacy**: https://openai.com/policies/privacy-policy
-- **Data**: Event descriptions when you request AI explanations
+- **Website**: https://groq.com
+- **Privacy**: https://groq.com/privacy-policy/
+- **Data**: Redacted event or scan context when you request AI explanations
 
 ### Sentry
 
@@ -136,7 +126,7 @@ Sentinel respects your privacy. This document describes what data we collect and
 
 We may update this policy. Changes will be reflected in CHANGELOG.md and tagged releases.
 
-**Last updated**: November 2025
+**Last updated**: April 22, 2026
 
 ## Questions?
 

@@ -86,9 +86,7 @@ Rectangle {
                 id: gpuRepeater
                 model: (typeof GPUService !== 'undefined' && GPUService) ? GPUService.gpuCount : 0
 
-                onModelChanged: {
-                    console.log("GPUMiniWidget: Repeater model changed to", model)
-                }
+                onModelChanged: { }
 
                 delegate: Rectangle {
                     Layout.fillWidth: true
@@ -271,9 +269,7 @@ Rectangle {
     Connections {
         target: (typeof GPUService !== 'undefined') ? GPUService : null
 
-        function onGpuCountChanged(count) {
-            console.log("GPU count changed:", count)
-        }
+        function onGpuCountChanged(count) { }
 
         function onMetricsUpdated() {
             for (var i = 0; i < gpuRepeater.count; i++) {
@@ -284,8 +280,6 @@ Rectangle {
             }
         }
 
-        function onStatusChanged(status) {
-            console.log("GPU service status:", status)
-        }
+        function onStatusChanged(status) { }
     }
 }

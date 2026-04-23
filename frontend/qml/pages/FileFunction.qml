@@ -164,7 +164,6 @@ Rectangle {
                                     anchors.fill: parent
                                     keys: ["text/uri-list"]
                                     onEntered: function(drag) {
-                                        console.log("[DEBUG] DropArea entered, keys:", drag.keys)
                                         drag.accept()
                                     }
                                     onDropped: function(drop) {
@@ -237,7 +236,6 @@ Rectangle {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
-                                            console.log("[DEBUG] Browse clicked")
                                             filePicker.open()
                                         }
                                     }
@@ -294,13 +292,13 @@ Rectangle {
                                 StyledComboBox { id: comboPasses; model: ["1", "3", "7"]; currentIndex: 1; Layout.preferredWidth: 80 }
 
                                 Text { text: "Verify after delete:"; color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_body }
-                                Switch { id: toggleVerify; checked: true }
+                                StyledSwitch { id: toggleVerify; checked: true }
 
                                 Text { text: "Rename before delete:"; color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_body }
-                                Switch { id: toggleRename; checked: true }
+                                StyledSwitch { id: toggleRename; checked: true }
 
                                 Text { text: "Write log file:"; color: ThemeManager.foreground(); font.pixelSize: ThemeManager.fontSize_body }
-                                Switch { id: toggleLog; checked: true }
+                                StyledSwitch { id: toggleLog; checked: true }
                             }
 
                             // â”€â”€ Separator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -316,17 +314,11 @@ Rectangle {
 
                             RowLayout {
                                 spacing: 12
-                                CheckBox {
+                                StyledCheckBox {
                                     id: confirmCheck
-                                    text: ""
-                                    enabled: !shredRunning && !shredDone
-                                    Layout.alignment: Qt.AlignVCenter
-                                }
-                                Text {
                                     text: "I understand this action is irreversible"
-                                    color: ThemeManager.foreground()
-                                    font.pixelSize: ThemeManager.fontSize_body
-                                    verticalAlignment: Text.AlignVCenter
+                                    enabled: !shredRunning && !shredDone
+                                    Layout.fillWidth: true
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                             }
@@ -626,7 +618,7 @@ Rectangle {
                                 id: adminWarnCol
                                 anchors.fill: parent; anchors.margins: 12
                                 Text { text: root.isLinux ? "\u26A0  Not running as Root" : "\u26A0  Not running as Administrator"; color: ThemeManager.warning; font.bold: true; font.pixelSize: ThemeManager.fontSize_body }
-                                Text { text: root.isLinux ? "Raw disk scanning requires root privileges. Running in demo mode instead." : "Raw disk scanning requires admin privileges. Running in demo mode instead."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                Text { text: root.isLinux ? "Raw disk scanning requires root privileges. Sentinel is using bundled recovery sample data in this session." : "Raw disk scanning requires administrator privileges. Sentinel is using bundled recovery sample data in this session."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             }
                         }
 
@@ -690,7 +682,6 @@ Rectangle {
                                                 tabRecovery.errorMsg = "Recovery service unavailable. Restart the application."
                                                 return
                                             }
-                                            console.log("[DEBUG] Start Scan clicked")
                                             tabRecovery.resetRecovery()
                                             tabRecovery.scanning = true; tabRecovery.errorMsg = ""
                                             var drv = recoveryDriveCombo.currentText === "All Drives" ? "" : recoveryDriveCombo.currentText
@@ -720,7 +711,6 @@ Rectangle {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
-                                            console.log("[DEBUG] Cancel scan clicked")
                                             if (typeof RecoveryService !== 'undefined' && RecoveryService !== null)
                                                 RecoveryService.cancelRecoveryScan()
                                         }

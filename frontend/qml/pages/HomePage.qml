@@ -10,6 +10,104 @@ Item {
 
     property bool isLinux: typeof Backend !== 'undefined' && Backend ? Backend.isLinux : false
 
+    // ── RTP live state (synced from RTPBridge) ──────────────────────────────
+    property string rtpStatusLabel: "Checking..."
+    property bool   rtpGood:    false
+    property bool   rtpWarning: false
+
+    // ── Recent activity summary (loaded once on completion) ─────────────────
+    property var    recentScanItem:        null
+    property int    quarantineActiveCount: 0
+    property int    incidentCount:         0
+
+    function syncRtpState() {
+        if (typeof RTPBridge === "undefined" || !RTPBridge) {
+            rtpStatusLabel = "Unavailable"
+            rtpGood = false
+            rtpWarning = false
+            return
+        }
+        var cap = typeof RTPBridge.getCapabilityState === "function" ? RTPBridge.getCapabilityState() : "unsupported"
+        var enabled = RTPBridge.getStatus()
+        if (cap === "unsupported") {
+            rtpStatusLabel = "Not supported"
+            rtpGood = false; rtpWarning = false
+            return
+        }
+        if (!enabled) {
+            rtpStatusLabel = (cap === "degraded") ? "Unavailable" : "Disabled"
+            rtpGood = false
+            rtpWarning = (cap === "available")
+            return
+        }
+        var mon = typeof RTPBridge.getMonitoringState === "function" ? RTPBridge.getMonitoringState() : ""
+        if (mon === "running") {
+            var scanner = typeof RTPBridge.getProcessScannerState === "function" ? RTPBridge.getProcessScannerState() : ""
+            rtpStatusLabel = (scanner === "running") ? "Active" : "Monitoring"
+            rtpGood    = (scanner === "running")
+            rtpWarning = (scanner !== "running")
+        } else {
+            rtpStatusLabel = "Starting..."
+            rtpGood = false; rtpWarning = true
+        }
+    }
+
+    function loadActivitySummary() {
+        if (typeof Backend === "undefined" || !Backend) return
+        var history = Backend.getUnifiedScanHistory ? Backend.getUnifiedScanHistory(1) : []
+        recentScanItem = (history && history.length > 0) ? history[0] : null
+        var quarantine = Backend.getQuarantineHistory ? Backend.getQuarantineHistory() : []
+        quarantineActiveCount = quarantine ? quarantine.length : 0
+        var incidents = Backend.getIncidentHistory ? Backend.getIncidentHistory(50) : []
+        incidentCount = incidents ? incidents.length : 0
+    }
+
+    function formatScanAge(item) {
+        if (!item) return ""
+        var raw = item.timestamp || item.scan_time || item.created_at || ""
+        if (!raw) return ""
+        try {
+            var d = new Date(raw)
+            var now = new Date()
+            var diffMs = now - d
+            var diffMin = Math.floor(diffMs / 60000)
+            if (diffMin < 1)  return "just now"
+            if (diffMin < 60) return diffMin + "m ago"
+            var diffH = Math.floor(diffMin / 60)
+            if (diffH < 24)   return diffH + "h ago"
+            return Math.floor(diffH / 24) + "d ago"
+        } catch(e) { return "" }
+    }
+
+    // Poll RTP state every 3 s (light; RTPBridge signals also drive instant updates)
+    Timer {
+        interval: 3000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.syncRtpState()
+    }
+
+    // Instant reaction to toggle/capability change
+    Connections {
+        target: (typeof RTPBridge !== "undefined") ? RTPBridge : null
+        enabled: target !== null
+        function onProtectionStatusChanged(_active) { root.syncRtpState() }
+        function onCapabilityChanged()              { root.syncRtpState() }
+    }
+
+    // Reload activity summary when RTP detects a new threat
+    Connections {
+        target: (typeof RTPBridge !== "undefined") ? RTPBridge : null
+        enabled: target !== null
+        function onThreatDetected(_msg) { root.loadActivitySummary() }
+    }
+
+    Component.onCompleted: {
+        syncRtpState()
+        loadActivitySummary()
+    }
+
     // Security facts data
     property var securityFacts: [
         {
@@ -408,8 +506,8 @@ Item {
                                     QuickActionButton {
                                         Layout.fillWidth: true
                                         icon: "📋"
-                                        label: "Event Logs"
-                                        onClicked: window.loadRoute("events")
+                                        label: "History"
+                                        onClicked: window.loadRoute("history-events")
                                     }
                                 }
                             }
@@ -518,29 +616,46 @@ Item {
                         // Security Status
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 180
+                            implicitHeight: securityStatusColumn.implicitHeight + 40
                             radius: 16
                             color: ThemeManager.panel()
                             border.color: ThemeManager.border()
-                            
+
                             ColumnLayout {
+                                id: securityStatusColumn
                                 anchors.fill: parent
                                 anchors.margins: 20
                                 spacing: 14
-                                
+
                                 Text {
                                     text: "Security Status"
                                     color: ThemeManager.foreground()
                                     font.pixelSize: ThemeManager.fontSize_h4
                                     font.bold: true
                                 }
-                                
+
+                                // RTP — most important row, full-width above the grid
+                                SecurityStatusItem {
+                                    Layout.fillWidth: true
+                                    label: "Real-Time Protection"
+                                    status: root.rtpStatusLabel
+                                    isGood:    root.rtpGood
+                                    isWarning: root.rtpWarning
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 1
+                                    color: ThemeManager.border()
+                                    opacity: 0.5
+                                }
+
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: 2
                                     rowSpacing: 12
                                     columnSpacing: 20
-                                    
+
                                     SecurityStatusItem {
                                         Layout.fillWidth: true
                                         label: "Firewall"
@@ -705,6 +820,142 @@ Item {
                             }
                         }
                         
+                        // ── Recent Activity ──────────────────────────────────
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: activityContent.implicitHeight + 40
+                            radius: 16
+                            color: ThemeManager.panel()
+                            border.color: ThemeManager.border()
+
+                            ColumnLayout {
+                                id: activityContent
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 12
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Text {
+                                        text: "Recent Activity"
+                                        color: ThemeManager.foreground()
+                                        font.pixelSize: ThemeManager.fontSize_h4
+                                        font.bold: true
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        text: "Refresh"
+                                        color: ThemeManager.accent
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.loadActivitySummary()
+                                        }
+                                    }
+                                }
+
+                                // Last scan
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Text {
+                                        text: "Last scan"
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        Layout.preferredWidth: 90
+                                    }
+
+                                    Text {
+                                        text: root.recentScanItem
+                                              ? ((root.recentScanItem.file_name || "file") + "  " + root.formatScanAge(root.recentScanItem))
+                                              : "No scans recorded"
+                                        color: root.recentScanItem ? ThemeManager.foreground() : ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        font.bold: !!root.recentScanItem
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                // Quarantine
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Text {
+                                        text: "Quarantine"
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        Layout.preferredWidth: 90
+                                    }
+
+                                    Text {
+                                        text: root.quarantineActiveCount > 0
+                                              ? root.quarantineActiveCount + " vaulted file" + (root.quarantineActiveCount === 1 ? "" : "s")
+                                              : "Empty"
+                                        color: root.quarantineActiveCount > 0 ? ThemeManager.warning : ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        font.bold: root.quarantineActiveCount > 0
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        visible: root.quarantineActiveCount > 0
+                                        text: "Review →"
+                                        color: ThemeManager.accent
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: window.loadRoute("history-quarantine")
+                                        }
+                                    }
+                                }
+
+                                // Incidents
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Text {
+                                        text: "RTP incidents"
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        Layout.preferredWidth: 90
+                                    }
+
+                                    Text {
+                                        text: root.incidentCount > 0
+                                              ? root.incidentCount + " recorded"
+                                              : "None"
+                                        color: root.incidentCount > 0 ? ThemeManager.warning : ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        font.bold: root.incidentCount > 0
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        visible: root.incidentCount > 0
+                                        text: "Review →"
+                                        color: ThemeManager.accent
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: window.loadRoute("history-incidents")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Pro Tip Card
                         Rectangle {
                             Layout.fillWidth: true

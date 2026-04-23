@@ -1,7 +1,10 @@
 """Minimal dependency injection container."""
 
+import logging
 from collections.abc import Callable
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 class Container:
@@ -82,8 +85,10 @@ def configure() -> None:
 
         # Security Chatbot V4 will be initialized with services in application.py
         # since it needs snapshot_service which isn't available at container config time
-        DI.register(SecurityChatbotV4, lambda: None)  # Placeholder
+        # SecurityChatbotV4 is initialized with snapshot_service in application.py
+        # because it requires services not available at container config time.
+        DI.register(SecurityChatbotV4, lambda: None)
 
-        print("[OK] Cloud AI services registered (Groq API)")
+        _log.info("Cloud AI services registered (Groq API)")
     except Exception as e:
-        print(f"[SKIP] AI services not available: {e}")
+        _log.warning("AI services not available: %s", e)

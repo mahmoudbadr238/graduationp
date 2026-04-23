@@ -48,6 +48,11 @@ pyinstaller \
     --hidden-import "backend.platform.linux.secure_delete" \
     --hidden-import "backend.platform.linux.telemetry_worker" \
     --hidden-import "backend.platform.linux.chatbot_tools" \
+    --hidden-import "backend.platform.linux.security_posture" \
+    --hidden-import "backend.platform.linux.storage" \
+    --hidden-import "backend.platform.linux.amd_sysfs_provider" \
+    --hidden-import "backend.platform.linux.drm_enumeration" \
+    --hidden-import "backend.platform.linux.gpu_normalization" \
     --hidden-import "psutil" \
     --hidden-import "PySide6.QtQuick" \
     --hidden-import "PySide6.QtQml" \

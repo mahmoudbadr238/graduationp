@@ -1,62 +1,34 @@
-#!/usr/bin/env python3
-"""Test theme persistence end-to-end"""
+"""Integration tests for theme persistence in SettingsService."""
 
-import json
-import sys
-from pathlib import Path
+import tempfile
+import unittest
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).parent))
+from PySide6.QtCore import QCoreApplication, QSettings
 
 from backend.api.settings_service import SettingsService
 
 
-def test_theme_persistence():
-    """Test that theme mode saves and loads correctly"""
+class TestThemePersistence(unittest.TestCase):
+    def setUp(self) -> None:
+        self._app = QCoreApplication.instance() or QCoreApplication([])
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._old_format = QSettings.defaultFormat()
+        QSettings.setDefaultFormat(QSettings.IniFormat)
+        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, self._tmpdir.name)
 
-    print("=" * 60)
-    print("TEST 1: Initial state")
-    print("=" * 60)
+    def tearDown(self) -> None:
+        QSettings.setDefaultFormat(self._old_format)
+        self._tmpdir.cleanup()
 
-    # Create settings service
-    settings = SettingsService()
-    print(f"Initial Theme Mode: {settings.themeMode}")
-    print(f"Settings file: {settings._settings_path}")
+    def test_theme_mode_persists_across_instances(self) -> None:
+        first = SettingsService()
+        first.themeMode = "dark"
+        first._qs.sync()
 
-    # Check what's on disk
-    if settings._settings_path.exists():
-        with open(settings._settings_path) as f:
-            disk_data = json.load(f)
-            print(f"On disk (themeMode): {disk_data.get('themeMode', 'NOT FOUND')}")
+        second = SettingsService()
 
-    print("\n" + "=" * 60)
-    print("TEST 2: Change theme to 'dark'")
-    print("=" * 60)
-
-    settings.themeMode = "dark"
-    print(f"After set to 'dark': {settings.themeMode}")
-
-    # Check what's on disk
-    if settings._settings_path.exists():
-        with open(settings._settings_path) as f:
-            disk_data = json.load(f)
-            print(f"On disk (themeMode): {disk_data.get('themeMode', 'NOT FOUND')}")
-
-    print("\n" + "=" * 60)
-    print("TEST 3: Create NEW instance (simulates app reload)")
-    print("=" * 60)
-
-    # Create new instance
-    settings2 = SettingsService()
-    print(f"New instance theme: {settings2.themeMode}")
-
-    if settings2.themeMode == "dark":
-        print("✅ SUCCESS: Theme persisted correctly!")
-        return True
-    print(f"❌ FAILURE: Expected 'dark', got '{settings2.themeMode}'")
-    return False
+        self.assertEqual(second.themeMode, "dark")
 
 
 if __name__ == "__main__":
-    success = test_theme_persistence()
-    sys.exit(0 if success else 1)
+    unittest.main()

@@ -527,8 +527,33 @@ def compose_security_info(
     remote = detections["remote_access"]
     mac = detections["mandatory_access_control"]
 
+    capabilities = {
+        "firewall": True,
+        "antivirus": True,
+        "secureBoot": secure_boot.get("enabled") is not None,
+        "tpm": False,
+        "diskEncryption": encryption.get("enabled") is not None,
+        "updates": updates.get("manager") != "unknown",
+        "remoteDesktop": True,
+        "localAdmins": False,
+        "uac": False,
+        "smartScreen": False,
+        "memoryIntegrity": False,
+        "mandatoryAccessControl": True,
+    }
+
     score = 100
-    for finding in (firewall, antivirus, updates, secure_boot, encryption, remote, mac):
+    for name, finding in (
+        ("firewall", firewall),
+        ("antivirus", antivirus),
+        ("updates", updates),
+        ("secureBoot", secure_boot),
+        ("diskEncryption", encryption),
+        ("remoteDesktop", remote),
+        ("mandatoryAccessControl", mac),
+    ):
+        if not capabilities.get(name, False):
+            continue
         if finding["level"] == "error":
             score -= 25
         elif finding["level"] == "warning":
@@ -553,7 +578,76 @@ def compose_security_info(
         overall_good = False
         overall_warning = False
 
-    device_detail_parts = [antivirus["detail"], secure_boot["detail"], encryption["detail"], mac["detail"]]
+    device_detail_parts: list[str] = []
+    unsupported_device_checks: list[str] = []
+
+    if capabilities["antivirus"]:
+        device_detail_parts.append(antivirus["detail"])
+    if capabilities["secureBoot"]:
+        device_detail_parts.append(secure_boot["detail"])
+    else:
+        unsupported_device_checks.append("Secure Boot")
+    if capabilities["diskEncryption"]:
+        device_detail_parts.append(encryption["detail"])
+    else:
+        unsupported_device_checks.append("disk encryption")
+    if capabilities["mandatoryAccessControl"]:
+        device_detail_parts.append(mac["detail"])
+
+    supported_device_checks = 0
+    passing_device_checks = 0
+    supported_device_has_risk = False
+
+    if capabilities["antivirus"]:
+        supported_device_checks += 1
+        if antivirus["level"] == "good":
+            passing_device_checks += 1
+        else:
+            supported_device_has_risk = True
+
+    if capabilities["secureBoot"]:
+        supported_device_checks += 1
+        if secure_boot.get("enabled") is True:
+            passing_device_checks += 1
+        else:
+            supported_device_has_risk = True
+
+    if capabilities["diskEncryption"]:
+        supported_device_checks += 1
+        if encryption.get("enabled") is True:
+            passing_device_checks += 1
+        else:
+            supported_device_has_risk = True
+
+    if capabilities["mandatoryAccessControl"]:
+        supported_device_checks += 1
+        if mac["status"] == "Active":
+            passing_device_checks += 1
+        else:
+            supported_device_has_risk = True
+
+    if supported_device_checks == 0:
+        device_status = "Unknown"
+        device_good = False
+        device_warning = True
+    elif not supported_device_has_risk:
+        device_status = "Strong"
+        device_good = True
+        device_warning = False
+    elif passing_device_checks > 0:
+        device_status = "Okay"
+        device_good = False
+        device_warning = True
+    else:
+        device_status = "Degraded"
+        device_good = False
+        device_warning = False
+
+    device_detail = " ".join(part for part in device_detail_parts if part)
+    if unsupported_device_checks:
+        note = "Additional checks unavailable: " + ", ".join(unsupported_device_checks) + "."
+        device_detail = f"{device_detail} {note}".strip()
+
     remote_status = "Minimized" if not remote["enabled"] else "Exposed"
 
     return {
@@ -581,9 +675,9 @@ def compose_security_info(
         "adminAccountDetail": "Elevated session active." if is_admin else "Standard user session.",
         "uacLevel": "N/A",
         "uacDetail": "Not applicable on Linux.",
-        "smartScreenEnabled": False,
+        "smartScreenEnabled": None,
         "smartScreenDetail": "Not applicable on Linux.",
-        "memoryIntegrityEnabled": False,
+        "memoryIntegrityEnabled": None,
         "memoryIntegrityDetail": "Not applicable on Linux.",
         "providers": providers,
         "simplified": {
@@ -607,10 +701,10 @@ def compose_security_info(
                 "detail": updates["detail"],
             },
             "deviceProtection": {
-                "isGood": antivirus["level"] == "good" and encryption["level"] == "good",
-                "isWarning": antivirus["level"] in {"warning", "unknown"} or encryption["level"] in {"warning", "unknown"} or secure_boot["level"] in {"warning", "unknown"},
-                "status": antivirus["status"],
-                "detail": " ".join(part for part in device_detail_parts if part),
+                "isGood": device_good,
+                "isWarning": device_warning,
+                "status": device_status,
+                "detail": device_detail,
             },
             "remoteAndApps": {
                 "isGood": remote["level"] == "good",
@@ -620,21 +714,34 @@ def compose_security_info(
             },
             "raw": {
                 "firewallEnabled": firewall["enabled"],
+                "firewallStatus": firewall["status"],
                 "firewallName": firewall["name"],
                 "antivirusEnabled": antivirus.get("installed", False),
+                "antivirusStatus": antivirus["status"],
                 "antivirusName": antivirus["name"],
                 "antivirusRealtime": antivirus.get("realtime", False),
+                "antivirusDetail": antivirus["detail"],
                 "secureBoot": secure_boot["status"],
                 "diskEncryption": encryption["status"],
                 "diskEncryptionDetail": encryption["detail"],
                 "windowsUpdateStatus": updates["ui_status"],
                 "windowsUpdateLastInstall": "",
+                "windowsUpdateDetail": updates["detail"],
                 "remoteDesktopEnabled": remote["enabled"],
+                "remoteDesktopStatus": remote["status"],
+                "remoteDesktopDetail": remote["detail"],
                 "remoteDesktopNla": False,
                 "adminAccountCount": 0,
+                "adminAccountDetail": "Elevated session active." if is_admin else "Standard user session.",
                 "uacLevel": "N/A",
-                "smartScreenEnabled": False,
-                "memoryIntegrityEnabled": False,
+                "uacDetail": "Not applicable on Linux.",
+                "smartScreenEnabled": None,
+                "smartScreenStatus": "Not applicable",
+                "smartScreenDetail": "Not applicable on Linux.",
+                "memoryIntegrityEnabled": None,
+                "memoryIntegrityStatus": "Not applicable",
+                "memoryIntegrityDetail": "Not applicable on Linux.",
+                "capabilities": capabilities,
                 "linuxUpdateManager": updates["manager"],
                 "linuxUpdatePendingCount": updates.get("pending_count"),
                 "linuxRemoteServices": remote.get("services", []),

@@ -171,6 +171,66 @@ class IntegratedSandbox:
         return max(0, min(100, value))
 
     @staticmethod
+    def _windows_engine_preference() -> str:
+        """Return the preferred Windows sandbox engine from ``SENTINEL_SANDBOX_ENGINE``.
+
+        Supported values (and their aliases):
+            ``windows_sandbox`` / ``wsb``  – Windows Sandbox (WSB)
+            ``job_object``      / ``job``  – Job Object restricted execution
+
+        Defaults to ``windows_sandbox`` when unset or unrecognised.
+        """
+        raw = os.environ.get("SENTINEL_SANDBOX_ENGINE", "windows_sandbox").strip().lower()
+        _aliases: dict[str, str] = {
+            "wsb": "windows_sandbox",
+            "windows_sandbox": "windows_sandbox",
+            "job": "job_object",
+            "job_object": "job_object",
+        }
+        return _aliases.get(raw, "windows_sandbox")
+
+    @staticmethod
+    def _resolve_windows_engine(
+        preference: str,
+        wsb_available: bool,
+        job_available: bool,
+    ) -> tuple[str, bool, str]:
+        """Resolve which engine to use given a preference and runtime availability.
+
+        Returns ``(engine_name, available, reason)`` where *engine_name* is the
+        canonical name of the preferred engine (unchanged even when using a
+        fallback), *available* is True when *any* engine can execute the sample,
+        and *reason* is a human-readable explanation.
+        """
+        any_available = wsb_available or job_available
+
+        if preference == "windows_sandbox":
+            if wsb_available:
+                return "windows_sandbox", True, "Windows Sandbox is available and selected."
+            if job_available:
+                return "windows_sandbox", True, (
+                    "Windows Sandbox preferred but unavailable; "
+                    "using Job Object as fallback."
+                )
+            return "windows_sandbox", False, "No sandbox engine is available."
+
+        if preference == "job_object":
+            if job_available:
+                return "job_object", True, "Job Object sandbox is available and selected."
+            if wsb_available:
+                return "job_object", True, (
+                    "Job Object preferred but unavailable; "
+                    "using Windows Sandbox as fallback."
+                )
+            return "job_object", False, "No sandbox engine is available."
+
+        # Unknown preference — choose whichever is present.
+        if any_available:
+            chosen = "windows_sandbox" if wsb_available else "job_object"
+            return preference, True, f"Unknown preference; fallback to {chosen}."
+        return preference, False, "No sandbox engine is available."
+
+    @staticmethod
     def _should_use_inplace_execution(original_path: Path) -> bool:
         """
         Heuristic: many desktop apps need adjacent files and fail when exe-only copied.

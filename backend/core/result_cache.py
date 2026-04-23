@@ -133,7 +133,7 @@ class ResultCache:
                 json.dump(serializable, f, indent=2)
 
         except Exception as e:
-            logger.exception(f"Failed to save cache to disk: {e}")
+            logger.exception("Failed to save cache to disk: %s", e)
 
     def _load_from_disk(self):
         """Load cache from JSON"""
@@ -154,7 +154,7 @@ class ResultCache:
             logger.info(f"Cache loaded from disk: {loaded} entries")
 
         except Exception as e:
-            logger.exception(f"Failed to load cache from disk: {e}")
+            logger.exception("Failed to load cache from disk: %s", e)
 
     @staticmethod
     def make_key(*args, **kwargs) -> str:

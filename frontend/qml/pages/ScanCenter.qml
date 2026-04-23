@@ -13,6 +13,14 @@ import "../ui"
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
+    signal requestRoute(string route)
+    readonly property var clamAvStatus: backend && backend.clamAvStatus ? backend.clamAvStatus : ({
+        available: false,
+        status: "unavailable",
+        label: "Unavailable",
+        detail: "Backend status unavailable"
+    })
 
     // ── Segment: 0 = File Scan  1 = URL Scan  2 = History ─────────────────
     property int segment: 0
@@ -71,6 +79,12 @@ Item {
         }
         return false
     }
+
+    Component.onCompleted: {
+        if (backend && typeof backend.refreshIntegrationStatus === "function") {
+            backend.refreshIntegrationStatus()
+        }
+    }
     function resetReportScrolls() {
         var views = [ovScroll, engScroll, behScroll, iocScroll, exScroll]
         for (var i = 0; i < views.length; i++) {
@@ -84,7 +98,7 @@ Item {
 
     // ── Backend connections ────────────────────────────────────────────────
     Connections {
-        target: (typeof Backend !== "undefined") ? Backend : null
+        target: root.backend
         enabled: target !== null
 
         // File scan
@@ -92,29 +106,23 @@ Item {
             root.filePct = pct; root.fileStage = stage
         }
         function onScanCenterFinished(r) {
-            console.log("[ScanCenter] onScanCenterFinished received")
             root.fileReport = r; root.fileScanning = false
             fileSubBar.currentIndex = 0
             Qt.callLater(function() { root.resetReportScrolls() })
-            // Safety net: if AI brief hasn't been set yet, generate a
-            // basic summary from the report so the box always appears.
             Qt.callLater(function() {
                 if (root.aiBriefText === "" && root.fileReport !== null) {
                     var v = (root.fileReport.verdict || {})
                     var fallback = "Scan complete — Risk: " + (v.risk || "Unknown")
                                  + " (Score " + (v.score || 0) + "/100). "
                                  + (v.label || "")
-                    console.log("[ScanCenter] Using QML fallback brief: " + fallback)
                     root.aiBriefText = fallback.trim()
                 }
             })
         }
         function onScanCenterAiBrief(text) {
-            console.log("[ScanCenter] onScanCenterAiBrief received, len=" + (text || "").length + " text=" + (text || "").substring(0, 80))
             root.aiBriefText = text || ""
         }
         function onScanCenterAiDetailed(text) {
-            console.log("[ScanCenter] onScanCenterAiDetailed received, len=" + (text || "").length)
             root.aiDetailedText = text || ""
         }
         function onScanCenterFailed(msg) {
@@ -202,36 +210,20 @@ Item {
 
     // ── Overlays / dialogs ─────────────────────────────────────────────────
     // Execute-mode confirmation dialog
-    Dialog {
+    SentinelDialog {
         id: execConfirmDlg
-        parent: Overlay.overlay
-        title: "Allow Sample Execution"
-        modal: true
-        anchors.centerIn: parent
-        width: 420
-        standardButtons: Dialog.Yes | Dialog.No
-
-        ColumnLayout {
-            spacing: 12
-            width: 380
-
-            Text {
-                text: "⚠  This will run the sample inside an isolated VM."
-                color: ThemeManager.warning
-                font.pixelSize: ThemeManager.fontSize_body
-                font.weight: (Font.SemiBold || 600)
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-            Text {
-                text: "Only proceed if you trust your sandbox environment and understand that the sample will execute with its normal code path."
-                color: ThemeManager.foreground()
-                font.pixelSize: ThemeManager.fontSize_small
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-        }
-
+        
+        titleText: "Allow Sample Execution"
+        iconText: "⚠"
+        iconColor: ThemeManager.warning
+        iconBgColor: Qt.rgba(ThemeManager.warning.r, ThemeManager.warning.g, ThemeManager.warning.b, 0.15)
+        
+        bodyText: "<b>This will run the sample inside an isolated VM.</b><br><br>Only proceed if you trust your sandbox environment and understand that the sample will execute with its normal code path."
+        
+        primaryButtonText: "Yes"
+        secondaryButtonText: "No"
+        primaryButtonColor: ThemeManager.warning
+        
         onAccepted: {
             root.optExec = true
         }
@@ -241,21 +233,18 @@ Item {
         }
     }
 
-    Dialog {
+    SentinelDialog {
         id: errDlg
-        parent: Overlay.overlay
         property string msg: ""
-        title: "Scan Failed"
-        standardButtons: Dialog.Ok
-        modal: true
-        anchors.centerIn: parent
-        width: 380
-        Label {
-            text: errDlg.msg
-            color: ThemeManager.foreground()
-            wrapMode: Text.WordWrap
-            width: 340
-        }
+        
+        titleText: "Scan Failed"
+        iconText: "⚠"
+        iconColor: ThemeManager.danger
+        iconBgColor: Qt.rgba(ThemeManager.danger.r, ThemeManager.danger.g, ThemeManager.danger.b, 0.15)
+        
+        bodyText: errDlg.msg
+        primaryButtonText: "OK"
+        showSecondaryButton: false
     }
 
     FileDialog {
@@ -265,7 +254,7 @@ Item {
         onAccepted: {
             var s = selectedFile.toString()
             // Strip file:// prefix and decode URI-encoded characters
-            if (Backend && Backend.isLinux) {
+            if (root.backend && root.backend.isLinux) {
                 // Linux: file:///home/… → /home/…
                 s = s.replace(/^file:\/\//i, "")
                 s = decodeURIComponent(s)
@@ -340,10 +329,11 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
+                                if (index === 2) {
+                                    root.requestRoute("history-scan")
+                                    return
+                                }
                                 root.segment = index
-                                if (index === 2 && histModel.count === 0
-                                        && typeof Backend !== "undefined")
-                                    Backend.loadScanCenterHistory(200)
                             }
                             Rectangle {
                                 anchors.fill: parent
@@ -405,7 +395,7 @@ Item {
                                     onDropped: {
                                         if (drop.urls.length > 0) {
                                             var s = drop.urls[0].toString()
-                                            if (Backend && Backend.isLinux) {
+                                            if (root.backend && root.backend.isLinux) {
                                                 s = s.replace(/^file:\/\//i, "")
                                                 s = decodeURIComponent(s)
                                             } else {
@@ -468,7 +458,7 @@ Item {
                                 Layout.preferredHeight: 40
                                 contentItem: Text {
                                     text: fScanBtn.text
-                                    color: fScanBtn.enabled ? "#ffffff" : ThemeManager.muted()
+                                    color: fScanBtn.enabled ? ThemeManager.selectionForeground : ThemeManager.muted()
                                     font.pixelSize: ThemeManager.fontSize_body
                                     font.weight: (Font.SemiBold || 600)
                                     horizontalAlignment: Text.AlignHCenter
@@ -488,8 +478,8 @@ Item {
                                     root.explainData = null
                                     root.aiBriefText = ""
                                     root.aiDetailedText = ""
-                                    if (typeof Backend !== "undefined")
-                                        Backend.startScanCenter(root.filePath,
+                                    if (root.backend)
+                                        root.backend.startScanCenter(root.filePath,
                                             JSON.stringify({
                                                 use_sandbox:     root.optSandbox,
                                                 allow_execution: root.optExec,
@@ -516,7 +506,7 @@ Item {
                                     radius: 8
                                 }
                                 onClicked: {
-                                    if (typeof Backend !== "undefined") Backend.cancelScanCenter()
+                                    if (root.backend) root.backend.cancelScanCenter()
                                     root.fileScanning = false
                                 }
                             }
@@ -532,12 +522,13 @@ Item {
 
                             CheckBox {
                                 id: ckClamAV
+                                property bool clamAvInstalled: root.clamAvStatus.available === true
                                 implicitWidth: ckClamAVLabel.implicitWidth + 24
                                 implicitHeight: 28
-                                checked: root.optClamAV
-                                enabled: true
-                                opacity: root.fileScanning ? 0.4 : 1.0
-                                onToggled: { if (!root.fileScanning) root.optClamAV = checked }
+                                checked: root.optClamAV && clamAvInstalled
+                                enabled: clamAvInstalled && !root.fileScanning
+                                opacity: (!clamAvInstalled || root.fileScanning) ? 0.45 : 1.0
+                                onToggled: { if (!root.fileScanning && clamAvInstalled) root.optClamAV = checked }
                                 indicator: Rectangle {
                                     width: 16; height: 16
                                     anchors.left: parent.left
@@ -556,11 +547,15 @@ Item {
                                 contentItem: Text {
                                     id: ckClamAVLabel
                                     leftPadding: 24
-                                    text: "ClamAV"
-                                    color: ThemeManager.foreground()
+                                    text: "ClamAV (" + (root.clamAvStatus.label || "Unavailable") + ")"
+                                    color: ckClamAV.clamAvInstalled ? ThemeManager.foreground() : ThemeManager.muted()
                                     font.pixelSize: ThemeManager.fontSize_body
                                     verticalAlignment: Text.AlignVCenter
                                 }
+                                ToolTip.visible: clamAVHover.hovered
+                                ToolTip.text: root.clamAvStatus.detail || "ClamAV status unavailable"
+                                ToolTip.delay: 400
+                                HoverHandler { id: clamAVHover }
                             }
 
                             CheckBox {
@@ -570,7 +565,7 @@ Item {
                                 checked: root.optSandbox
                                 enabled: true
                                 opacity: root.fileScanning ? 0.4 : 1.0
-                                visible: Backend ? !Backend.isLinux : true
+                                visible: root.backend ? !root.backend.isLinux : true
                                 onToggled: {
                                     if (root.fileScanning) return
                                     root.optSandbox = checked
@@ -616,8 +611,8 @@ Item {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            Layout.preferredHeight: (Backend && Backend.isLinux) ? 0 : 32
-                            visible: Backend ? !Backend.isLinux : true
+                            Layout.preferredHeight: (root.backend && root.backend.isLinux) ? 0 : 32
+                            visible: root.backend ? !root.backend.isLinux : true
                             spacing: 24
 
                             CheckBox {
@@ -797,7 +792,7 @@ Item {
                                 model: phaseModel
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
-                                    visible: !(model.phase === "sandbox" && (Backend ? Backend.isLinux : false))
+                                    visible: !(model.phase === "sandbox" && (root.backend ? root.backend.isLinux : false))
                                     implicitHeight: (model.phase === "sandbox" && model.status === "warn") ? 86 : 58
                                     radius: 8
                                     color: ThemeManager.surface()
@@ -868,8 +863,8 @@ Item {
                                                 text: "Open Sandbox Lab"
                                                 implicitHeight: 24
                                                 onClicked: {
-                                                    if (typeof Backend !== "undefined") {
-                                                        Backend.openSandboxLabForFile(root.filePath)
+                                                    if (root.backend) {
+                                                        root.backend.openSandboxLabForFile(root.filePath)
                                                     }
                                                 }
                                             }
@@ -878,8 +873,8 @@ Item {
                                                 text: "Open File Folder"
                                                 implicitHeight: 24
                                                 onClicked: {
-                                                    if (typeof Backend !== "undefined") {
-                                                        Backend.openFileParentFolder(root.filePath)
+                                                    if (root.backend) {
+                                                        root.backend.openFileParentFolder(root.filePath)
                                                     }
                                                 }
                                             }
@@ -1278,24 +1273,31 @@ Item {
                                         }
 
                                         Button {
+                                            id: showMoreButton
                                             visible: root.aiDetailedText !== ""
-                                            text: "Show More  →"
+                                            text: "Show More \u2192"
                                             flat: true
-                                            Layout.alignment: Qt.AlignRight
+                                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            topPadding: 6
+                                            bottomPadding: 6
+                                            implicitWidth: showMoreLabel.implicitWidth + leftPadding + rightPadding
+                                            implicitHeight: showMoreLabel.implicitHeight + topPadding + bottomPadding
                                             contentItem: Text {
-                                                text: parent.text
+                                                id: showMoreLabel
+                                                text: showMoreButton.text
                                                 color: ThemeManager.accent
                                                 font.pixelSize: ThemeManager.fontSize_small
                                                 font.weight: (Font.SemiBold || 600)
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? ThemeManager.surface() : "transparent"
+                                                color: showMoreButton.hovered ? ThemeManager.surface() : "transparent"
                                                 radius: 6
                                             }
-                                            onClicked: {
-                                                if (typeof loadRoute === "function")
-                                                    loadRoute("ai-report")
-                                            }
+                                            onClicked: root.requestRoute("ai-report")
                                         }
                                     }
                                 }
@@ -1773,7 +1775,7 @@ Item {
                                     text: "✨  Get AI Explanation"
                                     implicitWidth: 218; implicitHeight: 44
                                     contentItem: Text {
-                                        text: parent.text; color: "#ffffff"
+                                        text: parent.text; color: ThemeManager.selectionForeground
                                         font.pixelSize: ThemeManager.fontSize_body; font.weight: (Font.SemiBold || 600)
                                         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                     }
@@ -1782,9 +1784,9 @@ Item {
                                         radius: 8; Behavior on color { ColorAnimation { duration: 120 } }
                                     }
                                     onClicked: {
-                                        if (root.fileReport && typeof Backend !== "undefined") {
+                                        if (root.fileReport && root.backend) {
                                             explainBusy.running = true
-                                            Backend.explainScanCenterReport(JSON.stringify(root.fileReport))
+                                            root.backend.explainScanCenterReport(JSON.stringify(root.fileReport))
                                         }
                                     }
                                 }
@@ -1868,7 +1870,7 @@ Item {
                                         background: Rectangle { color: parent.parent.hovered ? ThemeManager.surface() : "transparent"; radius: 8 }
                                         onClicked: {
                                             var jid = ((root.fileReport || {}).job || {}).job_id || ""
-                                            if (jid && typeof Backend !== "undefined") Backend.exportScanCenterReport(jid, "")
+                                            if (jid && root.backend) root.backend.exportScanCenterReport(jid, "")
                                         }
                                     }
                                     Text { id: expOkLabel; text: ""; color: ThemeManager.success; font.pixelSize: ThemeManager.fontSize_small; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -2166,18 +2168,18 @@ Item {
                                     function startScan() {
                                         if (!enabled) return
                                         root.urlResult = null; root.urlPct = 0; root.urlStage = "Starting…"
-                                        if (typeof Backend !== "undefined") {
+                                        if (root.backend) {
                                             if (root.urlOptSandbox)
-                                                Backend.scanUrlSandbox(root.urlInput.trim(),
+                                                root.backend.scanUrlSandbox(root.urlInput.trim(),
                                                     root.urlOptBlockDl, root.urlOptBlockPvt, true, 30)
                                             else
-                                                Backend.scanUrlStatic(root.urlInput.trim(),
+                                                root.backend.scanUrlStatic(root.urlInput.trim(),
                                                     root.urlOptBlockPvt, true, 30)
                                         }
                                     }
 
                                     contentItem: Text {
-                                        text: uScanBtn.text; color: uScanBtn.enabled ? "#ffffff" : ThemeManager.muted()
+                                        text: uScanBtn.text; color: uScanBtn.enabled ? ThemeManager.selectionForeground : ThemeManager.muted()
                                         font.pixelSize: ThemeManager.fontSize_body; font.weight: (Font.SemiBold || 600)
                                         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                     }
@@ -2195,7 +2197,7 @@ Item {
                                     implicitWidth: 36; implicitHeight: 40
                                     contentItem: Text { text: parent.text; color: ThemeManager.danger; font.pixelSize: 16; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                                     background: Rectangle { color: parent.parent.hovered ? Qt.rgba(1, 0, 0, .1) : "transparent"; radius: 8 }
-                                    onClicked: { if (typeof Backend !== "undefined") Backend.cancelUrlScan(); root.urlScanning = false }
+                                    onClicked: { if (root.backend) root.backend.cancelUrlScan(); root.urlScanning = false }
                                 }
                             }
 
@@ -2204,54 +2206,29 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: 12
 
-                                CheckBox {
+                                StyledCheckBox {
                                     id: ckUrlSb
                                     text: "Detonate in sandbox"
                                     checked: root.urlOptSandbox
                                     enabled: !root.urlScanning
                                     onToggled: root.urlOptSandbox = checked
-                                    contentItem: Text {
-                                        leftPadding: ((ckUrlSb.indicator ? ckUrlSb.indicator.width : 18) + (ckUrlSb.spacing || 4))
-                                        text: ckUrlSb.text
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_small
-                                        verticalAlignment: Text.AlignVCenter
-                                        wrapMode: Text.NoWrap
-                                    }
                                 }
 
-                                CheckBox {
+                                StyledCheckBox {
                                     id: ckUrlBl
                                     text: "Block downloads"
                                     checked: root.urlOptBlockDl
                                     enabled: !root.urlScanning && root.urlOptSandbox
                                     opacity: enabled ? 1.0 : 0.4
                                     onToggled: root.urlOptBlockDl = checked
-                                    contentItem: Text {
-                                        leftPadding: ((ckUrlBl.indicator ? ckUrlBl.indicator.width : 18) + (ckUrlBl.spacing || 4))
-                                        text: ckUrlBl.text
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_small
-                                        verticalAlignment: Text.AlignVCenter
-                                        wrapMode: Text.NoWrap
-                                        opacity: ckUrlBl.opacity
-                                    }
                                 }
 
-                                CheckBox {
+                                StyledCheckBox {
                                     id: ckUrlPv
                                     text: "Block private IPs"
                                     checked: root.urlOptBlockPvt
                                     enabled: !root.urlScanning
                                     onToggled: root.urlOptBlockPvt = checked
-                                    contentItem: Text {
-                                        leftPadding: ((ckUrlPv.indicator ? ckUrlPv.indicator.width : 18) + (ckUrlPv.spacing || 4))
-                                        text: ckUrlPv.text
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_small
-                                        verticalAlignment: Text.AlignVCenter
-                                        wrapMode: Text.NoWrap
-                                    }
                                 }
                             }
                         }
@@ -2352,7 +2329,7 @@ Item {
                                                 ctx.stroke()
                                             }
                                             Component.onCompleted: requestPaint()
-                                            Connections { target: ThemeManager; function onThemeChanged() { gaugeArcBg.requestPaint() } }
+                                            Connections { target: ThemeManager; function onThemeModeChanged() { gaugeArcBg.requestPaint() } }
                                         }
 
                                         // Foreground arc (colored)
@@ -2873,10 +2850,29 @@ Item {
                         Text { visible: histModel.count > 0; text: histModel.count + " scan" + (histModel.count !== 1 ? "s" : ""); color: ThemeManager.muted(); font.pixelSize: ThemeManager.fontSize_small; Layout.alignment: Qt.AlignVCenter }
                         Item { Layout.fillWidth: true }
                         Button {
-                            text: "↻ Refresh"; flat: true
-                            contentItem: Text { text: parent.text; color: ThemeManager.accent; font.pixelSize: ThemeManager.fontSize_small; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                            background: Rectangle { color: parent.parent.hovered ? ThemeManager.surface() : "transparent"; radius: 8 }
-                            onClicked: { histModel.clear(); if (typeof Backend !== "undefined") Backend.loadScanCenterHistory(200) }
+                            id: historyRefreshButton
+                            text: "\u21BB Refresh"
+                            flat: true
+                            Layout.alignment: Qt.AlignVCenter
+                            leftPadding: 10
+                            rightPadding: 10
+                            topPadding: 6
+                            bottomPadding: 6
+                            implicitWidth: historyRefreshLabel.implicitWidth + leftPadding + rightPadding
+                            implicitHeight: historyRefreshLabel.implicitHeight + topPadding + bottomPadding
+                            contentItem: Text {
+                                id: historyRefreshLabel
+                                text: historyRefreshButton.text
+                                color: ThemeManager.accent
+                                font.pixelSize: ThemeManager.fontSize_small
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                color: historyRefreshButton.hovered ? ThemeManager.surface() : "transparent"
+                                radius: 8
+                            }
+                            onClicked: { histModel.clear(); if (root.backend) root.backend.loadScanCenterHistory(200) }
                         }
                     }
 
@@ -2918,8 +2914,8 @@ Item {
                                 id: hMouse; anchors.fill: parent
                                 hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (model.report_path && typeof Backend !== "undefined") {
-                                        Backend.openScanCenterReport(model.report_path)
+                                    if (model.report_path && root.backend) {
+                                        root.backend.openScanCenterReport(model.report_path)
                                         root.segment = 0
                                     }
                                 }

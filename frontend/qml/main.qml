@@ -12,7 +12,7 @@ ApplicationWindow {
     height: 900
     minimumWidth: 1000
     minimumHeight: 600
-    title: "Sentinel - Endpoint Security Suite v1.0.0"
+    title: "Sentinel Endpoint Security"
 
     color: ThemeManager.background()
     
@@ -47,18 +47,119 @@ ApplicationWindow {
         
         // Handle navigation requests from backend
         function onNavigateTo(route) {
-            console.log("[NAV] Backend requested navigation to:", route)
             loadRoute(route)
         }
     }
 
     // ===== NAVIGATION STATE =====
     property string currentRoute: "home"
+    property string historyRequestedTab: "scan"
+
+    function routeTitle(routeId) {
+        switch (routeId) {
+        case "event-viewer":
+            return "Event Viewer"
+        case "history":
+            return "History"
+        case "snapshot":
+            return "System Snapshot"
+        case "system-monitor":
+            return "System Monitor"
+        case "net-scan":
+            return "Network Scan"
+        case "nmap-result":
+            return "Network Scan Results"
+        case "scan-tool":
+            return "Scan Center"
+        case "ai-report":
+            return "AI Report"
+        case "file-function":
+            return "File Function"
+        case "sandbox-lab":
+            return "Sandbox"
+        case "ai-assistant":
+            return "Security Assistant"
+        case "settings":
+            return "Settings"
+        default:
+            return "Home"
+        }
+    }
+
+    function routeSubtitle(routeId) {
+        if (routeId === "history") {
+            switch (historyRequestedTab) {
+            case "incidents":
+                return "Scan records, incident evidence, and quarantine activity."
+            case "quarantine":
+                return "Active and historical quarantine records with restore and delete workflow."
+            case "url":
+                return "URL scan outcomes and analyst review trail."
+            default:
+                return "Unified audit trail for scans, incidents, quarantine, and URL scan history."
+            }
+        }
+
+        switch (routeId) {
+        case "event-viewer":
+            return "Platform event log from Windows Event Log or systemd journal, with AI-assisted explanation."
+        case "snapshot":
+            return "System inventory and security posture with truthful capability reporting."
+        case "system-monitor":
+            return "Live telemetry and real-time protection state with process-scanner activity."
+        case "net-scan":
+            return "Host discovery, service exposure, and network investigation."
+        case "nmap-result":
+            return "Detailed network findings for the last discovery or service scan."
+        case "scan-tool":
+            return "File and URL analysis with normalized verdicts, actions, and history."
+        case "ai-report":
+            return "AI-assisted explanation of the current scan, when configured."
+        case "file-function":
+            return "Secure deletion and recovery workflows with platform-aware limits."
+        case "sandbox-lab":
+            return "Isolated detonation and behavioral observation for supported Windows hosts."
+        case "ai-assistant":
+            return "Interactive security guidance backed by Groq when configured."
+        case "settings":
+            return "Local preferences, startup behavior, and capability-aware controls."
+        default:
+            return "Security overview, posture summary, and quick actions."
+        }
+    }
 
     function loadRoute(routeId) {
-        console.log("[NAV] Loading route:", routeId)
+        // "events" and "history-events" both now open the top-level Event Viewer page
+        if (routeId === "events" || routeId === "history-events" || routeId === "event-viewer") {
+            currentRoute = "event-viewer"
+            return
+        }
+        if (routeId === "history-scan") {
+            historyRequestedTab = "scan"
+            currentRoute = "history"
+            return
+        }
+        if (routeId === "history-incidents") {
+            historyRequestedTab = "incidents"
+            currentRoute = "history"
+            return
+        }
+        if (routeId === "history-quarantine") {
+            historyRequestedTab = "quarantine"
+            currentRoute = "history"
+            return
+        }
+        if (routeId === "history-url") {
+            historyRequestedTab = "url"
+            currentRoute = "history"
+            return
+        }
+        if (routeId === "history") {
+            historyRequestedTab = "scan"
+            currentRoute = "history"
+            return
+        }
         currentRoute = routeId
-        console.log("[NAV] Route loaded:", routeId)
     }
 
     // ===== MAIN LAYOUT =====
@@ -66,133 +167,233 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // ===== COLLAPSIBLE SIDEBAR =====
+        // ===== SIDEBAR =====
         Rectangle {
             id: sidebar
-            Layout.preferredWidth: sidebarExpanded ? 230 : 70
+            property bool sidebarExpanded: false
+            readonly property int collapsedWidth: 74
+            readonly property int expandedWidth: 218
+
+            Layout.preferredWidth: sidebar.sidebarExpanded ? sidebar.expandedWidth : sidebar.collapsedWidth
             Layout.fillHeight: true
             color: ThemeManager.panel()
-            
-            property bool sidebarExpanded: false
-            
-            // Smooth width animation
+
             Behavior on Layout.preferredWidth {
-                NumberAnimation { 
-                    duration: 200
-                    easing.type: Easing.InOutQuad 
+                NumberAnimation {
+                    duration: 190
+                    easing.type: Easing.OutCubic
                 }
             }
-            
-            // Hover detection using HoverHandler (doesn't block child events)
+
             HoverHandler {
                 id: sidebarHover
                 onHoveredChanged: {
-                    sidebar.sidebarExpanded = hovered
+                    if (hovered) {
+                        collapseSidebarTimer.stop()
+                        sidebar.sidebarExpanded = true
+                    } else {
+                        collapseSidebarTimer.restart()
+                    }
                 }
             }
-            
-            // Update when font size changes
-            property int fontTrigger: ThemeManager.fontSizeUpdateTrigger
+
+            Timer {
+                id: collapseSidebarTimer
+                interval: 170
+                repeat: false
+                onTriggered: sidebar.sidebarExpanded = false
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                width: 1
+                color: Qt.rgba(ThemeManager.border().r, ThemeManager.border().g, ThemeManager.border().b, 0.5)
+            }
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: sidebar.sidebarExpanded ? 16 : 8
-                spacing: 8
-                
+                anchors.margins: sidebar.sidebarExpanded ? 16 : 10
+                spacing: sidebar.sidebarExpanded ? 8 : 6
+
                 Behavior on anchors.margins {
-                    NumberAnimation { duration: 200 }
+                    NumberAnimation {
+                        duration: 180
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Behavior on spacing {
+                    NumberAnimation {
+                        duration: 180
+                        easing.type: Easing.OutCubic
+                    }
                 }
 
                 // Logo - clickable to go home
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 44
+                    height: 52
                     color: "transparent"
                     Layout.topMargin: 8
                     Layout.bottomMargin: 16
-                    
+
                     RowLayout {
                         anchors.fill: parent
-                        spacing: 8
-                        
-                        Text {
-                            text: "🛡️"
-                            font.pixelSize: ThemeManager.fontSize_h2
+                        spacing: 10
+
+                        Rectangle {
+                            Layout.preferredWidth: 36
+                            Layout.preferredHeight: 36
                             Layout.alignment: sidebar.sidebarExpanded ? Qt.AlignLeft : Qt.AlignHCenter
-                            Layout.fillWidth: !sidebar.sidebarExpanded
+                            radius: 10
+                            color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.16)
+                            border.color: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.32)
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "S"
+                                color: ThemeManager.accent
+                                font.pixelSize: ThemeManager.fontSize_h3
+                                font.bold: true
+                            }
                         }
-                        
-                        Text {
-                            text: "SENTINEL"
-                            color: ThemeManager.accent
-                            font.pixelSize: ThemeManager.fontSize_h3
-                            font.bold: true
-                            visible: sidebar.sidebarExpanded
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            Layout.preferredWidth: sidebar.sidebarExpanded ? brandColumn.implicitWidth : 0
+                            implicitHeight: brandColumn.implicitHeight
+                            clip: true
                             opacity: sidebar.sidebarExpanded ? 1 : 0
-                            
+
+                            Behavior on Layout.preferredWidth {
+                                NumberAnimation {
+                                    duration: 180
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+
                             Behavior on opacity {
-                                NumberAnimation { duration: 150 }
+                                NumberAnimation {
+                                    duration: 120
+                                    easing.type: Easing.OutQuad
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: brandColumn
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 0
+
+                                Text {
+                                    text: "Sentinel"
+                                    color: ThemeManager.foreground()
+                                    font.pixelSize: ThemeManager.fontSize_h3
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    text: "Endpoint Security"
+                                    color: ThemeManager.muted()
+                                    font.pixelSize: ThemeManager.fontSize_caption
+                                }
                             }
                         }
                     }
-                    
+
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: loadRoute("home")
                     }
                 }
-                
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredHeight: sidebar.sidebarExpanded ? 22 : 0
+                    opacity: sidebar.sidebarExpanded ? 1 : 0
+                    clip: true
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation {
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 120
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+
+                    Text {
+                        text: "Navigation"
+                        color: ThemeManager.muted()
+                        font.pixelSize: ThemeManager.fontSize_caption
+                        font.bold: true
+                        anchors.left: parent.left
+                        anchors.leftMargin: 6
+                        anchors.bottom: parent.bottom
+                    }
+                }
+
                 // Navigation Items using SidebarItem
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🏠"
+                    iconName: "home"
                     label: "Home"
                     isActive: currentRoute === "home"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("home")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "📋"
-                    label: "Event Viewer"
-                    isActive: currentRoute === "events"
-                    expanded: sidebar.sidebarExpanded
-                    onClicked: loadRoute("events")
-                }
-                
-                SidebarItem {
-                    Layout.fillWidth: true
-                    icon: "📊"
+                    iconName: "snapshot"
                     label: "System Snapshot"
                     isActive: currentRoute === "snapshot"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("snapshot")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "📡"
+                    iconName: "monitor"
                     label: "System Monitor"
                     isActive: currentRoute === "system-monitor"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("system-monitor")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🌐"
+                    iconName: "events"
+                    label: "Event Viewer"
+                    isActive: currentRoute === "event-viewer"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("event-viewer")
+                }
+
+                SidebarItem {
+                    Layout.fillWidth: true
+                    iconName: "network"
                     label: "Network Scan"
                     isActive: currentRoute === "net-scan" || currentRoute === "nmap-result"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("net-scan")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🔍"
-                    label: "File Scanner"
+                    iconName: "scan"
+                    label: "Scan Center"
                     isActive: currentRoute === "scan-tool"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("scan-tool")
@@ -200,36 +401,68 @@ ApplicationWindow {
 
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🗂️"
+                    iconName: "file"
                     label: "File Function"
                     isActive: currentRoute === "file-function"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("file-function")
                 }
-                
-                // Separator before AI section
+
+                // Separator before secondary tools section
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
-                    Layout.topMargin: 8
-                    Layout.bottomMargin: 8
+                    Layout.topMargin: sidebar.sidebarExpanded ? 10 : 8
+                    Layout.bottomMargin: sidebar.sidebarExpanded ? 10 : 8
                     color: ThemeManager.border()
-                    opacity: 0.5
+                    opacity: sidebar.sidebarExpanded ? 0.42 : 0.24
                 }
-                
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredHeight: sidebar.sidebarExpanded ? 22 : 0
+                    opacity: sidebar.sidebarExpanded ? 1 : 0
+                    clip: true
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation {
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 120
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+
+                    Text {
+                        text: "Tools"
+                        color: ThemeManager.muted()
+                        font.pixelSize: ThemeManager.fontSize_caption
+                        font.bold: true
+                        anchors.left: parent.left
+                        anchors.leftMargin: 6
+                        anchors.bottom: parent.bottom
+                    }
+                }
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🤖"
-                    label: "AI Assistant"
+                    iconName: "assistant"
+                    label: "Security Assistant"
                     isActive: currentRoute === "ai-assistant"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("ai-assistant")
                 }
-                
+
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "🖥"
-                    label: "Sandbox Lab"
+                    iconName: "sandbox"
+                    label: "Sandbox"
                     isActive: currentRoute === "sandbox-lab"
                     expanded: sidebar.sidebarExpanded
                     onClicked: loadRoute("sandbox-lab")
@@ -238,7 +471,16 @@ ApplicationWindow {
 
                 SidebarItem {
                     Layout.fillWidth: true
-                    icon: "⚙️"
+                    iconName: "history"
+                    label: "History"
+                    isActive: currentRoute === "history"
+                    expanded: sidebar.sidebarExpanded
+                    onClicked: loadRoute("history")
+                }
+
+                SidebarItem {
+                    Layout.fillWidth: true
+                    iconName: "settings"
                     label: "Settings"
                     isActive: currentRoute === "settings"
                     expanded: sidebar.sidebarExpanded
@@ -254,50 +496,87 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: ThemeManager.background()
-            
-            // Top bar with notification bell
+
+            // Top bar with page context and alerts
             Rectangle {
                 id: topBar
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 50
+                height: 58
                 color: ThemeManager.panel()
+                border.color: ThemeManager.border()
+                border.width: 1
                 z: 10
-                
+
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 20
                     anchors.rightMargin: 20
                     spacing: 12
-                    
-                    Item { Layout.fillWidth: true }
-                    
-                    // Notification bell
-                    Rectangle {
-                        width: 40
-                        height: 40
-                        radius: 8
-                        color: bellMouse.containsMouse ? ThemeManager.elevated() : "transparent"
-                        
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+
                         Text {
-                            anchors.centerIn: parent
-                            text: "🔔"
+                            text: routeTitle(currentRoute)
+                            color: ThemeManager.foreground()
                             font.pixelSize: ThemeManager.fontSize_h3
+                            font.bold: true
                         }
-                        
-                        // Unread badge
+
+                        Text {
+                            text: routeSubtitle(currentRoute)
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Rectangle {
+                        id: alertsBtn
+                        width: Math.max(104, alertsRow.implicitWidth + 28)
+                        height: 38
+                        radius: 8
+                        color: bellMouse.containsMouse ? ThemeManager.elevated() : ThemeManager.background()
+                        border.color: ThemeManager.border()
+                        border.width: 1
+
+                        RowLayout {
+                            id: alertsRow
+                            anchors.centerIn: parent
+                            spacing: 8
+
+                            SidebarIcon {
+                                width: 16
+                                height: 16
+                                name: "bell"
+                                iconColor: ThemeManager.foreground()
+                            }
+
+                            Text {
+                                text: "Alerts"
+                                color: ThemeManager.foreground()
+                                font.pixelSize: ThemeManager.fontSize_small
+                                font.bold: true
+                            }
+                        }
+
                         Rectangle {
                             visible: NotificationService ? NotificationService.unreadCount > 0 : false
                             anchors.top: parent.top
                             anchors.right: parent.right
-                            anchors.topMargin: 4
-                            anchors.rightMargin: 4
-                            width: 18
-                            height: 18
-                            radius: 9
+                            anchors.topMargin: -6
+                            anchors.rightMargin: -6
+                            width: 20
+                            height: 20
+                            radius: 10
                             color: ThemeManager.danger
-                            
+                            border.color: ThemeManager.panel()
+                            border.width: 2
+
                             Text {
                                 anchors.centerIn: parent
                                 text: NotificationService ? Math.min(NotificationService.unreadCount, 99) : ""
@@ -306,7 +585,7 @@ ApplicationWindow {
                                 font.bold: true
                             }
                         }
-                        
+
                         MouseArea {
                             id: bellMouse
                             anchors.fill: parent
@@ -331,11 +610,18 @@ ApplicationWindow {
                     visible: currentRoute === "home"
                 }
                 
+                HistoryPage {
+                    anchors.fill: parent
+                    visible: currentRoute === "history"
+                    requestedTab: historyRequestedTab
+                    onRequestRoute: route => loadRoute(route)
+                }
+
                 EventViewer {
                     anchors.fill: parent
-                    visible: currentRoute === "events"
+                    visible: currentRoute === "event-viewer"
                 }
-                
+
                 SystemSnapshot {
                     anchors.fill: parent
                     visible: currentRoute === "snapshot"
@@ -361,6 +647,7 @@ ApplicationWindow {
                     id: scanCenterPage
                     anchors.fill: parent
                     visible: currentRoute === "scan-tool"
+                    onRequestRoute: route => loadRoute(route)
                 }
 
                 AiReport {

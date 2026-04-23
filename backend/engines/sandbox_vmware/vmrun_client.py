@@ -89,13 +89,13 @@ class VmrunClient:
                 creationflags=_SUBPROCESS_FLAGS,
             )
         except FileNotFoundError as exc:
-            print(f"[vmrun] ERROR: vmrun.exe not found at: {self._config.vmrun_path}")
+            logger.error("vmrun.exe not found at: %s", self._config.vmrun_path)
             raise VmrunError(
                 "VMware Workstation vmrun.exe could not be launched. "
                 f"Expected: {self._config.vmrun_path}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
-            print(f"[vmrun] ERROR: Timed out after {timeout}s on: {args[0]}")
+            logger.error("vmrun timed out after %ds on: %s", timeout, args[0])
             raise VmrunError(
                 f"vmrun timed out after {timeout}s while running: {args[0]}"
             ) from exc
@@ -117,7 +117,6 @@ class VmrunClient:
                     f"{message}. Check SANDBOX_GUEST_USER / SANDBOX_GUEST_PASS "
                     "and confirm VMware Tools is installed in the guest."
                 )
-            print(f"[vmrun] ERROR: {message}")
             logger.warning("vmrun failed: %s", message)
             raise VmrunError(message)
         return result

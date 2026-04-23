@@ -1,26 +1,49 @@
-﻿import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import "../theme"
-
 
 Item {
     id: topbar
+
+    property string title: ""
+    property alias actions: actionsSlot.data
+
     height: 56
-    width: parent.width
+    width: parent ? parent.width : 0
+
     Rectangle {
         anchors.fill: parent
         color: Theme.panel
-        radius: Theme.radii_sm
-        
+        border.color: Theme.border
+        border.width: 1
+
         Behavior on color {
-            ColorAnimation { duration: 300; easing.type: Easing.InOutQuad }
+            ColorAnimation { duration: Theme.duration_fast; easing.type: Easing.InOutQuad }
         }
     }
+
     RowLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gap
-        spacing: Theme.gap
-        // TODO: Add status pill, title, and actions
+        anchors.leftMargin: Theme.spacing_lg
+        anchors.rightMargin: Theme.spacing_lg
+        spacing: Theme.spacing_md
+
+        Text {
+            text: topbar.title
+            color: Theme.text
+            font.pixelSize: Theme.typography.h4.size
+            font.weight: Theme.typography.h4.weight
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+            visible: topbar.title !== ""
+        }
+
+        Item {
+            id: actionsSlot
+            Layout.fillWidth: topbar.title === ""
+            implicitWidth: childrenRect.width
+            implicitHeight: childrenRect.height
+        }
     }
 }

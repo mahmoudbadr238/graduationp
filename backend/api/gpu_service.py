@@ -402,7 +402,7 @@ class GPUServiceBridge(QObject):
                     logger.warning(f"Invalid JSON from worker: {line[:100]}")
 
         except Exception as e:
-            logger.exception(f"Error parsing worker output: {e}")
+            logger.exception("Error parsing worker output: %s", e)
 
     def _on_stderr(self):
         """Log worker stderr"""

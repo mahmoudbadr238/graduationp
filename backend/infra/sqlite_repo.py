@@ -4,10 +4,10 @@ import json
 import logging
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 from backend.core.interfaces import IEventRepository, IScanRepository
 from backend.core.types import EventItem, ScanRecord, ScanType
+from backend.platform.paths import resolve_legacy_compatible_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,7 @@ class SqliteRepo(IScanRepository, IEventRepository):
     """SQLite-based repository for scans and events with connection pooling and optimizations."""
 
     def __init__(self):
-        # Store database in user profile
-        db_dir = Path.home() / ".sentinel"
-        db_dir.mkdir(exist_ok=True)
-
-        self.db_path = db_dir / "sentinel.db"
+        self.db_path = resolve_legacy_compatible_data_path("sentinel.db")
         self._connections: list[sqlite3.Connection] = []
         self._connection_pool_size = 0
         self.init()

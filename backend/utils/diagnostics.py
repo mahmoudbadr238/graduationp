@@ -1,13 +1,137 @@
 """Diagnostic utility for Sentinel - smoke test and version checks."""
 
 import logging
+import os
 import platform
+import shutil
 import sys
 from typing import Any
 
 from backend.runtime import resolve_bundle_path
 
 logger = logging.getLogger(__name__)
+
+
+def _collect_privileges(os_name: str) -> str:
+    """Return the current privilege level using the correct platform helper."""
+    try:
+        if os_name == "Windows":
+            from backend.infra.privileges import is_admin as _is_admin
+
+            return "administrator" if _is_admin() else "standard_user"
+        if os_name == "Linux":
+            from backend.platform.linux.admin import check_admin as _is_admin
+
+            return "root" if _is_admin() else "standard_user"
+    except ImportError:
+        return "unknown"
+    return "unknown"
+
+
+def _dependency_specs(os_name: str) -> dict[str, dict[str, Any]]:
+    """Return dependency checks relevant to the current platform."""
+    deps = {
+        "PySide6": {"description": "Qt framework for GUI", "optional": False},
+        "psutil": {"description": "System monitoring", "optional": False},
+        "pynvml": {"description": "NVIDIA GPU monitoring", "optional": True},
+    }
+    if os_name == "Windows":
+        deps["pywin32"] = {
+            "description": "Windows Event Log integration",
+            "optional": True,
+            "import_name": "pythoncom",
+        }
+        deps["wmi"] = {
+            "description": "WMI bindings for Windows RTP",
+            "optional": True,
+        }
+    return deps
+
+
+def _collect_dependency_status(
+    dependency_specs: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Import each dependency and return normalized status information."""
+    dependency_status: dict[str, dict[str, Any]] = {}
+    for module, info in dependency_specs.items():
+        try:
+            import_name = info.get("import_name", module)
+            mod = __import__(import_name)
+            version = getattr(mod, "__version__", "unknown")
+            dependency_status[module] = {
+                "version": version,
+                "status": "ok",
+            }
+        except ImportError:
+            dependency_status[module] = {
+                "status": "not_found",
+                "optional": info["optional"],
+            }
+    return dependency_status
+
+
+def _build_feature_status(
+    os_name: str,
+    dependencies: dict[str, dict[str, Any]],
+    *,
+    groq_configured: bool,
+) -> dict[str, dict[str, str]]:
+    """Describe feature availability without pretending optional paths are healthy."""
+    features: dict[str, dict[str, str]] = {}
+
+    if os_name == "Windows":
+        pywin32_ready = dependencies.get("pywin32", {}).get("status") == "ok"
+        wmi_ready = dependencies.get("wmi", {}).get("status") == "ok"
+        features["event_logs"] = {
+            "label": "Windows Event Log",
+            "status": "available" if pywin32_ready else "degraded",
+            "detail": (
+                "Event Viewer can read Windows Event Log"
+                if pywin32_ready
+                else "pywin32 is missing; Windows Event Log support is limited"
+            ),
+        }
+        features["real_time_protection"] = {
+            "label": "Real-Time Protection",
+            "status": "available" if pywin32_ready and wmi_ready else "degraded",
+            "detail": (
+                "Windows RTP can monitor new process launches"
+                if pywin32_ready and wmi_ready
+                else "Windows RTP is limited until pywin32 and wmi are installed"
+            ),
+        }
+    elif os_name == "Linux":
+        journalctl_ready = shutil.which("journalctl") is not None
+        features["event_logs"] = {
+            "label": "systemd journal",
+            "status": "available" if journalctl_ready else "degraded",
+            "detail": (
+                "Event Viewer can read systemd journal entries"
+                if journalctl_ready
+                else "journalctl is unavailable; Linux event log support is limited"
+            ),
+        }
+        features["real_time_protection"] = {
+            "label": "Real-Time Protection",
+            "status": "available",
+            "detail": "Linux RTP can monitor new process launches via process polling",
+        }
+
+    features["cloud_ai"] = {
+        "label": "Groq AI",
+        "status": "available" if groq_configured else "disabled",
+        "detail": (
+            "Groq-backed AI features are enabled"
+            if groq_configured
+            else "Set GROQ_API_KEY to enable cloud AI features"
+        ),
+    }
+    return features
+
+
+def _has_degraded_features(features: dict[str, dict[str, str]]) -> bool:
+    """Return True when a feature is degraded, not merely disabled by config."""
+    return any(feature.get("status") == "degraded" for feature in features.values())
 
 
 def collect_diagnostics() -> dict[str, Any]:
@@ -26,14 +150,10 @@ def collect_diagnostics() -> dict[str, Any]:
         "python_version": sys.version.split()[0],
         "python_executable": sys.executable,
     }
+    os_name = diagnostics["system"]["os"]
 
     # Admin status
-    try:
-        from backend.infra.privileges import is_admin
-
-        diagnostics["privileges"] = "administrator" if is_admin() else "standard_user"
-    except ImportError:
-        diagnostics["privileges"] = "unknown"
+    diagnostics["privileges"] = _collect_privileges(os_name)
 
     # Version info
     try:
@@ -47,27 +167,13 @@ def collect_diagnostics() -> dict[str, Any]:
         diagnostics["application"] = {"error": str(e)}
 
     # Dependencies
-    deps = {
-        "PySide6": {"description": "Qt framework for GUI", "optional": False},
-        "psutil": {"description": "System monitoring", "optional": False},
-        "pynvml": {"description": "NVIDIA GPU monitoring", "optional": True},
-        "pywin32": {"description": "Windows API access", "optional": True},
-    }
-
-    diagnostics["dependencies"] = {}
-    for module, info in deps.items():
-        try:
-            mod = __import__(module)
-            version = getattr(mod, "__version__", "unknown")
-            diagnostics["dependencies"][module] = {
-                "version": version,
-                "status": "ok",
-            }
-        except ImportError:
-            diagnostics["dependencies"][module] = {
-                "status": "not_found",
-                "optional": info["optional"],
-            }
+    deps = _dependency_specs(os_name)
+    diagnostics["dependencies"] = _collect_dependency_status(deps)
+    diagnostics["features"] = _build_feature_status(
+        os_name,
+        diagnostics["dependencies"],
+        groq_configured=bool(os.environ.get("GROQ_API_KEY", "").strip()),
+    )
 
     # Smoke test: collect metrics
     diagnostics["metrics"] = {}
@@ -114,10 +220,11 @@ def collect_diagnostics() -> dict[str, Any]:
 
     # Optional integrations
     try:
-        from backend.infra.integrations import nmap_available
+        from backend.infra.integrations import get_clamav_status, nmap_available
 
         diagnostics["integrations"] = {
             "nmap_available": nmap_available(),
+            "clamav_status": get_clamav_status(),
         }
     except ImportError as e:
         diagnostics["integrations"] = {"error": str(e)}
@@ -146,7 +253,7 @@ def run_diagnostics() -> int:
     print(f"  Python: {sys_info.get('python_version')}")
     print(f"  Executable: {sys_info.get('python_executable')}")
     priv = diags.get("privileges", "unknown")
-    admin_marker = "[OK]" if priv == "administrator" else "[WARNING]"
+    admin_marker = "[OK]" if priv in {"administrator", "root"} else "[WARNING]"
     print(f"  Privileges: {admin_marker} {priv}")
     print()
 
@@ -170,6 +277,21 @@ def run_diagnostics() -> int:
             print(f"  {marker} {module:15} {'NOT FOUND':15}")
             if not optional:
                 all_ok = False
+    print()
+
+    print("Feature Availability:")
+    features = diags.get("features", {})
+    for feature in features.values():
+        status = feature.get("status", "unknown")
+        if status == "available":
+            marker = "[OK]"
+        elif status == "disabled":
+            marker = "[INFO]"
+        else:
+            marker = "[WARNING]"
+        print(f"  {marker} {feature.get('label')}: {feature.get('detail')}")
+    if not features:
+        print("  [INFO] No feature-specific checks available")
     print()
 
     # Metrics
@@ -218,10 +340,15 @@ def run_diagnostics() -> int:
     else:
         print(f"  [WARNING] Could not check integrations: {integrations['error']}")
 
-    print()
-    if all_ok:
+    degraded_features = _has_degraded_features(features)
+    if all_ok and not degraded_features:
         print("=" * 60)
         print("[OK] DIAGNOSTICS PASSED - Application should run successfully")
+        print("=" * 60)
+        return 0
+    if all_ok:
+        print("=" * 60)
+        print("[WARNING] DIAGNOSTICS PASSED WITH DEGRADED FEATURES")
         print("=" * 60)
         return 0
     print("=" * 60)

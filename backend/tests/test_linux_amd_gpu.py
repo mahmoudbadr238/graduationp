@@ -11,10 +11,18 @@ Covers:
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# DRM sysfs tests create symlinks that require Linux (or Windows Developer Mode,
+# which is not guaranteed in CI).  Skip the whole module on non-Linux platforms.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="DRM sysfs tests use os.symlink — requires Linux",
+)
 
 # ── DRM enumeration ──────────────────────────────────────────────────────────
 

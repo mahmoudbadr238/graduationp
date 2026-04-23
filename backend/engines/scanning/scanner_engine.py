@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .decision import decision_from_scan_result
 from .static_scanner import StaticScanner
 
 logger = logging.getLogger(__name__)
@@ -110,26 +111,38 @@ class MalwareScanner:
         if not isinstance(groq, dict):
             groq = {}
 
-        groq_score = int(groq.get("score", 0) or 0)
-        verdict_text = str(scan_dict.get("verdict") or groq.get("verdict") or "Unknown")
-        verdict_norm = verdict_text.strip().lower()
+        final_decision = decision_from_scan_result(scan_result).to_dict()
 
         result["scanner_mode"] = "groq_ngav"
-        result["score"] = max(int(scan_dict.get("score", 0) or 0), groq_score)
-        result["is_malicious"] = bool(
-            result["score"] >= 50
-            or verdict_norm in {"malicious", "likely malicious", "likely_malicious"}
-        )
+        result["score"] = int(final_decision.get("score", 0) or 0)
+        result["is_malicious"] = final_decision.get("action") == "block"
+        result["verdict"] = final_decision.get("verdict_label", "Unknown")
+        result["action"] = final_decision.get("action", "allow")
+        result["action_reason"] = final_decision.get("action_reason", "")
+        result["final_decision"] = final_decision
 
         if groq:
             result["matched_rules"] = [
                 {
                     "rule_name": "Groq AI Verdict",
-                    "description": str(groq.get("explanation", "AI classification completed")),
-                    "severity": verdict_text,
+                    "description": str(
+                        groq.get("explanation", final_decision.get("action_reason", "AI classification completed"))
+                    ),
+                    "severity": result["verdict"],
                     "category": "ai_analysis",
                     "matched_strings": [],
                     "tags": ["groq", "ngav"],
+                }
+            ]
+        elif final_decision.get("triggered_rules"):
+            result["matched_rules"] = [
+                {
+                    "rule_name": str(final_decision["triggered_rules"][0]),
+                    "description": str(final_decision.get("action_reason", "Final decision normalized")),
+                    "severity": result["verdict"],
+                    "category": "final_decision",
+                    "matched_strings": [],
+                    "tags": ["decision"],
                 }
             ]
 

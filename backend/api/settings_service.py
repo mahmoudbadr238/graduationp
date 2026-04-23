@@ -1,10 +1,13 @@
 """Sentinel Settings Engine — QSettings-backed persistence with global effects."""
 
+import logging
 import platform
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
+
+_log = logging.getLogger(__name__)
 
 
 # Font-size label → pixel-size mapping
@@ -25,6 +28,7 @@ class SettingsService(QObject):
     liveMonitoringChanged = Signal()
     updateIntervalMsChanged = Signal()
     enableGpuMonitoringChanged = Signal()
+    closeToTrayChanged = Signal()
     startMinimizedChanged = Signal()
     startWithSystemChanged = Signal()
     sendErrorReportsChanged = Signal()
@@ -61,10 +65,13 @@ class SettingsService(QObject):
         )
         self._network_unit: str = self._qs.value("networkUnit", "auto")
 
-        print(
-            f"[Settings] Loaded from QSettings "
-            f"(scope={self._qs.fileName()})"
-        )
+        # Autostart is Windows-only today; do not carry a stale enabled value
+        # onto unsupported platforms.
+        if sys.platform != "win32" and self._start_with_system:
+            self._start_with_system = False
+            self._qs.setValue("startWithSystem", False)
+
+        _log.debug("Loaded from QSettings (scope=%s)", self._qs.fileName())
 
     # ------------------------------------------------------------------
     # Properties
@@ -130,16 +137,25 @@ class SettingsService(QObject):
             self._qs.setValue("enableGpuMonitoring", value)
             self.enableGpuMonitoringChanged.emit()
 
+    @Property(bool, notify=closeToTrayChanged)
+    def closeToTray(self) -> bool:
+        return self._start_minimized
+
+    @closeToTray.setter
+    def closeToTray(self, value: bool):
+        if value != self._start_minimized:
+            self._start_minimized = value
+            self._qs.setValue("startMinimized", value)
+            self.closeToTrayChanged.emit()
+            self.startMinimizedChanged.emit()
+
     @Property(bool, notify=startMinimizedChanged)
     def startMinimized(self) -> bool:
         return self._start_minimized
 
     @startMinimized.setter
     def startMinimized(self, value: bool):
-        if value != self._start_minimized:
-            self._start_minimized = value
-            self._qs.setValue("startMinimized", value)
-            self.startMinimizedChanged.emit()
+        self.closeToTray = value
 
     @Property(bool, notify=startWithSystemChanged)
     def startWithSystem(self) -> bool:
@@ -147,11 +163,16 @@ class SettingsService(QObject):
 
     @startWithSystem.setter
     def startWithSystem(self, value: bool):
-        if value != self._start_with_system:
-            self._start_with_system = value
-            self._qs.setValue("startWithSystem", value)
+        normalized = bool(value) if self.supportsAutostart else False
+        if value and not self.supportsAutostart:
+            _log.info("Ignoring autostart enable request on unsupported platform")
+
+        if normalized != self._start_with_system:
+            self._start_with_system = normalized
+            self._qs.setValue("startWithSystem", normalized)
             self.startWithSystemChanged.emit()
-            self._set_windows_autostart(value)
+            if self.supportsAutostart:
+                self._set_windows_autostart(normalized)
 
     @Property(bool, notify=sendErrorReportsChanged)
     def sendErrorReports(self) -> bool:
@@ -187,11 +208,23 @@ class SettingsService(QObject):
 
     @Property(bool, constant=True)
     def isWindows(self) -> bool:
-        return True
+        return sys.platform == "win32"
 
     @Property(bool, constant=True)
     def supportsAutostart(self) -> bool:
-        return True
+        return sys.platform == "win32"
+
+    @Property(bool, constant=True)
+    def supportsCloseToTray(self) -> bool:
+        try:
+            from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+
+            return (
+                QApplication.instance() is not None
+                and QSystemTrayIcon.isSystemTrayAvailable()
+            )
+        except (ImportError, RuntimeError):
+            return False
 
     @Property(str, constant=True)
     def settingsPath(self) -> str:
@@ -201,7 +234,9 @@ class SettingsService(QObject):
     # Run on Startup — Windows Registry
     # ------------------------------------------------------------------
     def _set_windows_autostart(self, enable: bool):
-        """Add/remove Sentinel from HKCU\\...\\Run via winreg."""
+        """Add/remove Sentinel from HKCU\\...\\Run via winreg (Windows only)."""
+        if sys.platform != "win32":
+            return
         try:
             import winreg
 
@@ -222,16 +257,16 @@ class SettingsService(QObject):
             ) as key:
                 if enable:
                     winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
-                    print(f"[Settings] Autostart enabled: {exe_path}")
+                    _log.info("Autostart enabled: %s", exe_path)
                 else:
                     try:
                         winreg.DeleteValue(key, app_name)
-                        print("[Settings] Autostart disabled")
+                        _log.info("Autostart disabled")
                     except FileNotFoundError:
                         pass
         except OSError as e:
             error_msg = f"Could not set autostart: {e}"
-            print(f"[Settings] {error_msg}")
+            _log.warning("Autostart registry error: %s", e)
             self.saveError.emit(error_msg)
 
     # ------------------------------------------------------------------
@@ -270,9 +305,10 @@ class SettingsService(QObject):
         self.liveMonitoringChanged.emit()
         self.updateIntervalMsChanged.emit()
         self.enableGpuMonitoringChanged.emit()
+        self.closeToTrayChanged.emit()
         self.startMinimizedChanged.emit()
         self.startWithSystemChanged.emit()
         self.sendErrorReportsChanged.emit()
         self.networkUnitChanged.emit()
 
-        print("[Settings] Reset to defaults")
+        _log.info("Settings reset to defaults")

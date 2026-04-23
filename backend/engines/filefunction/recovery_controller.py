@@ -324,7 +324,7 @@ class _ScanWorker(QThread):
                     volumes.append(letter)
             if not volumes:
                 volumes = [chr(x) for x in range(67, 91) if os.path.exists(f"{chr(x)}:\\")]
-                if os.path.exists("C:\\"):
+                if sys.platform == "win32" and os.path.exists("C:\\"):
                     volumes.insert(0, "C")
                 volumes = list(dict.fromkeys(volumes))
 

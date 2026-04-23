@@ -133,7 +133,7 @@ class ScannerOrchestrator(QThread):
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _emit(self, pct: int, msg: str) -> None:
-        print(f"[Orchestrator] {pct}% — {msg}")
+        logger.debug("%d%% — %s", pct, msg)
         self.progress_updated.emit(pct, msg)
 
     @staticmethod
@@ -251,38 +251,23 @@ class ScannerOrchestrator(QThread):
         # Normalize the target path to an absolute Windows path so ClamAV
         # doesn't choke on relative paths or forward-slash separators.
         abs_target = os.path.abspath(str(self._file_path))
-        print(f"[Orchestrator] Phase 1 — Target (abs): {abs_target}")
+        logger.debug("Phase 1 — target (abs): %s", abs_target)
 
-        # 1. Try PATH first
-        clamscan = shutil.which("clamscan") or shutil.which("clamdscan")
+        from backend.infra.integrations import get_clamav_status
 
-        # 2. Probe well-known installation directories
-        if not clamscan:
-            _CLAMAV_CANDIDATES = [
-                r"C:\Program Files\ClamAV\clamscan.exe",
-                r"C:\Program Files (x86)\ClamAV\clamscan.exe",
-                r"C:\ClamAV\clamscan.exe",
-                r"C:\Program Files\ClamAV\clamdscan.exe",
-                r"C:\Program Files (x86)\ClamAV\clamdscan.exe",
-                r"C:\ClamAV\clamdscan.exe",
-            ]
-            for candidate in _CLAMAV_CANDIDATES:
-                if os.path.isfile(candidate):
-                    clamscan = candidate
-                    print(f"[Orchestrator] Phase 1 — Found ClamAV at hardcoded path: {candidate}")
-                    break
+        clamav_status = get_clamav_status()
+        clamscan = clamav_status.get("scannerPath") or ""
 
         if not clamscan:
-            env_path = os.environ.get("PATH", "<not set>")
-            print(f"[Orchestrator] Phase 1 — ClamAV NOT FOUND. System PATH:\n{env_path}")
-            self._emit(15, "Phase 1 — ClamAV not installed (clamscan not found)")
+            logger.warning("Phase 1 — ClamAV unavailable: %s", clamav_status.get("detail", "Not installed"))
+            self._emit(15, f"Phase 1 — ClamAV {clamav_status.get('label', 'unavailable')}")
             return EngineResult(
                 name="ClamAV", status="not_installed", score=0,
-                details="clamscan / clamdscan not found on this system or common install paths",
+                details=clamav_status.get("detail", "ClamAV scanner is unavailable"),
             )
 
         cmd = [clamscan, "--no-summary", abs_target]
-        print(f"[Orchestrator] Phase 1 — ClamAV command: {cmd}")
+        logger.debug("Phase 1 — ClamAV command: %s", cmd)
 
         try:
             proc = subprocess.run(
@@ -297,14 +282,14 @@ class ScannerOrchestrator(QThread):
                 details="clamscan timed out (90 s)",
             )
         except FileNotFoundError as exc:
-            print(f"[Orchestrator] Phase 1 — ClamAV binary vanished: {exc}")
+            logger.error("Phase 1 — ClamAV binary not found: %s", exc)
             self._emit(15, f"Phase 1 — ClamAV binary not found: {exc}")
             return EngineResult(
                 name="ClamAV", status="error", score=0,
                 details=f"Binary not found: {exc}",
             )
         except Exception as exc:
-            print(f"[Orchestrator] Phase 1 ClamAV crash: {exc}")
+            logger.error("Phase 1 — ClamAV unexpected error: %s", exc)
             self._emit(15, f"Phase 1 — ClamAV error: {exc}")
             return EngineResult(
                 name="ClamAV", status="error", score=0,
@@ -314,10 +299,9 @@ class ScannerOrchestrator(QThread):
         # ── Aggressive output logging for every exit code ─────────────
         stdout = (proc.stdout or "").strip()
         stderr = (proc.stderr or "").strip()
-        print(
-            f"[Orchestrator] Phase 1 — ClamAV rc={proc.returncode}\n"
-            f"  STDOUT: {stdout[:500] or '(empty)'}\n"
-            f"  STDERR: {stderr[:500] or '(empty)'}"
+        logger.debug(
+            "Phase 1 — ClamAV rc=%d  stdout=%r  stderr=%r",
+            proc.returncode, stdout[:500] or "(empty)", stderr[:500] or "(empty)",
         )
 
         combined = f"{stdout}\n{stderr}".strip()
@@ -338,7 +322,7 @@ class ScannerOrchestrator(QThread):
         if proc.returncode == 2:
             # ClamAV error — surface the exact reason (missing db, perms, etc.)
             error_detail = stderr or stdout or "ClamAV returned exit code 2 (unknown error)"
-            print(f"[Orchestrator] Phase 1 — ClamAV ERROR detail:\n{error_detail}")
+            logger.warning("Phase 1 — ClamAV error (rc=2): %s", error_detail[:300])
             self._emit(15, f"Phase 1 — ClamAV error: {error_detail[:80]}")
             return EngineResult(
                 name="ClamAV", status="error", score=0,
@@ -348,7 +332,7 @@ class ScannerOrchestrator(QThread):
         if proc.returncode != 0:
             # Unexpected exit code — still surface it
             error_detail = combined or f"ClamAV exited with rc={proc.returncode}"
-            print(f"[Orchestrator] Phase 1 — ClamAV unexpected rc={proc.returncode}: {error_detail}")
+            logger.warning("Phase 1 — ClamAV unexpected rc=%d: %s", proc.returncode, error_detail[:300])
             self._emit(15, f"Phase 1 — ClamAV rc={proc.returncode}")
             return EngineResult(
                 name="ClamAV", status="error", score=0,
@@ -386,19 +370,17 @@ class ScannerOrchestrator(QThread):
         kvm_exe = _VMWARE_KVM_EXE
         vmx_path = config.vmx_path
         self._emit(30, "Phase 2 — Launching vmware-kvm.exe …")
-        print(f"[Orchestrator] Launching KVM: {kvm_exe!r} {vmx_path!r}")
+        logger.debug("Launching KVM: %r %r", kvm_exe, vmx_path)
         try:
             self._kvm_process = subprocess.Popen(
                 [kvm_exe, vmx_path],
                 creationflags=_SUBPROCESS_FLAGS,
             )
-            print(f"[Orchestrator] KVM process started, PID={self._kvm_process.pid}")
+            logger.info("KVM process started, PID=%d", self._kvm_process.pid)
         except FileNotFoundError:
-            print(f"[Orchestrator] ERROR: vmware-kvm.exe not found at {kvm_exe}")
             logger.warning("vmware-kvm.exe not found at %s — embedding skipped", kvm_exe)
             self._kvm_process = None
         except OSError as exc:
-            print(f"[Orchestrator] ERROR launching vmware-kvm.exe: {exc}")
             logger.warning("Failed to launch vmware-kvm.exe: %s", exc)
             self._kvm_process = None
 
@@ -490,12 +472,12 @@ class ScannerOrchestrator(QThread):
             try:
                 self._kvm_process.terminate()
                 self._kvm_process.wait(timeout=5)
-                print(f"[Orchestrator] KVM process PID={pid} terminated cleanly")
+                logger.debug("KVM process PID=%d terminated cleanly", pid)
             except subprocess.TimeoutExpired:
                 self._kvm_process.kill()
-                print(f"[Orchestrator] KVM process PID={pid} force-killed")
+                logger.debug("KVM process PID=%d force-killed", pid)
             except OSError as exc:
-                print(f"[Orchestrator] KVM teardown error: {exc}")
+                logger.warning("KVM teardown error: %s", exc)
             finally:
                 self._kvm_process = None
 
@@ -503,11 +485,11 @@ class ScannerOrchestrator(QThread):
         if client is not None:
             try:
                 client.stop(hard=False, timeout=30)
-                print("[Orchestrator] VM soft-stopped via vmrun")
+                logger.debug("VM soft-stopped via vmrun")
             except VmrunError:
                 try:
                     client.stop(hard=True, timeout=15)
-                    print("[Orchestrator] VM hard-stopped via vmrun (fallback)")
+                    logger.debug("VM hard-stopped via vmrun (fallback)")
                 except VmrunError as exc:
                     logger.warning("VM stop failed during teardown: %s", exc)
 
@@ -884,7 +866,6 @@ class ScannerOrchestrator(QThread):
 
         api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not api_key:
-            print("[Orchestrator] Groq — GROQ_API_KEY not set, skipping AI summary")
             logger.warning("GROQ_API_KEY not set — Groq AI summary skipped")
             return None
 
@@ -927,21 +908,18 @@ class ScannerOrchestrator(QThread):
         }
 
         url = "https://api.groq.com/openai/v1/chat/completions"
-        print(f"[Orchestrator] Groq — POST {url}  model={payload['model']}")
+        logger.debug("Groq — POST %s  model=%s", url, payload["model"])
 
         try:
             resp = _req.post(url, json=payload, headers=headers, timeout=30)
             resp.raise_for_status()
         except _req.exceptions.Timeout:
-            print("[Orchestrator] Groq — request timed out (30 s)")
-            logger.warning("Groq API timed out")
+            logger.warning("Groq API timed out (30 s)")
             return None
         except _req.exceptions.HTTPError as exc:
-            print(f"[Orchestrator] Groq — HTTP {resp.status_code}: {resp.text[:300]}")
             logger.warning("Groq API HTTP error: %s", exc)
             return None
         except _req.exceptions.RequestException as exc:
-            print(f"[Orchestrator] Groq — network error: {exc}")
             logger.warning("Groq API request failed: %s", exc)
             return None
 
@@ -950,11 +928,10 @@ class ScannerOrchestrator(QThread):
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, ValueError) as exc:
-            print(f"[Orchestrator] Groq — unexpected response shape: {exc}")
             logger.warning("Groq response parsing failed: %s", exc)
             return None
 
-        print(f"[Orchestrator] Groq — raw response ({len(content)} chars): {content[:200]}")
+        logger.debug("Groq — raw response (%d chars): %s", len(content), content[:200])
 
         # Parse brief ||| detailed sections
         if "|||" in content:
@@ -1261,12 +1238,12 @@ class ScannerOrchestrator(QThread):
                         "Sandbox skipped: vmrun or guest credentials not configured"
                     )
             except VmrunError as exc:
-                print(f"[Orchestrator] Sandbox pipeline error: {exc}")
+                logger.error("Sandbox pipeline error: %s", exc)
                 self._emit(65, f"Sandbox error: {str(exc)[:80]}")
                 sandbox.enabled = True
                 sandbox.errors.append(str(exc)[:300])
             except Exception as exc:
-                print(f"[Orchestrator] Sandbox unexpected error: {exc}")
+                logger.error("Sandbox unexpected error: %s", exc)
                 self._emit(65, f"Sandbox error: {exc}")
                 sandbox.errors.append(str(exc)[:300])
 
@@ -1284,7 +1261,7 @@ class ScannerOrchestrator(QThread):
                     behavior_log, clamav_result, sandbox,
                 )
             except Exception as phase5_exc:
-                print(f"[Orchestrator] Phase 5 error (non-fatal): {phase5_exc}")
+                logger.warning("Phase 5 error (non-fatal): %s", phase5_exc)
                 self._emit(80, "Phase 5 — AI summary failed, using fallback")
                 brief_text, detailed_text = self._deterministic_summary(
                     clamav_result, sandbox,
@@ -1308,7 +1285,7 @@ class ScannerOrchestrator(QThread):
             self.scan_complete.emit(report.to_dict(), "", "")
 
         except Exception as exc:
-            print(f"[Orchestrator] FATAL: {exc}")
+            logger.critical("Scan pipeline fatal error: %s", exc, exc_info=True)
             self._emit(100, f"Fatal error: {exc}")
             report.verdict.risk = "Unknown"
             report.verdict.label = f"Pipeline error: {str(exc)[:120]}"

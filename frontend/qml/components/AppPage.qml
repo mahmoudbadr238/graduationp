@@ -1,6 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Layouts 1.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import "../ui"
 
 Item {
     id: root
@@ -10,12 +11,10 @@ Item {
 
     anchors.fill: parent
 
-    Theme { id: theme }
-
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: theme.paddingXL
-        spacing: theme.gapLarge
+        anchors.margins: 32
+        spacing: 24
 
         // Header
         ColumnLayout {
@@ -24,7 +23,7 @@ Item {
 
             Text {
                 text: root.title
-                color: theme.colorTextPrimary
+                color: ThemeManager.foreground()
                 font.pixelSize: ThemeManager.fontSize_h1
                 font.bold: true
             }
@@ -32,8 +31,8 @@ Item {
             Text {
                 visible: root.subtitle !== ""
                 text: root.subtitle
-                color: theme.colorTextSecondary
-                font.pixelSize: ThemeManager.fontSize_small
+                color: ThemeManager.muted()
+                font.pixelSize: ThemeManager.fontSize_body
             }
         }
 
@@ -46,7 +45,7 @@ Item {
 
             ColumnLayout {
                 width: parent.width - 16
-                spacing: theme.gapLarge
+                spacing: 20
 
                 Loader {
                     id: contentLoader

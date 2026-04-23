@@ -55,6 +55,5 @@ Item {
     
     Component.onCompleted: {
         surface.state = "entered"
-        console.log("[DEBUG] AppSurface instantiated (", surface.width, "x", surface.height, ")")
     }
 }

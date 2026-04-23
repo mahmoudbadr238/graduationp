@@ -9,6 +9,7 @@ Rectangle {
     property string title: ""
     property string value: ""
     property string subtitle: ""  // Secondary text line
+    property string note: ""      // Optional tertiary note
     property bool isGood: true
     property bool isWarning: false  // Yellow warning state
     property bool isNeutral: false  // Gray/neutral state for N/A items
@@ -23,7 +24,7 @@ Rectangle {
     border.color: ThemeManager.border()
     border.width: 1
     implicitWidth: 180
-    implicitHeight: 110
+    implicitHeight: 132
     
     // Status color logic: good (green), warning (yellow/amber), bad (red), neutral (gray)
     readonly property color statusColor: {
@@ -57,7 +58,7 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            Switch {
+            StyledSwitch {
                 id: cardSwitch
                 visible: card.toggleable
                 checked: card.toggleChecked
@@ -91,8 +92,22 @@ Rectangle {
             font.pixelSize: ThemeManager.fontSize_caption
             visible: card.subtitle.length > 0
             Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            maximumLineCount: card.note.length > 0 ? 1 : 2
             elide: Text.ElideRight
             opacity: 0.8
+        }
+
+        Text {
+            text: card.note
+            color: ThemeManager.muted()
+            font.pixelSize: ThemeManager.fontSize_small
+            visible: card.note.length > 0
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            opacity: 0.72
         }
 
         Item { Layout.fillHeight: true }

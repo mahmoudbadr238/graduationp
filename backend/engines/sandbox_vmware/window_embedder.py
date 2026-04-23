@@ -97,7 +97,7 @@ def find_kvm_hwnd(
             # Strategy 1: exact class match (fastest, most reliable)
             if cls_name == _KVM_WINDOW_CLASS:
                 found_hwnd = hwnd
-                print(f"[KVM-finder] MATCH by class '{cls_name}' HWND={hwnd:#x} title={title!r}")
+                logger.debug("KVM match by class %r HWND=%#x title=%r", cls_name, hwnd, title)
                 return False
 
             if not title:
@@ -106,13 +106,13 @@ def find_kvm_hwnd(
             # Strategy 2: title-based match (VMware Workstation pattern)
             if title.endswith("- VMware Workstation") or "VMware Workstation" in title:
                 found_hwnd = hwnd
-                print(f"[KVM-finder] MATCH by title HWND={hwnd:#x} title={title!r}")
+                logger.debug("KVM match by title HWND=%#x title=%r", hwnd, title)
                 return False
 
             # Strategy 3: VM name substring match
             if vm_name and vm_name in title:
                 found_hwnd = hwnd
-                print(f"[KVM-finder] MATCH by vm_name HWND={hwnd:#x} title={title!r}")
+                logger.debug("KVM match by vm_name HWND=%#x title=%r", hwnd, title)
                 return False
 
             return True
@@ -129,7 +129,7 @@ def find_kvm_hwnd(
             )
             return found_hwnd
 
-        print(f"[KVM-finder] attempt {attempt} — no KVM window yet, retrying …")
+        logger.debug("KVM finder attempt %d — no window yet, retrying", attempt)
         time.sleep(poll_interval)
 
     logger.warning("find_kvm_hwnd: no KVM window found after %ds", timeout)

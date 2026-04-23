@@ -67,7 +67,7 @@ class StartupTask(QRunnable):
             logger.info(f"[StartupTask] Completed: {self.name} ({elapsed:.0f}ms)")
             self.signals.completed.emit(self.name)
         except Exception as e:
-            logger.exception(f"[StartupTask] Failed {self.name}: {e}")
+            logger.exception("[StartupTask] Failed %s: %s", self.name, e)
             self.signals.failed.emit(self.name, str(e))
 
     def _on_timeout(self):
@@ -114,7 +114,7 @@ class StartupOrchestrator(QObject):
             logger.info(f"[Immediate] Completed {name} ({elapsed:.0f}ms)")
             self.taskCompleted.emit(name)
         except Exception as e:
-            logger.exception(f"[Immediate] Failed {name}: {e}")
+            logger.exception("[Immediate] Failed %s: %s", name, e)
             self.taskFailed.emit(name, str(e))
             # Critical phase failure - propagate
             if self._current_phase == "critical":
@@ -135,7 +135,7 @@ class StartupOrchestrator(QObject):
                 logger.info(f"[Deferred] Completed {name} ({elapsed:.0f}ms)")
                 self.taskCompleted.emit(name)
             except Exception as e:
-                logger.exception(f"[Deferred] Failed {name}: {e}")
+                logger.exception("[Deferred] Failed %s: %s", name, e)
                 self.taskFailed.emit(name, str(e))
                 # Important phase failure - continue but log
                 if self._current_phase == "important":

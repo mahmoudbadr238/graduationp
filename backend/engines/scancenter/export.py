@@ -16,6 +16,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from backend.platform.paths import get_app_paths
+
 from .report_schema import V3Report
 
 logger = logging.getLogger(__name__)
@@ -87,8 +89,8 @@ def export_report(
 
 
 def default_export_dir(job_id: str) -> Path:
-    """Return the canonical per-job export directory (under ~/.sentinel/reports/)."""
-    base = Path.home() / ".sentinel" / "reports"
+    """Return the canonical per-job export directory under the platform data dir."""
+    base = get_app_paths().data_dir / "reports"
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in job_id)
     return base / safe_id
 

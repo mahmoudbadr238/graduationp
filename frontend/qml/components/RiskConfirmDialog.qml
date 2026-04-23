@@ -3,186 +3,189 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../ui"
 
-/**
- * RiskConfirmDialog - Reusable confirmation dialog for dangerous security toggles.
- *
- * Usage:
- *   RiskConfirmDialog {
- *       id: riskDialog
- *       onAccepted: { // commit the action }
- *       onRejected: { // revert the toggle }
- *   }
- *   // To show:
- *   riskDialog.show("firewall", false)   // featureId, newState
- */
-Popup {
+Dialog {
     id: popup
-    anchors.centerIn: parent
-    width: Math.min(420, parent.width - 48)
-    modal: true
-    dim: true
-    closePolicy: Popup.CloseOnEscape
+    objectName: "riskConfirmDialog"
 
-    // Expose context so callers know what was confirmed
     property string featureId: ""
-    property bool   newState: false
+    property bool newState: false
     property string featureLabel: ""
 
-    signal accepted(string featureId, bool newState)
-    signal rejected(string featureId)
+    signal acceptedFeature(string featureId, bool newState)
+    signal rejectedFeature(string featureId)
 
-    function show(fId, state) {
-        featureId = fId
-        newState  = state
-        featureLabel = _labelFor(fId)
-        popup.open()
+    parent: Overlay.overlay
+    width: Math.min(440, parent ? parent.width - 48 : 440)
+    implicitHeight: dialogCard.implicitHeight
+    height: implicitHeight
+    x: parent ? Math.round((parent.width - width) / 2) : 0
+    y: parent ? Math.round((parent.height - height) / 2) : 0
+    margins: 24
+    modal: true
+    focus: true
+    dim: true
+    padding: 0
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+    background: Item { }
+
+    Overlay.modal: Rectangle {
+        color: Qt.rgba(0, 0, 0, 0.6)
     }
 
-    function _labelFor(fId) {
-        var onLinux = (typeof Backend !== 'undefined' && Backend && Backend.isLinux)
-        switch (fId) {
-            case "firewall": return onLinux ? "System Firewall (UFW)" : "Windows Firewall"
-            case "rdp":      return "Remote Desktop"
-            case "uac":      return onLinux ? "Privilege Escalation (sudo)" : "User Account Control"
-            default:         return fId
-        }
-    }
-
-    background: Rectangle {
-        color: ThemeManager.panel()
-        radius: 16
+    contentItem: Rectangle {
+        id: dialogCard
+        width: popup.width
+        implicitHeight: dialogContent.implicitHeight + 48
+        color: ThemeManager.elevated()
+        radius: 14
         border.color: ThemeManager.error || "#EF4444"
         border.width: 2
 
-        // Subtle gradient overlay for urgency
-        Rectangle {
+        ColumnLayout {
+            id: dialogContent
             anchors.fill: parent
-            radius: parent.radius
-            color: Qt.rgba(1, 0, 0, 0.04)
-        }
-    }
+            anchors.margins: 24
+            spacing: 16
 
-    Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.55)
-    }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
 
-    contentItem: ColumnLayout {
-        spacing: 16
+                Rectangle {
+                    width: 40
+                    height: 40
+                    radius: 20
+                    color: Qt.rgba(1, 0.3, 0.3, 0.15)
 
-        // Warning icon row
-        RowLayout {
-            spacing: 12
-            Layout.fillWidth: true
-
-            Rectangle {
-                width: 40; height: 40; radius: 20
-                color: Qt.rgba(1, 0.3, 0.3, 0.15)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "!"
+                        font.pixelSize: 22
+                        font.bold: true
+                        color: ThemeManager.error || "#EF4444"
+                    }
+                }
 
                 Text {
-                    anchors.centerIn: parent
-                    text: "⚠"
-                    font.pixelSize: 22
-                    color: ThemeManager.error || "#EF4444"
+                    Layout.fillWidth: true
+                    text: popup.newState
+                          ? "Enable " + popup.featureLabel + "?"
+                          : "Disable " + popup.featureLabel + "?"
+                    color: ThemeManager.foreground()
+                    font.pixelSize: ThemeManager.fontSize_h2
+                    font.bold: true
+                    wrapMode: Text.Wrap
                 }
             }
 
             Text {
                 text: popup.newState
-                      ? "Enable " + popup.featureLabel + "?"
-                      : "Disable " + popup.featureLabel + "?"
-                color: ThemeManager.foreground()
-                font.pixelSize: ThemeManager.fontSize_h2
-                font.bold: true
+                      ? "Enabling <b>" + popup.featureLabel + "</b> will modify your system's security configuration."
+                      : "Are you sure? <b>Warning:</b> Disabling <b>" + popup.featureLabel + "</b> significantly increases the risk of system compromise."
+                color: ThemeManager.muted()
+                font.pixelSize: ThemeManager.fontSize_body
+                wrapMode: Text.Wrap
+                textFormat: Text.RichText
+                Layout.fillWidth: true
+                lineHeight: 1.4
+            }
+
+            Text {
+                visible: popup.featureId === "uac"
+                text: "A system reboot is required for UAC changes to take effect."
+                color: "#F59E0B"
+                font.pixelSize: ThemeManager.fontSize_small
+                font.italic: true
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
             }
-        }
 
-        // Warning body
-        Text {
-            text: popup.newState
-                  ? "Enabling <b>" + popup.featureLabel + "</b> will modify your system's security configuration."
-                  : "Are you sure? <b>Warning:</b> Disabling <b>" + popup.featureLabel + "</b> significantly increases the risk of system compromise."
-            color: ThemeManager.muted()
-            font.pixelSize: ThemeManager.fontSize_body
-            wrapMode: Text.Wrap
-            textFormat: Text.RichText
-            Layout.fillWidth: true
-            lineHeight: 1.4
-        }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
 
-        // UAC reboot notice
-        Text {
-            visible: popup.featureId === "uac"
-            text: "A system reboot is required for UAC changes to take effect."
-            color: "#F59E0B"
-            font.pixelSize: ThemeManager.fontSize_small
-            font.italic: true
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-        }
+                Item { Layout.fillWidth: true }
 
-        Item { implicitHeight: 4 }
+                Button {
+                    id: cancelButton
+                    text: "Cancel"
+                    flat: true
+                    implicitWidth: 96
+                    implicitHeight: 36
+                    onClicked: popup.reject()
 
-        // Action buttons
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 12
+                    contentItem: Text {
+                        text: cancelButton.text
+                        color: ThemeManager.muted()
+                        font.pixelSize: ThemeManager.fontSize_body
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
 
-            Item { Layout.fillWidth: true }
-
-            Button {
-                text: "Cancel"
-                flat: true
-                onClicked: {
-                    popup.rejected(popup.featureId)
-                    popup.close()
+                    background: Rectangle {
+                        implicitWidth: 96
+                        implicitHeight: 36
+                        radius: 8
+                        color: cancelButton.hovered ? ThemeManager.surface() : "transparent"
+                        border.color: ThemeManager.border()
+                        border.width: 1
+                    }
                 }
 
-                contentItem: Text {
-                    text: parent.text
-                    color: ThemeManager.muted()
-                    font.pixelSize: ThemeManager.fontSize_body
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                Button {
+                    id: confirmButton
+                    text: popup.newState ? "Enable" : "Disable"
+                    implicitWidth: popup.newState ? 96 : 110
+                    implicitHeight: 36
+                    onClicked: popup.accept()
 
-                background: Rectangle {
-                    implicitWidth: 90; implicitHeight: 36
-                    radius: 8
-                    color: parent.hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                    border.color: ThemeManager.border()
-                }
-            }
+                    contentItem: Text {
+                        text: confirmButton.text
+                        color: "white"
+                        font.pixelSize: ThemeManager.fontSize_body
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
 
-            Button {
-                text: popup.newState ? "Enable" : "Disable"
-                onClicked: {
-                    popup.accepted(popup.featureId, popup.newState)
-                    popup.close()
-                }
-
-                contentItem: Text {
-                    text: parent.text
-                    color: "white"
-                    font.pixelSize: ThemeManager.fontSize_body
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-
-                background: Rectangle {
-                    implicitWidth: 90; implicitHeight: 36
-                    radius: 8
-                    color: popup.newState
-                           ? (parent.hovered ? Qt.darker(ThemeManager.success, 1.15) : ThemeManager.success)
-                           : (parent.hovered ? Qt.darker(ThemeManager.error || "#EF4444", 1.15) : (ThemeManager.error || "#EF4444"))
+                    background: Rectangle {
+                        implicitWidth: Math.max(96, confirmButton.contentItem.implicitWidth + 24)
+                        implicitHeight: 36
+                        radius: 8
+                        color: confirmButton.hovered
+                               ? Qt.darker(
+                                     popup.newState ? ThemeManager.success : (ThemeManager.error || "#EF4444"),
+                                     1.15
+                                 )
+                               : (popup.newState ? ThemeManager.success : (ThemeManager.error || "#EF4444"))
+                    }
                 }
             }
         }
     }
 
-    // Close animation
-    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150 } }
-    exit:  Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 120 } }
+    onAccepted: popup.acceptedFeature(popup.featureId, popup.newState)
+    onRejected: popup.rejectedFeature(popup.featureId)
+
+    function show(fId, state) {
+        featureId = fId
+        newState = state
+        featureLabel = _labelFor(fId)
+        popup.open()
+    }
+
+    function _labelFor(fId) {
+        var onLinux = (typeof Backend !== "undefined" && Backend && Backend.isLinux)
+        switch (fId) {
+        case "firewall":
+            return onLinux ? "System Firewall (UFW)" : "Windows Firewall"
+        case "rdp":
+            return "Remote Desktop"
+        case "uac":
+            return onLinux ? "Privilege Escalation (sudo)" : "User Account Control"
+        default:
+            return fId
+        }
+    }
 }

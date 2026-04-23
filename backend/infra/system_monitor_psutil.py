@@ -756,8 +756,7 @@ class PsutilSystemMonitor(ISystemMonitor):
                 pass
 
         except (OSError, subprocess.SubprocessError, ImportError) as e:
-            # Security info gathering failed
-            print(f"Error getting security info: {e}")
+            logger.warning("Error getting security info: %s", e)
 
         return security_info
 

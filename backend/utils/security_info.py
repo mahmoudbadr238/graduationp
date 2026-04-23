@@ -4,16 +4,16 @@ import json
 import logging
 import platform
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Platform detection
-
 # Subprocess flags - CREATE_NO_WINDOW only works on Windows
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+_IS_WINDOWS = sys.platform == "win32"
+_SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class SecurityInfo:
@@ -26,6 +26,12 @@ class SecurityInfo:
     _cache: dict[str, Any] = {}
     _cache_time: float = 0
     _cache_ttl: float = 60.0  # Cache for 60 seconds
+
+    @staticmethod
+    def clear_cache() -> None:
+        """Clear the cached simplified security snapshot."""
+        SecurityInfo._cache = {}
+        SecurityInfo._cache_time = 0
 
     @staticmethod
     def _check_admin() -> bool:
@@ -514,12 +520,21 @@ class SecurityInfo:
             except Exception as e:
                 logger.debug(f"Could not query BitLocker: {e}")
 
-        # Not admin or query failed - show appropriate message
+        # Without admin rights we cannot truthfully call the drive unencrypted.
+        if not SecurityInfo._check_admin():
+            return {
+                "enabled": None,
+                "status": "Unknown",
+                "method": "Unknown",
+                "detail": "Run as administrator to verify BitLocker or device encryption.",
+            }
+
+        # Query failed even with admin rights - keep the state honest.
         return {
-            "enabled": False,
-            "status": "Not Encrypted",
-            "method": "None",
-            "detail": "No encryption detected",
+            "enabled": None,
+            "status": "Unknown",
+            "method": "Unknown",
+            "detail": "Sentinel could not determine disk encryption status.",
         }
 
     @staticmethod
@@ -545,6 +560,16 @@ class SecurityInfo:
                 data = json.loads(quick_output)
                 result["restartRequired"] = data.get("RestartRequired", False)
 
+            ps_pending = (
+                "$session = New-Object -ComObject Microsoft.Update.Session; "
+                "$searcher = $session.CreateUpdateSearcher(); "
+                "$count = ($searcher.Search(\"IsInstalled=0 and IsHidden=0\").Updates).Count; "
+                "$count"
+            )
+            pending_output = SecurityInfo._run_powershell(ps_pending, timeout=5)
+            if pending_output and pending_output.isdigit():
+                result["pendingUpdates"] = int(pending_output)
+
             # Get last update time (COM object, but with short timeout)
             ps_last_update = (
                 "$session = New-Object -ComObject Microsoft.Update.Session; "
@@ -563,6 +588,9 @@ class SecurityInfo:
             if result["restartRequired"]:
                 result["status"] = "RestartRequired"
                 result["detail"] = "Restart required to complete updates"
+            elif result["pendingUpdates"] > 0:
+                result["status"] = "PendingUpdates"
+                result["detail"] = f"{result['pendingUpdates']} updates are pending"
             elif result["lastInstallDate"]:
                 result["status"] = "UpToDate"
                 result["detail"] = f"Last update: {result['lastInstallDate']}"
@@ -581,8 +609,8 @@ class SecurityInfo:
     def get_rdp_status() -> dict[str, Any]:
         """Get Remote Desktop status and NLA setting."""
         result = {
-            "enabled": False,
-            "nlaEnabled": True,
+            "enabled": None,
+            "nlaEnabled": None,
             "status": "Unknown",
             "detail": "Unable to determine",
         }
@@ -627,7 +655,7 @@ class SecurityInfo:
     @staticmethod
     def get_admin_account_count() -> dict[str, Any]:
         """Get count of members in the local Administrators group."""
-        result = {"count": 0, "status": "Unknown", "detail": "Unable to determine"}
+        result = {"count": None, "status": "Unknown", "detail": "Unable to determine"}
 
         try:
             ps_admins = (
@@ -715,7 +743,7 @@ class SecurityInfo:
     def get_smartscreen_status() -> dict[str, Any]:
         """Get Windows SmartScreen status."""
         result = {
-            "enabled": False,
+            "enabled": None,
             "status": "Unknown",
             "detail": "Unable to determine",
         }
@@ -744,15 +772,7 @@ class SecurityInfo:
                     result["status"] = "Disabled"
                     result["detail"] = "SmartScreen protection is off"
                 else:
-                    # Default to enabled if we can't determine
-                    result["enabled"] = True
-                    result["status"] = "Enabled"
-                    result["detail"] = "SmartScreen appears to be active"
-            else:
-                # If no output, try alternate check via Defender settings
-                result["enabled"] = True
-                result["status"] = "Enabled"
-                result["detail"] = "Default SmartScreen (assumed)"
+                    result["detail"] = f"Unexpected SmartScreen value: {output}"
 
         except Exception as e:
             logger.debug(f"Could not query SmartScreen: {e}")
@@ -763,9 +783,9 @@ class SecurityInfo:
     def get_memory_integrity_status() -> dict[str, Any]:
         """Get Memory Integrity (HVCI) / VBS status."""
         result = {
-            "enabled": False,
+            "enabled": None,
             "status": "Unknown",
-            "vbsEnabled": False,
+            "vbsEnabled": None,
             "detail": "Unable to determine",
         }
 
@@ -825,8 +845,9 @@ class SecurityInfo:
     def get_tpm_status() -> dict[str, Any]:
         """Get TPM status using tpmtool (works without admin)."""
         result = {
-            "present": False,
-            "enabled": False,
+            "present": None,
+            "enabled": None,
+            "status": "Unknown",
             "version": "Unknown",
             "detail": "Unable to determine",
         }
@@ -846,6 +867,7 @@ class SecurityInfo:
                 if "-TPM Present: True" in output:
                     result["present"] = True
                     result["enabled"] = True
+                    result["status"] = "Present"
 
                     # Extract version
                     for line in output.splitlines():
@@ -857,6 +879,8 @@ class SecurityInfo:
                     result["detail"] = f"TPM {result['version']} active"
                 elif "-TPM Present: False" in output:
                     result["present"] = False
+                    result["enabled"] = False
+                    result["status"] = "Not present"
                     result["detail"] = "No TPM hardware found"
                 return result
         except FileNotFoundError:
@@ -944,8 +968,8 @@ class SecurityInfo:
         memory_int = results.get("memory_int", {})
 
         # Try to get Secure Boot status
-        secure_boot_enabled = False
-        secure_boot_status = "N/A"
+        secure_boot_enabled = None
+        secure_boot_status = "Unknown"
         try:
             ps_secureboot = "try { Confirm-SecureBootUEFI } catch { 'Error' }"
             output = SecurityInfo._run_powershell(ps_secureboot, timeout=2)
@@ -955,17 +979,36 @@ class SecurityInfo:
                     secure_boot_enabled = True
                     secure_boot_status = "Enabled"
                 elif output_lower == "false":
+                    secure_boot_enabled = False
                     secure_boot_status = "Disabled"
+                elif output_lower != "error":
+                    secure_boot_status = output.strip()
         except Exception:
             pass
+
+        capabilities = {
+            "firewall": True,
+            "antivirus": True,
+            "secureBoot": secure_boot_enabled is not None,
+            "tpm": tpm.get("present") is not None,
+            "diskEncryption": disk_enc.get("enabled") is not None,
+            "updates": True,
+            "remoteDesktop": rdp.get("enabled") is not None,
+            "localAdmins": admins.get("count") is not None,
+            "uac": uac.get("level", "Unknown") != "Unknown",
+            "smartScreen": smartscreen.get("enabled") is not None,
+            "memoryIntegrity": memory_int.get("enabled") is not None
+            or memory_int.get("status") in {"Enabled", "Disabled", "Partial"},
+        }
 
         # === INTERNET PROTECTION (Firewall + Antivirus) ===
         # Check if data requires admin
         fw_requires_admin = firewall.get("status") == "Requires Admin"
         av_requires_admin = defender.get("status") == "requires_admin"
 
-        fw_on = firewall.get("enabled", False) if not fw_requires_admin else None
-        av_on = defender.get("enabled", False) if not av_requires_admin else None
+        fw_on = firewall.get("enabled") if not fw_requires_admin else None
+        av_on = defender.get("enabled") if not av_requires_admin else None
+        av_realtime = defender.get("realtime_protection")
 
         # Extract product display names
         av_name = defender.get("name", "") or "Antivirus"
@@ -975,6 +1018,20 @@ class SecurityInfo:
             # Cannot determine status without admin rights
             internet_status = "Checking"
             internet_detail = "Run as Administrator for accurate status"
+            internet_good = False
+            internet_warning = True
+        elif fw_on is None or av_on is None:
+            unknown_controls = []
+            if fw_on is None:
+                unknown_controls.append("firewall")
+            if av_on is None:
+                unknown_controls.append("antivirus")
+            internet_status = "Unknown"
+            internet_detail = (
+                "Sentinel could not verify "
+                + " and ".join(unknown_controls)
+                + " status."
+            )
             internet_good = False
             internet_warning = True
         elif fw_on and av_on:
@@ -1047,101 +1104,134 @@ class SecurityInfo:
         )
 
         # === DEVICE PROTECTION (TPM + Secure Boot + Disk Encryption) ===
-        tpm_present = tpm.get("present", False)
-        tpm_enabled = tpm.get("enabled", False)
+        tpm_present = tpm.get("present")
+        tpm_enabled = tpm.get("enabled")
         tpm_version = tpm.get("version", "Unknown")
-        disk_enc_on = disk_enc.get("enabled", False)
+        disk_enc_on = disk_enc.get("enabled")
 
         device_parts = []
-        if tpm_present and tpm_enabled:
-            device_parts.append(f"TPM {tpm_version}")
-        elif tpm_present:
-            device_parts.append("TPM (disabled)")
+        unavailable_device_parts = []
+        supported_device_checks = 0
+        good_device_checks = 0
 
-        if secure_boot_enabled:
-            device_parts.append("Secure Boot")
+        has_tpm = tpm_present is True and tpm_enabled is True
+        has_secureboot = secure_boot_enabled is True
+        has_encryption = disk_enc_on is True
 
-        if disk_enc_on:
-            device_parts.append("C: encrypted")
+        if capabilities["tpm"]:
+            supported_device_checks += 1
+            if has_tpm:
+                good_device_checks += 1
+                device_parts.append(f"TPM {tpm_version}")
+            elif tpm_present is True:
+                device_parts.append("TPM disabled")
+            else:
+                device_parts.append("No TPM")
+        else:
+            unavailable_device_parts.append("TPM")
 
-        # Determine device protection level
-        has_tpm = tpm_present and tpm_enabled
-        has_secureboot = secure_boot_enabled
-        has_encryption = disk_enc_on
+        if capabilities["secureBoot"]:
+            supported_device_checks += 1
+            if has_secureboot:
+                good_device_checks += 1
+                device_parts.append("Secure Boot")
+            else:
+                device_parts.append("Secure Boot off")
+        else:
+            unavailable_device_parts.append("Secure Boot")
 
-        if has_tpm and has_secureboot and has_encryption:
+        if capabilities["diskEncryption"]:
+            supported_device_checks += 1
+            if has_encryption:
+                good_device_checks += 1
+                device_parts.append("C: encrypted")
+            else:
+                device_parts.append("Drive not encrypted")
+        else:
+            unavailable_device_parts.append("disk encryption")
+
+        if supported_device_checks == 0:
+            device_status = "Unavailable"
+            device_good = False
+            device_warning = True
+            device_detail = "Sentinel could not verify any supported device-hardening features on this system."
+        elif good_device_checks == supported_device_checks:
             device_status = "Strong"
             device_good = True
             device_warning = False
-            device_detail = (
-                ", ".join(device_parts) if device_parts else "All protections active"
-            )
-        elif (
-            (has_tpm and has_secureboot)
-            or (has_tpm and has_encryption)
-            or (has_secureboot and has_encryption)
-        ):
+            device_detail = ", ".join(device_parts) if device_parts else "All verified protections active"
+        elif good_device_checks > 0:
             device_status = "Okay"
             device_good = False
             device_warning = True
-            missing = []
-            if not has_encryption:
-                missing.append("no encryption")
-            if not has_tpm:
-                missing.append("no TPM")
-            if not has_secureboot:
-                missing.append("Secure Boot off")
-            device_detail = (
-                ", ".join(device_parts) if device_parts else "Partial protection"
-            )
-            if missing:
-                device_detail += f" ({', '.join(missing)})"
-        elif has_tpm or has_secureboot:
-            device_status = "Okay"
-            device_good = False
-            device_warning = True
-            device_detail = (
-                ", ".join(device_parts) if device_parts else "Limited protection"
-            )
+            device_detail = ", ".join(device_parts) if device_parts else "Partial protection"
         else:
             device_status = "Weak"
             device_good = False
             device_warning = False
-            device_detail = "TPM and Secure Boot not enabled"
+            device_detail = ", ".join(device_parts) if device_parts else "Verified device protections are off"
+
+        if unavailable_device_parts:
+            suffix = "Additional checks unavailable: " + ", ".join(unavailable_device_parts) + "."
+            device_detail = f"{device_detail}. {suffix}" if device_detail else suffix
 
         # === REMOTE & APPS (RDP + Admins + UAC + SmartScreen) ===
-        rdp_on = rdp.get("enabled", False)
-        admin_count = admins.get("count", 0)
+        rdp_on = rdp.get("enabled")
+        admin_count = admins.get("count")
         uac_level = uac.get("level", "Unknown")
-        smartscreen_on = smartscreen.get("enabled", True)
+        smartscreen_on = smartscreen.get("enabled")
 
         # Count risky conditions
         risky_count = 0
         remote_parts = []
+        unavailable_remote_parts = []
+        supported_remote_checks = 0
 
-        if rdp_on:
-            risky_count += 2  # RDP on is more serious
-            remote_parts.append("RDP on")
+        if capabilities["remoteDesktop"]:
+            supported_remote_checks += 1
+            if rdp_on is True:
+                risky_count += 2  # RDP on is more serious
+                remote_parts.append("RDP on")
+            else:
+                remote_parts.append("RDP off")
         else:
-            remote_parts.append("RDP off")
+            unavailable_remote_parts.append("Remote Desktop")
 
-        remote_parts.append(f"{admin_count} admin{'s' if admin_count != 1 else ''}")
-        if admin_count > 2:
-            risky_count += 1
+        if capabilities["localAdmins"]:
+            supported_remote_checks += 1
+            remote_parts.append(f"{admin_count} admin{'s' if admin_count != 1 else ''}")
+            if admin_count > 2:
+                risky_count += 1
+        else:
+            unavailable_remote_parts.append("local admin count")
 
-        if uac_level in ["High", "Medium"]:
-            remote_parts.append(f"UAC {uac_level.lower()}")
-        elif uac_level == "Disabled":
-            risky_count += 2
-            remote_parts.append("UAC off")
-        elif uac_level == "Low":
-            risky_count += 1
-            remote_parts.append("UAC low")
+        if capabilities["uac"]:
+            supported_remote_checks += 1
+            if uac_level in ["High", "Medium"]:
+                remote_parts.append(f"UAC {uac_level.lower()}")
+            elif uac_level == "Disabled":
+                risky_count += 2
+                remote_parts.append("UAC off")
+            elif uac_level == "Low":
+                risky_count += 1
+                remote_parts.append("UAC low")
+        else:
+            unavailable_remote_parts.append("UAC")
 
-        if not smartscreen_on:
-            risky_count += 1
+        if capabilities["smartScreen"]:
+            supported_remote_checks += 1
+            if smartscreen_on is False:
+                risky_count += 1
+                remote_parts.append("SmartScreen off")
+        else:
+            unavailable_remote_parts.append("SmartScreen")
 
-        if risky_count == 0:
+        if supported_remote_checks == 0:
+            remote_status = "Unavailable"
+            remote_good = False
+            remote_warning = True
+            remote_detail = "Sentinel could not verify any supported remote access or app hardening checks on this system."
+        elif risky_count == 0:
             remote_status = "Safe"
             remote_good = True
             remote_warning = False
@@ -1154,25 +1244,44 @@ class SecurityInfo:
             remote_good = False
             remote_warning = False
 
-        remote_detail = ", ".join(remote_parts)
+        if supported_remote_checks > 0:
+            remote_detail = ", ".join(remote_parts)
+        if unavailable_remote_parts:
+            prefix = "; " if remote_detail else ""
+            remote_detail += prefix + "Additional checks unavailable: " + ", ".join(unavailable_remote_parts)
 
         # === OVERALL STATUS ===
         # Critical: firewall OR antivirus off = At risk
         # Warning: any single category not good = Needs attention
         # Good: all categories good = Protected
 
-        if not fw_on or not av_on:
+        has_unknown = (
+            internet_status == "Unknown"
+            or updates_status == "Unknown"
+            or (supported_device_checks > 0 and device_status == "Unknown")
+            or (supported_remote_checks > 0 and remote_status == "Unknown")
+        )
+
+        if fw_on is False or av_on is False:
             overall_status = "At risk"
             overall_good = False
             overall_warning = False
-            if not fw_on and not av_on:
+            if fw_on is False and av_on is False:
                 overall_detail = "Firewall and antivirus are off"
-            elif not fw_on:
+            elif fw_on is False:
                 overall_detail = "Firewall is off"
             else:
                 overall_detail = "Antivirus is off"
+        elif has_unknown:
+            overall_status = "Needs attention"
+            overall_good = False
+            overall_warning = True
+            overall_detail = "Some protections could not be verified"
         elif (
-            not internet_good or not updates_good or not device_good or not remote_good
+            not internet_good
+            or not updates_good
+            or (supported_device_checks > 0 and not device_good)
+            or (supported_remote_checks > 0 and not remote_good)
         ):
             overall_status = "Needs attention"
             overall_good = False
@@ -1222,24 +1331,45 @@ class SecurityInfo:
             # Raw data for advanced section
             "raw": {
                 "firewallEnabled": fw_on,
+                "firewallStatus": (
+                    "Requires Admin"
+                    if fw_requires_admin
+                    else ("Enabled" if fw_on is True else ("Disabled" if fw_on is False else "Unknown"))
+                ),
                 "firewallName": fw_name,
                 "antivirusEnabled": av_on,
+                "antivirusStatus": (
+                    "Admin required"
+                    if av_requires_admin
+                    else ("On" if av_on is True else ("Off" if av_on is False else "Unknown"))
+                ),
                 "antivirusName": av_name,
-                "antivirusRealtime": defender.get("realtime_protection", False),
+                "antivirusRealtime": av_realtime,
+                "antivirusDetail": defender.get("definition_status", "Unknown"),
                 "secureBoot": secure_boot_status,
-                "tpmPresent": tpm.get("present", False),
-                "tpmEnabled": tpm.get("enabled", False),
+                "tpmPresent": tpm.get("present"),
+                "tpmEnabled": tpm.get("enabled"),
                 "tpmVersion": tpm.get("version", "Unknown"),
                 "diskEncryption": disk_enc.get("status", "Unknown"),
                 "diskEncryptionDetail": disk_enc.get("detail", ""),
                 "windowsUpdateStatus": update_raw_status,
                 "windowsUpdateLastInstall": last_install,
+                "windowsUpdateDetail": win_update.get("detail", ""),
                 "remoteDesktopEnabled": rdp_on,
-                "remoteDesktopNla": rdp.get("nlaEnabled", True),
+                "remoteDesktopStatus": rdp.get("status", "Unknown"),
+                "remoteDesktopDetail": rdp.get("detail", ""),
+                "remoteDesktopNla": rdp.get("nlaEnabled"),
                 "adminAccountCount": admin_count,
+                "adminAccountDetail": admins.get("detail", ""),
                 "uacLevel": uac_level,
+                "uacDetail": uac.get("detail", ""),
                 "smartScreenEnabled": smartscreen_on,
-                "memoryIntegrityEnabled": memory_int.get("enabled", False),
+                "smartScreenStatus": smartscreen.get("status", "Unknown"),
+                "smartScreenDetail": smartscreen.get("detail", ""),
+                "memoryIntegrityEnabled": memory_int.get("enabled"),
+                "memoryIntegrityStatus": memory_int.get("status", "Unknown"),
+                "memoryIntegrityDetail": memory_int.get("detail", ""),
+                "capabilities": capabilities,
             },
         }
 

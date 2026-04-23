@@ -223,9 +223,9 @@ def _safe_int(value: object, default: int = 0) -> int:
         try:
             return int(value)
         except (ValueError, TypeError):
-            print(f"[Scoring] WARNING: non-integer score value ignored: {value!r}")
+            logger.warning("Non-integer score value ignored: %r", value)
             return default
-    print(f"[Scoring] WARNING: unexpected score type {type(value).__name__}: {value!r}")
+    logger.warning("Unexpected score type %s: %r", type(value).__name__, value)
     return default
 
 

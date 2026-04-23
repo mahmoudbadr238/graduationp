@@ -12,6 +12,7 @@ import "../ui"
 Item {
     id: reportRoot
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
 
     // The ScanCenter page sets these before navigating here.
     // They are bound via the root-level alias properties in main.qml.
@@ -100,7 +101,7 @@ Item {
                         implicitHeight: 36; implicitWidth: 110
                         contentItem: Text {
                             text: parent.text
-                            color: "#ffffff"
+                            color: ThemeManager.selectionForeground
                             font.pixelSize: reportRoot.briefFontSize
                             font.weight: (Font.SemiBold || 600)
                             horizontalAlignment: Text.AlignHCenter
@@ -114,8 +115,8 @@ Item {
                             Behavior on color { ColorAnimation { duration: 120 } }
                         }
                         onClicked: {
-                            if (typeof Backend !== "undefined")
-                                Backend.exportAiLog(reportRoot.normalizedDetailedText)
+                            if (reportRoot.backend && reportRoot.backend.exportAiLog)
+                                reportRoot.backend.exportAiLog(reportRoot.normalizedDetailedText)
                         }
                     }
                 }

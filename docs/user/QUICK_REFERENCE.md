@@ -1,4 +1,10 @@
-# Quick Reference - Sentinel Improvements
+# Quick Reference - Sentinel
+
+> Release note:
+> This file still contains older internal quick-reference content from earlier
+> refactors. For current commands and release validation steps, use
+> [docs/QUICKSTART.md](../QUICKSTART.md) and
+> [docs/releases/FINAL_RELEASE_CHECKLIST.md](../releases/FINAL_RELEASE_CHECKLIST.md).
 
 ## 🚀 Instant Commands
 

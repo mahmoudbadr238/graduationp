@@ -49,6 +49,7 @@ def test_export_diagnostics():
             data = json.load(f)
         assert "system" in data
         assert "dependencies" in data
+        assert "features" in data
     finally:
         if output_file.exists():
             output_file.unlink()

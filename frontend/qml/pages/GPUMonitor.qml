@@ -6,7 +6,6 @@ import "../ui"
 
 Item {
     id: root
-    anchors.fill: parent
     
     // Currently selected GPU index
     property int selectedGpuIndex: 0
@@ -17,8 +16,7 @@ Item {
     // Start GPU monitoring when page becomes visible (not on Component.onCompleted)
     onVisibleChanged: {
         if (visible && gpuServiceAvailable && !GPUService.isRunning()) {
-            console.log("[GPUMonitor] Starting GPU monitoring (page visible)")
-            GPUService.start(5000)  // 5 second interval for efficiency
+            GPUService.start(5000)
         }
     }
 
@@ -176,7 +174,7 @@ Item {
                         }
                         
                         Text {
-                            text: "Real-time GPU monitoring like MSI Afterburner"
+                            text: "Real-time GPU telemetry, thermal data, and device health"
                             color: ThemeManager.muted()
                             font.pixelSize: ThemeManager.fontSize_small
                         }

@@ -16,6 +16,7 @@ import "../components"
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
 
     // State
     property var sessions: []
@@ -33,7 +34,7 @@ Item {
 
     // Backend connections
     Connections {
-        target: Backend || null
+        target: root.backend
         enabled: target !== null
 
         function onResolutionSessionsLoaded(sessionsJson) {
@@ -41,7 +42,6 @@ Item {
                 sessions = JSON.parse(sessionsJson)
                 isLoading = false
             } catch (e) {
-                console.log("[ResolutionReport] Failed to parse sessions:", e)
                 sessions = []
                 isLoading = false
             }
@@ -55,8 +55,8 @@ Item {
 
     function loadSessions() {
         isLoading = true
-        if (typeof Backend !== "undefined" && Backend.getResolutionSessions) {
-            Backend.getResolutionSessions()
+        if (root.backend && root.backend.getResolutionSessions) {
+            root.backend.getResolutionSessions()
         } else {
             isLoading = false
         }
@@ -380,7 +380,7 @@ Item {
                                     text: selectedSession ? selectedSession.status : ""
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.weight: Font.Medium
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                 }
                             }
                         }
@@ -475,7 +475,7 @@ Item {
                                                     text: modelData.outcome
                                                     font.pixelSize: ThemeManager.fontSize_caption
                                                     font.weight: Font.Medium
-                                                    color: "#FFFFFF"
+                                                    color: ThemeManager.selectionForeground
                                                 }
                                             }
                                         }

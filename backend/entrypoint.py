@@ -6,9 +6,12 @@ from __future__ import annotations
 import backend.platform  # noqa: F401
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 # Load .env file early so GROQ_API_KEY and other secrets are available
 try:
@@ -76,7 +79,8 @@ def _run_gui() -> int:
 
     from backend.application import run
 
-    print(f"{APP_FULL_NAME} v{__version__}")
+    # Print version to stdout so it appears in terminal/logs regardless of log level
+    print(f"{APP_FULL_NAME} v{__version__}")  # noqa: T201
 
     skip_uac = os.environ.get("SKIP_UAC", "").lower() in ("1", "true", "yes")
 
@@ -86,22 +90,15 @@ def _run_gui() -> int:
         from backend.platform.linux.admin import AdminPrivileges
 
     if not AdminPrivileges.is_admin() and not skip_uac:
-        if IS_WINDOWS:
-            print("[WARNING] Administrator privileges required for full functionality")
-            print("  Requesting UAC elevation...")
-        else:
-            print("[WARNING] Root privileges required for full functionality")
-            print("  Requesting elevation...")
+        privilege_label = "Administrator" if IS_WINDOWS else "Root"
+        _log.warning("%s privileges required for full functionality — requesting elevation", privilege_label)
         AdminPrivileges.elevate()
-        print(
-            "[WARNING] Elevation declined or failed. Continuing with limited access..."
-        )
-        print("  Some features may be unavailable.\n")
+        _log.warning("Elevation declined or failed — continuing with limited access")
     elif skip_uac:
-        print("[DEBUG] Skipping elevation (SKIP_UAC=1)\n")
+        _log.debug("Skipping elevation (SKIP_UAC=1)")
     else:
         privilege_label = "administrator" if IS_WINDOWS else "root"
-        print(f"[OK] Running with {privilege_label} privileges\n")
+        _log.info("Running with %s privileges", privilege_label)
 
     return run()
 

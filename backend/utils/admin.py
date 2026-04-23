@@ -4,9 +4,12 @@ Handles checking and requesting administrator privileges.
 """
 
 import ctypes
+import logging
 import os
 import subprocess
 import sys
+
+_log = logging.getLogger(__name__)
 
 
 class AdminPrivileges:
@@ -64,8 +67,7 @@ class AdminPrivileges:
             return ret
 
         except (OSError, AttributeError, ValueError) as e:
-            # Windows API call failed, wrong platform, or invalid parameters
-            print(f"Failed to elevate privileges: {e}")
+            _log.warning("Failed to elevate privileges: %s", e)
             return None
 
     @staticmethod
@@ -81,14 +83,13 @@ class AdminPrivileges:
             bool: True if admin privileges are available (or obtained).
         """
         if AdminPrivileges.is_admin():
-            print("[OK] Running with administrator privileges")
+            _log.debug("Running with administrator privileges")
             return True
 
-        print("[WARNING] Not running with administrator privileges")
-        print("  Some features (Security event logs) may be limited.")
+        _log.warning("Not running with administrator privileges — some features may be limited")
 
         if auto_elevate:
-            print("  Requesting elevation...")
+            _log.info("Requesting privilege elevation")
             result = AdminPrivileges.elevate()
             if result is None:
                 return False  # Elevation failed or cancelled

@@ -7,6 +7,7 @@ import "../ui"
 
 Item {
     id: root
+    objectName: "systemSnapshotRoot"
     anchors.fill: parent
     
     // Track current tab index
@@ -21,8 +22,7 @@ Item {
     // Start GPU service when switching to GPU tab (index 1)
     onCurrentTabIndexChanged: {
         if (currentTabIndex === 1 && gpuServiceAvailable && !GPUService.isRunning()) {
-            console.log("[SystemSnapshot] Starting GPU monitoring for GPU tab")
-            GPUService.start(5000)  // 5 second interval
+            GPUService.start(5000)
         }
     }
     
@@ -49,6 +49,57 @@ Item {
             return (bps / 1000).toFixed(2) + " KBPS"
         } else {
             return bps.toFixed(0) + " BPS"
+        }
+    }
+
+    RiskConfirmDialog {
+        id: riskDialog
+
+        onAcceptedFeature: function(featureId, newState) {
+            if (typeof SecurityController !== "undefined" && SecurityController) {
+                SecurityController.toggle_security_feature(featureId, newState)
+            } else {
+                console.warn("[Security] SecurityController not available")
+            }
+        }
+    }
+
+    function refreshSecuritySnapshot() {
+        if (typeof SnapshotService !== "undefined" && SnapshotService) {
+            SnapshotService.refreshSecurityInfo()
+        }
+    }
+
+    Connections {
+        target: (typeof SecurityController !== "undefined" && SecurityController) ? SecurityController : null
+
+        function onFeature_state_updated(featureId, state) {
+            if (featureId === "firewall") {
+                securityColumn.firewallOverride = state
+            } else if (featureId === "rdp") {
+                securityColumn.rdpOverride = state
+            } else if (featureId === "uac") {
+                securityColumn.uacOverride = state
+            }
+        }
+
+        function onFeatureToggled(_featureId, _enabled, _message) {
+            refreshSecuritySnapshot()
+            securityRefreshTimer.restart()
+        }
+
+        function onFeatureError(featureId, message) {
+            console.warn("[Security] Toggle failed:", featureId, message)
+        }
+    }
+
+    Timer {
+        id: securityRefreshTimer
+        interval: 1500
+        repeat: false
+
+        onTriggered: {
+            refreshSecuritySnapshot()
         }
     }
 
@@ -403,7 +454,7 @@ Item {
                                         visible: root.isLinux && SnapshotService && SnapshotService.hiddenDiskPartitions && SnapshotService.hiddenDiskPartitions.length > 0
                                     }
 
-                                    Switch {
+                                    StyledSwitch {
                                         visible: root.isLinux && SnapshotService
                                         checked: SnapshotService ? SnapshotService.showHiddenMounts : false
                                         text: "Show debug mounts"
@@ -439,7 +490,8 @@ Item {
 
                     // ===== TAB 1: GPU MONITOR =====
                     GPUMonitor {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
                     }
 
                     // ===== TAB 2: NETWORK =====
@@ -560,61 +612,9 @@ Item {
                         contentHeight: securityColumn.implicitHeight
                         ScrollBar.vertical: ScrollBar { }
 
-                        // Risk confirmation dialog (lives inside Flickable so anchors resolve)
-                        RiskConfirmDialog {
-                            id: riskDialog
-                            parent: Overlay.overlay  // render above everything
-
-                            onAccepted: function(featureId, newState) {
-                                // Commit the change via Python backend
-                                if (typeof SecurityController !== 'undefined' && SecurityController) {
-                                    SecurityController.toggle_security_feature(featureId, newState)
-                                } else {
-                                    console.warn("[Security] SecurityController not available")
-                                }
-                            }
-                            // Rejection requires no action - toggle was never visually committed
-                        }
-
-                        // Listen for backend confirmation to refresh security data
-                        Connections {
-                            target: (typeof SecurityController !== 'undefined' && SecurityController) ? SecurityController : null
-
-                            // Immediate UI update - set local overrides so cards react instantly
-                            function onFeature_state_updated(featureId, state) {
-                                console.log("[Security] State confirmed:", featureId, "->", state)
-                                if (featureId === "firewall") {
-                                    securityColumn.firewallOverride = state
-                                } else if (featureId === "rdp") {
-                                    securityColumn.rdpOverride = state
-                                } else if (featureId === "uac") {
-                                    securityColumn.uacOverride = state
-                                }
-                            }
-
-                            function onFeatureToggled(featureId, enabled, message) {
-                                console.log("[Security] Feature toggled:", featureId, enabled, message)
-                                // Also kick off a full refresh so the backend data converges
-                                securityRefreshTimer.start()
-                            }
-                            function onFeatureError(featureId, message) {
-                                console.warn("[Security] Toggle failed:", featureId, message)
-                            }
-                        }
-
-                        Timer {
-                            id: securityRefreshTimer
-                            interval: 1500
-                            repeat: false
-                            onTriggered: {
-                                if (typeof SnapshotService !== 'undefined' && SnapshotService) {
-                                    SnapshotService.refreshSecurityInfo()
-                                }
-                            }
-                        }
-
                         ColumnLayout {
                             id: securityColumn
+                            objectName: "securityColumn"
                             width: securityFlickable.width
                             anchors.margins: 24
                             spacing: 20
@@ -628,11 +628,51 @@ Item {
                             property var device: (simplified && simplified.deviceProtection) ? simplified.deviceProtection : {status: "Checking", isGood: false, isWarning: true}
                             property var remote: (simplified && simplified.remoteAndApps) ? simplified.remoteAndApps : {status: "Checking", isGood: false, isWarning: true}
                             property var raw: (simplified && simplified.raw) ? simplified.raw : {}
+                            property var capabilities: (raw && raw.capabilities) ? raw.capabilities : {}
                             property var providers: (secInfo && secInfo.providers) ? secInfo.providers : []
                             property var tpmData: (simplified && simplified.tpm) ? simplified.tpm : {}
+                            readonly property bool securityControllerAvailable: (typeof SecurityController !== 'undefined') && SecurityController !== null
 
-                            // Optimistic local overrides - set instantly by feature_state_updated
-                            // before the full SnapshotService refresh completes.
+                            function supports(featureName) {
+                                return capabilities && capabilities[featureName] === true
+                            }
+
+                            function canToggle(featureName) {
+                                if (!securityControllerAvailable)
+                                    return false
+                                if (root.isLinux)
+                                    return featureName === "firewall"
+                                return featureName === "firewall" || featureName === "rdp" || featureName === "uac"
+                            }
+
+                            function cleanSecurityText(value) {
+                                return (value || "").toString().replace(/\s+/g, " ").trim()
+                            }
+
+                            function primarySecurityText(value, fallback) {
+                                var text = cleanSecurityText(value)
+                                var marker = "Additional checks unavailable:"
+                                var idx = text.indexOf(marker)
+                                if (idx >= 0)
+                                    text = text.substring(0, idx).trim()
+                                text = text.replace(/[;,\.\s]+$/, "")
+                                return text.length > 0 ? text : (fallback || "")
+                            }
+
+                            function secondarySecurityNote(value) {
+                                var text = cleanSecurityText(value)
+                                var marker = "Additional checks unavailable:"
+                                var idx = text.indexOf(marker)
+                                return idx >= 0 ? text.substring(idx).trim() : ""
+                            }
+
+                            readonly property string advancedCoverageNote: root.isLinux
+                                ? "Showing verifiable Linux security controls."
+                                : "Showing verifiable Windows security controls. Some advanced guards (Tamper, Credential, Device) are omitted."
+
+                            // Backend-confirmed local overrides. These let the control cards
+                            // reflect the successful toggle immediately, before the refreshed
+                            // SnapshotService payload arrives.
                             // null = no override (use raw backend value)
                             property var firewallOverride: null
                             property var rdpOverride: null
@@ -647,7 +687,24 @@ Item {
                                 : (raw.remoteDesktopEnabled === true)
                             readonly property bool effectiveUacOn: uacOverride !== null
                                 ? uacOverride
-                                : (raw.uacLevel === "High" || raw.uacLevel === "Medium")
+                                : (raw.uacLevel === "High" || raw.uacLevel === "Medium" || raw.uacLevel === "Low")
+                            readonly property string effectiveFirewallStatus: firewallOverride !== null
+                                ? (firewallOverride ? "Enabled" : "Disabled")
+                                : (raw.firewallStatus || "Unknown")
+                            readonly property string effectiveRdpStatus: !root.isLinux && rdpOverride !== null
+                                ? (rdpOverride ? "Enabled" : "Disabled")
+                                : (raw.remoteDesktopStatus || "Unknown")
+                            readonly property string effectiveUacLevel: {
+                                if (uacOverride === false)
+                                    return "Disabled"
+                                if (uacOverride === true) {
+                                    var currentLevel = raw.uacLevel || ""
+                                    if (currentLevel === "High" || currentLevel === "Medium" || currentLevel === "Low")
+                                        return currentLevel
+                                    return "Enabled"
+                                }
+                                return raw.uacLevel || "Unknown"
+                            }
 
                             // Clear overrides when SnapshotService delivers a fresh payload
                             // so the UI falls back to the real queried state.
@@ -662,7 +719,7 @@ Item {
                             Rectangle {
                                 id: overallCard
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: securityColumn.overall.isGood ? 70 : 100
+                                Layout.preferredHeight: Math.max(securityColumn.overall.isGood ? 72 : 92, overallCardRow.implicitHeight + 32)
                                 radius: 16
                                 // More subtle appearance - no colored background for warnings (notification center handles alerts)
                                 color: {
@@ -693,15 +750,16 @@ Item {
                                 }
 
                                 Row {
+                                    id: overallCardRow
                                     anchors.fill: parent
-                                    anchors.margins: 20
+                                    anchors.margins: 16
                                     spacing: 16
 
                                     // Status icon
                                     Rectangle {
-                                        width: 56
-                                        height: 56
-                                        radius: 28
+                                        width: 48
+                                        height: 48
+                                        radius: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
 
@@ -713,14 +771,15 @@ Item {
                                                 return "X"
                                             }
                                             color: "white"
-                                            font.pixelSize: ThemeManager.fontSize_h1
+                                            font.pixelSize: ThemeManager.fontSize_h3
                                             font.bold: true
                                         }
                                     }
 
                                     Column {
+                                        width: overallCard.width - 120
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 4
+                                        spacing: 2
 
                                         Text {
                                             text: root.isLinux ? "Security posture" : "Security status"
@@ -731,7 +790,7 @@ Item {
                                         Text {
                                             text: securityColumn.overall.status || "Checking..."
                                             color: root.statusColor(securityColumn.overall.isGood, securityColumn.overall.isWarning)
-                                            font.pixelSize: ThemeManager.fontSize_h1
+                                            font.pixelSize: ThemeManager.fontSize_h2
                                             font.bold: true
                                         }
 
@@ -739,6 +798,10 @@ Item {
                                             text: securityColumn.overall.detail || "Analyzing your security..."
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_small
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
                                         }
                                     }
 
@@ -757,7 +820,7 @@ Item {
                             // ===== ADMIN PRIVILEGE INDICATOR =====
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 60
+                                Layout.preferredHeight: adminBannerRow.implicitHeight + 16
                                 radius: 12
                                 color: SnapshotService && SnapshotService.isAdmin 
                                        ? Qt.rgba(ThemeManager.success.r, ThemeManager.success.g, ThemeManager.success.b, 0.12)
@@ -766,21 +829,22 @@ Item {
                                 border.width: 1
 
                                 RowLayout {
+                                    id: adminBannerRow
                                     anchors.fill: parent
-                                    anchors.margins: 14
+                                    anchors.margins: 12
                                     spacing: 12
 
                                     Rectangle {
-                                        width: 32
-                                        height: 32
-                                        radius: 16
+                                        width: 24
+                                        height: 24
+                                        radius: 12
                                         color: SnapshotService && SnapshotService.isAdmin ? ThemeManager.success : ThemeManager.warning
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: SnapshotService && SnapshotService.isAdmin ? "OK" : "!"
                                             color: "#FFFFFF"
-                                            font.pixelSize: ThemeManager.fontSize_h4
+                                            font.pixelSize: ThemeManager.fontSize_small
                                             font.bold: true
                                         }
                                     }
@@ -791,7 +855,7 @@ Item {
 
                                         Text {
                                             text: SnapshotService && SnapshotService.isAdmin 
-                                                  ? (root.isLinux ? "Root Privileges Active" : "Administrator Privileges Active")
+                                                  ? (root.isLinux ? "Root Privileges Active" : "Admin Privileges Active")
                                                   : "Limited Privileges"
                                             color: ThemeManager.foreground()
                                             font.pixelSize: ThemeManager.fontSize_small
@@ -800,10 +864,12 @@ Item {
 
                                         Text {
                                             text: SnapshotService && SnapshotService.isAdmin 
-                                                  ? "All security features available" 
-                                                  : (root.isLinux ? "Some features may be limited. Run as root for full access." : "Some features may be limited. Run as administrator for full access.")
+                                                  ? "Full visibility enabled. Some controls may be restricted by device policy."
+                                                  : (root.isLinux ? "Run as root to enable all security checks and controls." : "Run as administrator to enable all security checks and controls.")
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_small
+                                            width: parent.width
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
                                 }
@@ -826,8 +892,8 @@ Item {
 
                                 property real cardWidth: {
                                     var availableWidth = securityColumn.width - 24
-                                    var minWidth = 160
-                                    var maxWidth = 200
+                                    var minWidth = 192
+                                    var maxWidth = 236
                                     // Try to fit 4, then 2, then 1
                                     if (availableWidth >= (minWidth * 4 + spacing * 3)) {
                                         return (availableWidth - spacing * 3) / 4
@@ -839,28 +905,33 @@ Item {
 
                                 // Card 1: Internet Protection
                                 Rectangle {
+                                    id: internetSummaryCard
                                     width: mainCardsFlow.cardWidth
-                                    height: 110
+                                    height: Math.max(138, internetSummaryColumn.implicitHeight + 32)
                                     radius: 12
                                     color: ThemeManager.panel()
                                     border.color: ThemeManager.border()
 
-                                    Column {
+                                    ColumnLayout {
+                                        id: internetSummaryColumn
                                         anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 6
+                                        anchors.margins: 16
+                                        spacing: 8
 
-                                        Row {
-                                            spacing: 8
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignLeft
+                                            implicitWidth: internetSummaryLabel.implicitWidth + 18
+                                            implicitHeight: 24
+                                            radius: 12
+                                            color: root.transparentColor(root.statusColor(securityColumn.internet.isGood, securityColumn.internet.isWarning), 0.12)
+
                                             Text {
-                                                text: "ðŸ›¡ï¸"
-                                                font.pixelSize: ThemeManager.fontSize_h4
-                                            }
-                                            Text {
+                                                id: internetSummaryLabel
+                                                anchors.centerIn: parent
                                                 text: "Internet protection"
                                                 color: ThemeManager.muted()
-                                                font.pixelSize: ThemeManager.fontSize_small
-                                                font.weight: Font.Medium
+                                                font.pixelSize: ThemeManager.fontSize_caption
+                                                font.weight: Font.DemiBold
                                             }
                                         }
 
@@ -869,14 +940,31 @@ Item {
                                             color: root.statusColor(securityColumn.internet.isGood, securityColumn.internet.isWarning)
                                             font.pixelSize: ThemeManager.fontSize_h2
                                             font.bold: true
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 1
+                                            elide: Text.ElideRight
                                         }
 
                                         Text {
-                                            text: securityColumn.internet.detail || ""
+                                            text: securityColumn.primarySecurityText(securityColumn.internet.detail, "Sentinel is still verifying internet-facing protections.")
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_caption
                                             wrapMode: Text.WordWrap
-                                            width: parent.width
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: securityColumn.secondarySecurityNote(securityColumn.internet.detail)
+                                            visible: text.length > 0
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: ThemeManager.fontSize_small
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            opacity: 0.72
                                         }
                                     }
 
@@ -892,28 +980,33 @@ Item {
 
                                 // Card 2: Updates
                                 Rectangle {
+                                    id: updatesSummaryCard
                                     width: mainCardsFlow.cardWidth
-                                    height: 110
+                                    height: Math.max(138, updatesSummaryColumn.implicitHeight + 32)
                                     radius: 12
                                     color: ThemeManager.panel()
                                     border.color: ThemeManager.border()
 
-                                    Column {
+                                    ColumnLayout {
+                                        id: updatesSummaryColumn
                                         anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 6
+                                        anchors.margins: 16
+                                        spacing: 8
 
-                                        Row {
-                                            spacing: 8
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignLeft
+                                            implicitWidth: updatesSummaryLabel.implicitWidth + 18
+                                            implicitHeight: 24
+                                            radius: 12
+                                            color: root.transparentColor(root.statusColor(securityColumn.updates.isGood, securityColumn.updates.isWarning), 0.12)
+
                                             Text {
-                                                text: "ðŸ”„"
-                                                font.pixelSize: ThemeManager.fontSize_h4
-                                            }
-                                            Text {
+                                                id: updatesSummaryLabel
+                                                anchors.centerIn: parent
                                                 text: "Updates"
                                                 color: ThemeManager.muted()
-                                                font.pixelSize: ThemeManager.fontSize_small
-                                                font.weight: Font.Medium
+                                                font.pixelSize: ThemeManager.fontSize_caption
+                                                font.weight: Font.DemiBold
                                             }
                                         }
 
@@ -922,14 +1015,31 @@ Item {
                                             color: root.statusColor(securityColumn.updates.isGood, securityColumn.updates.isWarning)
                                             font.pixelSize: ThemeManager.fontSize_h2
                                             font.bold: true
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 1
+                                            elide: Text.ElideRight
                                         }
 
                                         Text {
-                                            text: securityColumn.updates.detail || ""
+                                            text: securityColumn.primarySecurityText(securityColumn.updates.detail, "Update verification is still running.")
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_caption
                                             wrapMode: Text.WordWrap
-                                            width: parent.width
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: securityColumn.secondarySecurityNote(securityColumn.updates.detail)
+                                            visible: text.length > 0
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: ThemeManager.fontSize_small
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            opacity: 0.72
                                         }
                                     }
 
@@ -944,28 +1054,33 @@ Item {
 
                                 // Card 3: Device Protection
                                 Rectangle {
+                                    id: deviceSummaryCard
                                     width: mainCardsFlow.cardWidth
-                                    height: 110
+                                    height: Math.max(138, deviceSummaryColumn.implicitHeight + 32)
                                     radius: 12
                                     color: ThemeManager.panel()
                                     border.color: ThemeManager.border()
 
-                                    Column {
+                                    ColumnLayout {
+                                        id: deviceSummaryColumn
                                         anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 6
+                                        anchors.margins: 16
+                                        spacing: 8
 
-                                        Row {
-                                            spacing: 8
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignLeft
+                                            implicitWidth: deviceSummaryLabel.implicitWidth + 18
+                                            implicitHeight: 24
+                                            radius: 12
+                                            color: root.transparentColor(root.statusColor(securityColumn.device.isGood, securityColumn.device.isWarning), 0.12)
+
                                             Text {
-                                                text: "ðŸ’»"
-                                                font.pixelSize: ThemeManager.fontSize_h4
-                                            }
-                                            Text {
+                                                id: deviceSummaryLabel
+                                                anchors.centerIn: parent
                                                 text: "Device protection"
                                                 color: ThemeManager.muted()
-                                                font.pixelSize: ThemeManager.fontSize_small
-                                                font.weight: Font.Medium
+                                                font.pixelSize: ThemeManager.fontSize_caption
+                                                font.weight: Font.DemiBold
                                             }
                                         }
 
@@ -974,14 +1089,31 @@ Item {
                                             color: root.statusColor(securityColumn.device.isGood, securityColumn.device.isWarning)
                                             font.pixelSize: ThemeManager.fontSize_h2
                                             font.bold: true
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 1
+                                            elide: Text.ElideRight
                                         }
 
                                         Text {
-                                            text: securityColumn.device.detail || ""
+                                            text: securityColumn.primarySecurityText(securityColumn.device.detail, "Device-hardening checks are still being verified.")
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_caption
                                             wrapMode: Text.WordWrap
-                                            width: parent.width
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: securityColumn.secondarySecurityNote(securityColumn.device.detail)
+                                            visible: text.length > 0
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: ThemeManager.fontSize_small
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            opacity: 0.72
                                         }
                                     }
 
@@ -996,28 +1128,33 @@ Item {
 
                                 // Card 4: Remote & Apps
                                 Rectangle {
+                                    id: remoteSummaryCard
                                     width: mainCardsFlow.cardWidth
-                                    height: 110
+                                    height: Math.max(138, remoteSummaryColumn.implicitHeight + 32)
                                     radius: 12
                                     color: ThemeManager.panel()
                                     border.color: ThemeManager.border()
 
-                                    Column {
+                                    ColumnLayout {
+                                        id: remoteSummaryColumn
                                         anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 6
+                                        anchors.margins: 16
+                                        spacing: 8
 
-                                        Row {
-                                            spacing: 8
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignLeft
+                                            implicitWidth: remoteSummaryLabel.implicitWidth + 18
+                                            implicitHeight: 24
+                                            radius: 12
+                                            color: root.transparentColor(root.statusColor(securityColumn.remote.isGood, securityColumn.remote.isWarning), 0.12)
+
                                             Text {
-                                                text: "ðŸ”’"
-                                                font.pixelSize: ThemeManager.fontSize_h4
-                                            }
-                                            Text {
+                                                id: remoteSummaryLabel
+                                                anchors.centerIn: parent
                                                 text: "Remote & apps"
                                                 color: ThemeManager.muted()
-                                                font.pixelSize: ThemeManager.fontSize_small
-                                                font.weight: Font.Medium
+                                                font.pixelSize: ThemeManager.fontSize_caption
+                                                font.weight: Font.DemiBold
                                             }
                                         }
 
@@ -1026,14 +1163,31 @@ Item {
                                             color: root.statusColor(securityColumn.remote.isGood, securityColumn.remote.isWarning)
                                             font.pixelSize: ThemeManager.fontSize_h2
                                             font.bold: true
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 1
+                                            elide: Text.ElideRight
                                         }
 
                                         Text {
-                                            text: securityColumn.remote.detail || ""
+                                            text: securityColumn.primarySecurityText(securityColumn.remote.detail, "Remote exposure and app-hardening checks are still loading.")
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_caption
                                             wrapMode: Text.WordWrap
-                                            width: parent.width
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            text: securityColumn.secondarySecurityNote(securityColumn.remote.detail)
+                                            visible: text.length > 0
+                                            color: ThemeManager.muted()
+                                            font.pixelSize: ThemeManager.fontSize_small
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            opacity: 0.72
                                         }
                                     }
 
@@ -1092,11 +1246,31 @@ Item {
                                         Item { width: 1; Layout.fillWidth: true }
 
                                         Text {
-                                            text: "For power users"
+                                            text: root.isLinux ? "Verified controls" : "Verified Windows controls"
                                             color: ThemeManager.muted()
                                             font.pixelSize: ThemeManager.fontSize_small
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: parent.width
+                                    visible: advancedSection.expanded
+                                    implicitHeight: advancedCoverageText.implicitHeight + 16
+                                    radius: 8
+                                    color: "transparent"
+                                    border.color: ThemeManager.border()
+                                    border.width: 1
+
+                                    Text {
+                                        id: advancedCoverageText
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        text: securityColumn.advancedCoverageNote
+                                        color: ThemeManager.muted()
+                                        font.pixelSize: ThemeManager.fontSize_small
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
 
@@ -1112,8 +1286,8 @@ Item {
 
                                     property real cardWidth: {
                                         var availableWidth = parent.width
-                                        var minCardWidth = 170
-                                        var maxCardWidth = 200
+                                        var minCardWidth = 184
+                                        var maxCardWidth = 220
                                         var cardsPerRow = Math.max(1, Math.floor(availableWidth / (minCardWidth + spacing)))
                                         var calculatedWidth = (availableWidth - (cardsPerRow - 1) * spacing) / cardsPerRow
                                         return Math.min(maxCardWidth, Math.max(minCardWidth, calculatedWidth))
@@ -1121,12 +1295,22 @@ Item {
 
                                     // Firewall (toggleable)
                                     SecurityCard {
+                                        objectName: "firewallSecurityCard"
                                         width: advancedCardsFlow.cardWidth
                                         title: "Firewall"
-                                        value: securityColumn.effectiveFirewall ? "On" : "Off"
-                                        subtitle: securityColumn.raw.firewallName || ""
-                                        isGood: securityColumn.effectiveFirewall
-                                        toggleable: true
+                                        value: {
+                                            var status = securityColumn.effectiveFirewallStatus
+                                            if (status === "Enabled") return "On"
+                                            if (status === "Disabled") return "Off"
+                                            if (status === "Requires Admin") return "Admin required"
+                                            return status
+                                        }
+                                        subtitle: securityColumn.raw.firewallName || securityColumn.internet.detail || ""
+                                        isGood: securityColumn.effectiveFirewallStatus === "Enabled"
+                                        isWarning: securityColumn.effectiveFirewallStatus === "Disabled"
+                                        isNeutral: securityColumn.effectiveFirewallStatus === "Requires Admin" || securityColumn.effectiveFirewallStatus === "Unknown"
+                                        toggleable: securityColumn.canToggle("firewall")
+                                                    && (securityColumn.effectiveFirewallStatus === "Enabled" || securityColumn.effectiveFirewallStatus === "Disabled")
                                         toggleChecked: securityColumn.effectiveFirewall
                                         onToggleRequested: function(newState) {
                                             riskDialog.show("firewall", newState)
@@ -1137,19 +1321,44 @@ Item {
                                     SecurityCard {
                                         width: advancedCardsFlow.cardWidth
                                         title: root.isLinux ? "Endpoint Scanner" : "Antivirus"
-                                        value: root.isLinux
-                                               ? (securityColumn.raw.antivirusRealtime === true
-                                                  ? "Realtime"
-                                                  : (securityColumn.raw.antivirusEnabled === true ? "Scanner only" : "Not installed"))
-                                               : ((securityColumn.raw.antivirusEnabled === true) ? "On" : "Off")
-                                        subtitle: (securityColumn.raw.antivirusName || "Unknown") + (securityColumn.raw.antivirusRealtime === true ? " | Real-time" : "")
-                                        isGood: root.isLinux ? (securityColumn.raw.antivirusRealtime === true) : (securityColumn.raw.antivirusEnabled === true)
-                                        isWarning: (securityColumn.raw.antivirusEnabled === true) && (securityColumn.raw.antivirusRealtime !== true)
+                                        value: {
+                                            var status = securityColumn.raw.antivirusStatus || ""
+                                            if (root.isLinux) {
+                                                if (status) return status
+                                                if (securityColumn.raw.antivirusRealtime === true) return "Realtime active"
+                                                if (securityColumn.raw.antivirusEnabled === true) return "Scanner only"
+                                                return "Unknown"
+                                            }
+                                            if (status === "On" || status === "Off") return status
+                                            if (status === "Admin required") return "Admin required"
+                                            return status || "Unknown"
+                                        }
+                                        subtitle: {
+                                            var name = securityColumn.raw.antivirusName || "Unknown"
+                                            return name
+                                        }
+                                        note: {
+                                            if (securityColumn.raw.antivirusDetail)
+                                                return securityColumn.raw.antivirusDetail
+                                            if (securityColumn.raw.antivirusRealtime === true)
+                                                return "Real-time protection active"
+                                            if (!root.isLinux && securityColumn.raw.antivirusRealtime === false)
+                                                return "Real-time protection is off"
+                                            return ""
+                                        }
+                                        isGood: root.isLinux
+                                                ? (securityColumn.raw.antivirusStatus === "Realtime active")
+                                                : (securityColumn.raw.antivirusStatus === "On")
+                                        isWarning: root.isLinux
+                                                   ? (securityColumn.raw.antivirusStatus === "Scanner only")
+                                                   : (securityColumn.raw.antivirusStatus === "Off"
+                                                      || (securityColumn.raw.antivirusStatus === "On" && securityColumn.raw.antivirusRealtime === false))
+                                        isNeutral: securityColumn.raw.antivirusStatus === "Unknown" || securityColumn.raw.antivirusStatus === "Admin required"
                                     }
 
                                     // Secure Boot
                                     SecurityCard {
-                                        visible: true
+                                        visible: securityColumn.supports("secureBoot")
                                         width: advancedCardsFlow.cardWidth
                                         title: "Secure Boot"
                                         value: securityColumn.raw.secureBoot || "Unknown"
@@ -1160,11 +1369,11 @@ Item {
 
                                     // TPM (Windows-only)
                                     SecurityCard {
-                                        visible: true
+                                        visible: !root.isLinux && securityColumn.supports("tpm")
                                         width: advancedCardsFlow.cardWidth
                                         title: "TPM"
                                         value: {
-                                            if (securityColumn.tpmData.present) {
+                                            if (securityColumn.tpmData.present === true) {
                                                 var ver = securityColumn.tpmData.version || ""
                                                 if (securityColumn.tpmData.enabled) {
                                                     return "Present" + (ver && ver !== "Unknown" ? " (" + ver + ")" : "")
@@ -1172,22 +1381,25 @@ Item {
                                                     return "Disabled"
                                                 }
                                             }
-                                            return "Not found"
+                                            if (securityColumn.tpmData.present === false)
+                                                return "Not found"
+                                            return securityColumn.tpmData.status || "Unknown"
                                         }
                                         subtitle: securityColumn.tpmData.detail || ""
                                         isGood: (securityColumn.tpmData.present === true) && (securityColumn.tpmData.enabled === true)
                                         isWarning: (securityColumn.tpmData.present === true) && (securityColumn.tpmData.enabled !== true)
+                                        isNeutral: securityColumn.tpmData.present !== true && securityColumn.tpmData.present !== false
                                     }
 
                                     // Disk Encryption (hidden on Linux - unreliable)
                                     SecurityCard {
-                                        visible: true
+                                        visible: securityColumn.supports("diskEncryption")
                                         width: advancedCardsFlow.cardWidth
                                         title: "Disk Encryption"
                                         value: securityColumn.raw.diskEncryption || "Unknown"
                                         subtitle: securityColumn.raw.diskEncryptionDetail || ""
                                         isGood: securityColumn.raw.diskEncryption === "Enabled"
-                                        isWarning: root.isLinux && securityColumn.raw.diskEncryption === "Not detected"
+                                        isWarning: securityColumn.raw.diskEncryption === "Not detected" || securityColumn.raw.diskEncryption === "Not Encrypted"
                                         isNeutral: securityColumn.raw.diskEncryption === "NotAvailable" || securityColumn.raw.diskEncryption === "Unknown"
                                     }
 
@@ -1224,6 +1436,7 @@ Item {
                                             }
                                             return ""
                                         }
+                                        note: securityColumn.raw.windowsUpdateDetail || ""
                                         isGood: securityColumn.raw.windowsUpdateStatus === "UpToDate"
                                         isWarning: securityColumn.raw.windowsUpdateStatus === "PendingUpdates" || 
                                                    securityColumn.raw.windowsUpdateStatus === "RestartRequired"
@@ -1231,20 +1444,30 @@ Item {
 
                                     // Remote Desktop (toggleable, Windows-only)
                                     SecurityCard {
+                                        objectName: "rdpSecurityCard"
                                         visible: true
                                         width: advancedCardsFlow.cardWidth
                                         title: root.isLinux ? "Remote Access" : "Remote Desktop"
                                         value: root.isLinux
-                                               ? (securityColumn.raw.remoteDesktopEnabled ? "Exposed" : "Minimized")
-                                               : (securityColumn.effectiveRdp ? "On" : "Off")
+                                               ? (securityColumn.raw.remoteDesktopStatus || "Unknown")
+                                               : (function() {
+                                                     var status = securityColumn.effectiveRdpStatus
+                                                     if (status === "Enabled") return "On"
+                                                     if (status === "Disabled") return "Off"
+                                                     return status
+                                                 })()
                                         subtitle: root.isLinux
-                                                  ? (securityColumn.remote.detail || "")
-                                                  : (securityColumn.effectiveRdp
-                                                     ? ((securityColumn.raw.remoteDesktopNla === true) ? "NLA enabled" : "NLA off")
-                                                     : "")
-                                        isGood: root.isLinux ? !securityColumn.raw.remoteDesktopEnabled : !securityColumn.effectiveRdp
-                                        isWarning: root.isLinux ? securityColumn.raw.remoteDesktopEnabled : (securityColumn.effectiveRdp && (securityColumn.raw.remoteDesktopNla === true))
+                                                  ? (securityColumn.raw.remoteDesktopDetail || securityColumn.remote.detail || "")
+                                                  : (securityColumn.raw.remoteDesktopDetail
+                                                     || (securityColumn.effectiveRdpStatus === "Enabled"
+                                                        ? ((securityColumn.raw.remoteDesktopNla === true) ? "NLA enabled" : (securityColumn.raw.remoteDesktopNla === false ? "NLA off" : ""))
+                                                        : ""))
+                                        isGood: root.isLinux ? securityColumn.raw.remoteDesktopStatus === "Minimized" : securityColumn.effectiveRdpStatus === "Disabled"
+                                        isWarning: root.isLinux ? securityColumn.raw.remoteDesktopStatus === "Exposed" : securityColumn.effectiveRdpStatus === "Enabled"
+                                        isNeutral: securityColumn.effectiveRdpStatus === "Unknown"
                                         toggleable: !root.isLinux
+                                                    && securityColumn.canToggle("rdp")
+                                                    && (securityColumn.effectiveRdpStatus === "Enabled" || securityColumn.effectiveRdpStatus === "Disabled")
                                         toggleChecked: !root.isLinux ? securityColumn.effectiveRdp : false
                                         onToggleRequested: function(newState) {
                                             riskDialog.show("rdp", newState)
@@ -1254,6 +1477,7 @@ Item {
                                     // Local Admins (hidden on Linux - unreliable)
                                     SecurityCard {
                                         visible: root.isLinux
+                                                 && securityColumn.supports("mandatoryAccessControl")
                                         width: advancedCardsFlow.cardWidth
                                         title: "MAC Enforcement"
                                         value: securityColumn.raw.linuxMandatoryAccessControl || "Unknown"
@@ -1268,25 +1492,37 @@ Item {
                                     }
 
                                     SecurityCard {
-                                        visible: !root.isLinux
+                                        visible: !root.isLinux && securityColumn.supports("localAdmins")
                                         width: advancedCardsFlow.cardWidth
                                         title: "Local Admins"
-                                        value: (securityColumn.raw.adminAccountCount || 0) + " accounts"
-                                        isGood: (securityColumn.raw.adminAccountCount || 0) <= 2
+                                        value: (securityColumn.raw.adminAccountCount === null || securityColumn.raw.adminAccountCount === undefined)
+                                               ? "Unknown"
+                                               : (securityColumn.raw.adminAccountCount + " accounts")
+                                        subtitle: securityColumn.raw.adminAccountDetail || ""
+                                        isGood: securityColumn.raw.adminAccountCount !== null
+                                                && securityColumn.raw.adminAccountCount !== undefined
+                                                && securityColumn.raw.adminAccountCount <= 2
                                         isWarning: securityColumn.raw.adminAccountCount === 3
+                                        isNeutral: securityColumn.raw.adminAccountCount === null || securityColumn.raw.adminAccountCount === undefined
                                     }
 
                                     // UAC (toggleable, Windows-only)
                                     SecurityCard {
-                                        visible: !root.isLinux
+                                        objectName: "uacSecurityCard"
+                                        visible: !root.isLinux && securityColumn.supports("uac")
                                         width: advancedCardsFlow.cardWidth
                                         title: "UAC Level"
-                                        value: securityColumn.effectiveUacOn
-                                               ? (securityColumn.raw.uacLevel || "High")
-                                               : "Disabled"
-                                        isGood: securityColumn.effectiveUacOn
-                                        isWarning: !securityColumn.effectiveUacOn
-                                        toggleable: true
+                                        value: securityColumn.effectiveUacLevel
+                                        subtitle: securityColumn.raw.uacDetail || ""
+                                        isGood: securityColumn.effectiveUacLevel === "High" || securityColumn.effectiveUacLevel === "Medium" || securityColumn.effectiveUacLevel === "Enabled"
+                                        isWarning: securityColumn.effectiveUacLevel === "Low" || securityColumn.effectiveUacLevel === "Disabled"
+                                        isNeutral: securityColumn.effectiveUacLevel === "Unknown"
+                                        toggleable: securityColumn.canToggle("uac")
+                                                    && (securityColumn.effectiveUacLevel === "High"
+                                                    || securityColumn.effectiveUacLevel === "Medium"
+                                                    || securityColumn.effectiveUacLevel === "Low"
+                                                    || securityColumn.effectiveUacLevel === "Disabled"
+                                                    || securityColumn.effectiveUacLevel === "Enabled")
                                         toggleChecked: securityColumn.effectiveUacOn
                                         onToggleRequested: function(newState) {
                                             riskDialog.show("uac", newState)
@@ -1295,20 +1531,26 @@ Item {
 
                                     // SmartScreen (Windows-only)
                                     SecurityCard {
-                                        visible: !root.isLinux
+                                        visible: !root.isLinux && securityColumn.supports("smartScreen")
                                         width: advancedCardsFlow.cardWidth
                                         title: "SmartScreen"
-                                        value: securityColumn.raw.smartScreenEnabled ? "On" : "Off"
-                                        isGood: securityColumn.raw.smartScreenEnabled === true
+                                        value: securityColumn.raw.smartScreenStatus || "Unknown"
+                                        subtitle: securityColumn.raw.smartScreenDetail || ""
+                                        isGood: securityColumn.raw.smartScreenStatus === "Enabled"
+                                        isWarning: securityColumn.raw.smartScreenStatus === "Disabled"
+                                        isNeutral: securityColumn.raw.smartScreenStatus === "Unknown"
                                     }
 
                                     // Memory Integrity (Windows-only)
                                     SecurityCard {
-                                        visible: !root.isLinux
+                                        visible: !root.isLinux && securityColumn.supports("memoryIntegrity")
                                         width: advancedCardsFlow.cardWidth
                                         title: "Memory Integrity"
-                                        value: securityColumn.raw.memoryIntegrityEnabled ? "On" : "Off"
-                                        isGood: securityColumn.raw.memoryIntegrityEnabled === true
+                                        value: securityColumn.raw.memoryIntegrityStatus || "Unknown"
+                                        subtitle: securityColumn.raw.memoryIntegrityDetail || ""
+                                        isGood: securityColumn.raw.memoryIntegrityStatus === "Enabled"
+                                        isWarning: securityColumn.raw.memoryIntegrityStatus === "Disabled" || securityColumn.raw.memoryIntegrityStatus === "Partial"
+                                        isNeutral: securityColumn.raw.memoryIntegrityStatus === "Unknown"
                                     }
                                 }
 

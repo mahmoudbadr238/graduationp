@@ -1,14 +1,25 @@
 # Sentinel Desktop Security Suite — User Manual
 
 **Version:** 1.0.0  
-**Release Date:** October 18, 2025  
-**Status:** Production Release
+**Release Date:** April 22, 2026  
+**Status:** Final release guidance with legacy sections preserved
+
+> Release note:
+> This manual still contains older Windows-first walkthrough text in some
+> sections. For current cross-platform installation, platform support, runtime
+> paths, and release limitations, use [README.md](../../README.md),
+> [docs/QUICKSTART.md](../QUICKSTART.md), and
+> [docs/releases/FINAL_RELEASE_CHECKLIST.md](../releases/FINAL_RELEASE_CHECKLIST.md)
+> as the source of truth.
 
 ---
 
 ## Welcome to Sentinel! 👋
 
-Sentinel is your personal security assistant for Windows. Think of it as a guard dog for your computer—always watching, always protecting, and never sleeping. This manual will guide you through using Sentinel, whether you're a tech wizard or just getting started with computer security.
+Sentinel is a cross-platform desktop endpoint security application for Windows
+and Linux. This manual provides user-facing guidance, but some long-form
+walkthrough sections were written earlier in the project and remain more
+Windows-centric than the current release.
 
 ---
 
@@ -57,10 +68,10 @@ Sentinel is your personal security assistant for Windows. Think of it as a guard
 
 **Want More Protection?** Enable these optional features:
 
-**AI-Powered Explanations** (Requires API key)
-1. Get an API key from [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/api-keys)
+**AI-Powered Explanations** (Requires Groq API key)
+1. Get an API key from [Groq](https://console.groq.com/keys)
 2. Create a file named `.env` in Sentinel folder
-3. Add this line: `ANTHROPIC_API_KEY=your_key_here` (or `OPENAI_API_KEY=...`)
+3. Add this line: `GROQ_API_KEY=your_key_here`
 4. Restart Sentinel → AI explanations now available! ✅
 
 **Nmap Network Scanner** (Free)
@@ -544,10 +555,10 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 **Symptom:** No AI explanations appearing for events.
 
 **Solution:**
-1. Get an API key from [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/api-keys)
+1. Get an API key from [Groq](https://console.groq.com/keys)
 2. Copy key from your dashboard
 3. Create `.env` file in Sentinel folder (no name, just `.env`)
-4. Add line: `ANTHROPIC_API_KEY=your_key_here`
+4. Add line: `GROQ_API_KEY=your_key_here`
 5. Save file
 6. Restart Sentinel
 7. AI explanations should now work ✅
@@ -614,9 +625,9 @@ Recommendation: ❌ DELETE - This is ransomware disguised as a game crack
 
 ### Q: Does Sentinel send my data to the cloud?
 
-**A:** Only if you enable AI explanations.
-- **Without AI API:** 100% local, zero data leaves your PC
-- **With AI API:** Event descriptions sent for analysis
+**A:** Only if you enable AI features that use Groq.
+- **Without `GROQ_API_KEY`:** Monitoring, scanning, event viewing, and local diagnostics stay on your machine
+- **With `GROQ_API_KEY`:** Redacted event or scan context is sent to Groq for AI analysis
 - **Network Scan:** Local only, no cloud
 - **Event Logs:** Local only, never uploaded
 

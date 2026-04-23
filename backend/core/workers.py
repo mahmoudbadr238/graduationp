@@ -94,7 +94,7 @@ class CancellableWorker(QRunnable):
 
         except Exception as e:
             error_msg = f"{type(e).__name__}: {e!s}"
-            logger.exception(f"Worker '{self.worker_id}' failed: {error_msg}")
+            logger.exception("Worker '%s' failed: %s", self.worker_id, error_msg)
             logger.debug(traceback.format_exc())
             self.signals.error.emit(self.worker_id, error_msg)
 

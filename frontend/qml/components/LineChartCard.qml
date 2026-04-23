@@ -29,7 +29,7 @@ Card {
         Text {
             id: chartTitle
             text: lineChartCard.title
-            color: Theme.text_primary
+            color: Theme.text
             font.pixelSize: Theme.typography.body.size
             font.weight: Theme.typography.body.weight
             Layout.fillWidth: true
@@ -45,7 +45,7 @@ Card {
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
-            radius: Theme.radius_sm
+            radius: Theme.radii_sm
             
             ChartView {
                 id: chartView
@@ -73,7 +73,7 @@ Card {
                     max: Math.max(1, lineChartCard.pointCount - 1)
                     labelsVisible: false
                     gridVisible: true
-                    gridLineColor: Theme.divider
+                    gridLineColor: Theme.border
                 }
                 
                 // Y-Axis
@@ -82,8 +82,8 @@ Card {
                     min: lineChartCard.minValue
                     max: lineChartCard.maxValue
                     tickCount: 5
-                    labelsColor: Theme.text_secondary
-                    gridLineColor: Theme.divider
+                    labelsColor: Theme.textSecondary
+                    gridLineColor: Theme.border
                 }
                 
                 // Line Series
@@ -104,7 +104,7 @@ Card {
             Text {
                 anchors.centerIn: parent
                 text: "No data yet"
-                color: Theme.text_secondary
+                color: Theme.textSecondary
                 font.pixelSize: Theme.typography.body.size
                 visible: lineChartCard.historyData.length === 0
             }
@@ -121,7 +121,7 @@ Card {
                 
                 Text {
                     text: "Current"
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                 }
                 
@@ -133,7 +133,7 @@ Card {
                         }
                         return "—"
                     }
-                    color: Theme.text_primary
+                    color: Theme.text
                     font.pixelSize: Theme.typography.body.size
                     font.weight: Font.DemiBold
                 }
@@ -145,7 +145,7 @@ Card {
                 
                 Text {
                     text: "Average"
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                 }
                 
@@ -158,7 +158,7 @@ Card {
                         }
                         return "—"
                     }
-                    color: Theme.text_primary
+                    color: Theme.text
                     font.pixelSize: Theme.typography.body.size
                     font.weight: Font.DemiBold
                 }
@@ -170,7 +170,7 @@ Card {
                 
                 Text {
                     text: "Peak"
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                 }
                 
@@ -182,7 +182,7 @@ Card {
                         }
                         return "—"
                     }
-                    color: Theme.text_primary
+                    color: Theme.text
                     font.pixelSize: Theme.typography.body.size
                     font.weight: Font.DemiBold
                 }

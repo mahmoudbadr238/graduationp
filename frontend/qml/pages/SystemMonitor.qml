@@ -16,7 +16,14 @@ Item {
     property real netRecvMbps: 0
     property real diskPercent: 0
     property bool monitorRunning: false
-    property bool rtpEnabled: true
+    property bool rtpEnabled: false
+    property string rtpCapabilityState: (typeof RTPBridge !== "undefined" && RTPBridge) ? RTPBridge.getCapabilityState() : "unsupported"
+    property string rtpCapabilityDetail: (typeof RTPBridge !== "undefined" && RTPBridge) ? RTPBridge.getCapabilityDetail() : "Real-Time Protection is not available on this platform."
+    property bool rtpConfiguredEnabled: (typeof RTPBridge !== "undefined" && RTPBridge && typeof RTPBridge.getConfiguredEnabled === "function") ? RTPBridge.getConfiguredEnabled() : false
+    property string rtpMonitoringState: (typeof RTPBridge !== "undefined" && RTPBridge && typeof RTPBridge.getMonitoringState === "function") ? RTPBridge.getMonitoringState() : "unsupported"
+    property string rtpProcessScannerState: (typeof RTPBridge !== "undefined" && RTPBridge && typeof RTPBridge.getProcessScannerState === "function") ? RTPBridge.getProcessScannerState() : "unsupported"
+    property string rtpRuntimeDetail: (typeof RTPBridge !== "undefined" && RTPBridge && typeof RTPBridge.getRuntimeDetail === "function") ? RTPBridge.getRuntimeDetail() : rtpCapabilityDetail
+    property bool rtpAvailable: typeof RTPBridge !== "undefined" && RTPBridge !== null && rtpCapabilityState !== "unsupported"
 
     // ── Log console model (ListModel for efficient prepend) ──
     ListModel { id: logModel }
@@ -37,13 +44,34 @@ Item {
         return val.toFixed(2) + " MB/s"
     }
 
+    function syncRtpState() {
+        if (typeof RTPBridge === "undefined" || !RTPBridge)
+            return
+
+        rtpEnabled = RTPBridge.getStatus()
+        if (typeof RTPBridge.getCapabilityState === "function")
+            rtpCapabilityState = RTPBridge.getCapabilityState()
+        if (typeof RTPBridge.getCapabilityDetail === "function")
+            rtpCapabilityDetail = RTPBridge.getCapabilityDetail()
+        if (typeof RTPBridge.getConfiguredEnabled === "function")
+            rtpConfiguredEnabled = RTPBridge.getConfiguredEnabled()
+        if (typeof RTPBridge.getMonitoringState === "function")
+            rtpMonitoringState = RTPBridge.getMonitoringState()
+        if (typeof RTPBridge.getProcessScannerState === "function")
+            rtpProcessScannerState = RTPBridge.getProcessScannerState()
+        if (typeof RTPBridge.getRuntimeDetail === "function")
+            rtpRuntimeDetail = RTPBridge.getRuntimeDetail()
+        else
+            rtpRuntimeDetail = rtpCapabilityDetail
+    }
+
     // ── Auto-start monitor & poll stats ──
     Component.onCompleted: {
         if (typeof ResourceMonitor !== "undefined" && ResourceMonitor) {
             ResourceMonitor.start()
             monitorRunning = true
         }
-        // RTP auto-starts on boot; protectionStatusChanged signal keeps UI in sync.
+        syncRtpState()
     }
 
     // ── Poll timer (syncs bridge → QML properties) ──
@@ -64,9 +92,7 @@ Item {
                 diskPercent = ResourceMonitor.getDiskPercent()
                 monitorRunning = ResourceMonitor.getIsRunning()
             }
-            if (typeof RTPBridge !== "undefined") {
-                rtpEnabled = RTPBridge.getStatus()
-            }
+            syncRtpState()
         }
     }
 
@@ -84,8 +110,12 @@ Item {
         enabled: target !== null
         function onThreatDetected(msg) { addLog(msg) }
         function onProcessScanned(msg) { addLog(msg) }
-        function onStatusMessage(msg) { addLog("🛡️ RTP: " + msg) }
-        function onProtectionStatusChanged(active) { rtpEnabled = active }
+        function onStatusMessage(msg) {
+            addLog("🛡️ RTP: " + msg)
+            syncRtpState()
+        }
+        function onProtectionStatusChanged(active) { syncRtpState() }
+        function onCapabilityChanged() { syncRtpState() }
 
         // Pre-formatted log line from bridge (Allowed / Blocked per process)
         function onNew_event_log(logLine) {
@@ -175,7 +205,7 @@ Item {
                 // ═══════════════════════════════════════════════
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 72
+                    height: 88
                     radius: 12
                     color: ThemeManager.panel()
                     border.color: ThemeManager.border()
@@ -189,13 +219,17 @@ Item {
                         // Glowing dot
                         Rectangle {
                             width: 14; height: 14; radius: 7
-                            color: rtpEnabled ? ThemeManager.success : ThemeManager.muted()
-                            border.color: rtpEnabled ? ThemeManager.success : ThemeManager.border()
+                            color: rtpCapabilityState === "degraded"
+                                   ? ThemeManager.warning
+                                   : (rtpMonitoringState === "running" ? ThemeManager.success : ThemeManager.muted())
+                            border.color: rtpCapabilityState === "degraded"
+                                          ? ThemeManager.warning
+                                          : (rtpMonitoringState === "running" ? ThemeManager.success : ThemeManager.border())
                             border.width: 2
 
                             // Glow animation
                             SequentialAnimation on opacity {
-                                running: rtpEnabled
+                                running: rtpMonitoringState === "running"
                                 loops: Animation.Infinite
                                 NumberAnimation { from: 1.0; to: 0.4; duration: 1200; easing.type: Easing.InOutSine }
                                 NumberAnimation { from: 0.4; to: 1.0; duration: 1200; easing.type: Easing.InOutSine }
@@ -205,22 +239,33 @@ Item {
                         ColumnLayout {
                             spacing: 2
                             Text {
-                                text: "Real-Time Protection (WMI)"
+                                text: "Real-Time Protection"
                                 font.pixelSize: ThemeManager.fontSize_body
                                 font.bold: true
                                 color: ThemeManager.foreground()
                             }
                             Text {
-                                text: rtpEnabled ? "ACTIVE — Monitoring all process launches" : "INACTIVE — Click to enable"
+                                Layout.fillWidth: true
+                                text: !rtpAvailable
+                                      ? "Not available on this platform"
+                                      : rtpRuntimeDetail
                                 font.pixelSize: ThemeManager.fontSize_small
-                                color: rtpEnabled ? ThemeManager.success : ThemeManager.muted()
+                                wrapMode: Text.WordWrap
+                                color: !rtpAvailable
+                                       ? ThemeManager.muted()
+                                       : (rtpCapabilityState === "degraded"
+                                          ? ThemeManager.warning
+                                          : (rtpMonitoringState === "running"
+                                             ? ThemeManager.success
+                                             : ThemeManager.muted()))
                             }
                         }
 
                         Item { Layout.fillWidth: true }
 
-                        // RTP toggle button
+                        // RTP toggle button — hidden when not available
                         Rectangle {
+                            visible: rtpAvailable && rtpCapabilityState === "available"
                             width: rtpBtnText.implicitWidth + 24
                             height: 34
                             radius: 8
@@ -231,7 +276,7 @@ Item {
                             Text {
                                 id: rtpBtnText
                                 anchors.centerIn: parent
-                                text: rtpEnabled ? "Disable RTP" : "Enable RTP"
+                                text: rtpEnabled ? "Disable" : "Enable"
                                 font.pixelSize: ThemeManager.fontSize_small
                                 font.bold: true
                                 color: "#ffffff"
@@ -243,7 +288,7 @@ Item {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (typeof RTPBridge !== "undefined") {
+                                    if (typeof RTPBridge !== "undefined" && RTPBridge) {
                                         RTPBridge.toggle()
                                     }
                                 }
@@ -605,7 +650,7 @@ Item {
                                 Text {
                                     id: emptyText
                                     anchors.centerIn: parent
-                                    text: "No events yet. Enable RTP or wait for resource alerts."
+                                    text: "No events yet. Enable RTP or launch an app to see process scan activity."
                                     font.pixelSize: ThemeManager.fontSize_small
                                     color: ThemeManager.muted()
                                 }

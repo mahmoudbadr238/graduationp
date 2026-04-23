@@ -1,4 +1,5 @@
 HomePage 1.0 HomePage.qml
+HistoryPage 1.0 HistoryPage.qml
 EventViewer 1.0 EventViewer.qml
 SystemSnapshot 1.0 SystemSnapshot.qml
 GPUMonitor 1.0 GPUMonitor.qml

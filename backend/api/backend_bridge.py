@@ -3,12 +3,14 @@
 import hashlib
 import json
 import logging
+import os
 import platform
 import re
 import sys
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Property, QObject, QProcess, QThreadPool, QTimer, Signal, Slot
 
@@ -28,6 +30,7 @@ from backend.core.interfaces import (
 from backend.core.result_cache import get_scan_cache
 from backend.core.types import ScanRecord, ScanType
 from backend.core.workers import CancellableWorker, get_watchdog
+from backend.engines.scanning.decision import build_final_decision
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ class BackendBridge(QObject):
         str, bool, int, str
     )  # scanId, success, exitCode, reportPath
 
-    # AI signals (100% local, no network)
+    # AI signals (Groq-backed cloud analysis with offline KB fallback where available)
     eventExplanationReady = Signal(str, str)  # eventId, explanationJson
     eventExplanationFailed = Signal(str, str)  # eventId, errorMessage
     eventPreviewReady = Signal(str, str)  # eventId, briefJson
@@ -145,6 +148,7 @@ class BackendBridge(QObject):
     # Internal signals for thread-safe communication (background thread -> main thread)
     _eventsLoadedInternal = Signal(list)
     _toastInternal = Signal(str, str)
+    integrationStatusChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -197,11 +201,12 @@ class BackendBridge(QObject):
 
         # Result cache
         self._cache = get_scan_cache()
+        self._clamav_status: dict[str, Any] = {}
 
         # Active workers (for cancellation)
         self._active_workers: dict[str, CancellableWorker] = {}
 
-        # AI services (100% local, no network calls)
+        # AI services (Groq cloud + offline knowledge base where available)
         self._event_explainer = None
         self._chatbot_bridge = None  # ChatbotBridge (Groq API)
         self._chat_conversation: list[dict[str, str]] = []
@@ -252,6 +257,7 @@ class BackendBridge(QObject):
         self._init_ai_services()
         self._init_smart_assistant()
         self._init_scan_history_table()
+        self.refreshIntegrationStatus()
 
         # Pre-warm security snapshot cache (background, non-blocking)
         # This speeds up first chatbot security question by 3-5 seconds
@@ -261,11 +267,29 @@ class BackendBridge(QObject):
         # The V4 event explainer handles all explanations deterministically
         # QTimer.singleShot(2000, self._start_ai_worker)  # Disabled - archived
 
-    # ── Platform property for QML ────────────────────────────────────────
+    # ── Platform and integration properties for QML ─────────────────────
     @Property(bool, constant=True)
     def isLinux(self) -> bool:
         """Expose platform detection to QML."""
         return IS_LINUX
+
+    @Property(bool, notify=integrationStatusChanged)
+    def clamAvAvailable(self) -> bool:
+        """True when a usable ClamAV scanner is available."""
+        return bool(self._clamav_status.get("available"))
+
+    @Property("QVariantMap", notify=integrationStatusChanged)
+    def clamAvStatus(self) -> dict[str, Any]:
+        """Normalized ClamAV availability for QML."""
+        return dict(self._clamav_status)
+
+    @Slot()
+    def refreshIntegrationStatus(self) -> None:
+        """Refresh optional integration status exposed to QML."""
+        from backend.infra.integrations import get_clamav_status
+
+        self._clamav_status = get_clamav_status()
+        self.integrationStatusChanged.emit()
 
     def _event_to_dict(self, e) -> dict:
         """Convert an event object to a dictionary."""
@@ -369,6 +393,7 @@ class BackendBridge(QObject):
             "report_content": "",
             "report_path": "",
             "error": "",
+            "final_decision": {},
         }
         normalized = {**defaults, **normalized}
 
@@ -403,6 +428,17 @@ class BackendBridge(QObject):
         normalized["error"] = str(normalized.get("error") or "")
         normalized["report_content"] = str(normalized.get("report_content") or "")
         normalized["report_path"] = str(normalized.get("report_path") or "")
+
+        final_decision = normalized.get("final_decision")
+        if not isinstance(final_decision, dict) or final_decision.get("score") is None:
+            final_decision = build_final_decision(
+                score=normalized.get("score", 0),
+                verdict=normalized.get("verdict", "Unknown"),
+                policy="scoring" if normalized.get("explanation") else "static",
+                scan_failed=normalized.get("verdict") == "Unknown"
+                and bool(normalized.get("error") or normalized.get("errors")),
+            ).to_dict()
+        normalized["final_decision"] = final_decision
 
         return normalized
 
@@ -709,17 +745,18 @@ class BackendBridge(QObject):
                 from backend.utils.security_snapshot import prewarm_security_snapshot
 
             prewarm_security_snapshot()
-        except ImportError:
-            pass  # Module not available
+        except ImportError as exc:
+            logger.debug("Security snapshot prewarm unavailable: %s", exc)
+        except (OSError, RuntimeError) as exc:
+            logger.warning("Security snapshot prewarm failed: %s", exc)
 
     def _init_ai_services(self):
         """Initialize AI services with Groq Cloud as primary provider.
 
         Uses V5 architecture with:
-        - Groq Cloud AI as primary provider (free tier)
+        - Groq Cloud AI as the configured cloud provider
         - Offline EventRulesEngine for instant KB lookups
         - SQLite caching for persistence
-        - Claude/OpenAI as fallback providers
         """
         try:
             from backend.engines.ai.performance import Debouncer
@@ -758,53 +795,76 @@ class BackendBridge(QObject):
                 logger.warning(f"V5 AI not available: {e}. AI services disabled.")
                 self._event_explainer = None
 
-        except Exception as e:
-            logger.warning(f"AI services not available: {e}")
+        except (ImportError, RuntimeError, OSError) as e:
+            logger.warning("AI services not available: %s", e)
             self._event_explainer = None
+
+    @staticmethod
+    def _normalize_v5_explanation_payload(result_json: str) -> dict[str, Any]:
+        """Normalize V5 explanation JSON into the legacy QML payload shape."""
+        result_dict = json.loads(result_json)
+        if not isinstance(result_dict, dict):
+            raise ValueError("AI explanation payload must be a JSON object")
+
+        normalized = dict(result_dict)
+        normalized["ai_enhanced"] = True
+        normalized["source"] = normalized.get("source", "groq")
+        normalized["short_title"] = normalized.get("title", "Event Information")
+        normalized["explanation"] = normalized.get("what_happened", "")
+        normalized["recommendation"] = "; ".join(
+            normalized.get("what_to_do", [])
+            if isinstance(normalized.get("what_to_do"), list)
+            else [normalized.get("what_to_do", "")]
+        )
+        normalized["why_it_happens"] = "; ".join(
+            normalized.get("why_it_happened", [])
+            if isinstance(normalized.get("why_it_happened"), list)
+            else []
+        )
+        normalized["what_you_can_do"] = normalized["recommendation"]
+        normalized["severity_label"] = normalized.get("severity", "Minor")
+        return normalized
 
     def _on_v5_explanation_ready(self, request_id: str, result_json: str):
         """Handle V5 explainer async completion (Groq AI enhancement)."""
+        pending = getattr(self, "_pending_v5_requests", {})
+        event_index = pending.pop(request_id, None)
+        if event_index is None:
+            event_index = request_id.replace("explain_", "")
+
+        event_id = str(event_index)
         try:
-            # Look up event_index from pending requests
-            pending = getattr(self, "_pending_v5_requests", {})
-            event_index = pending.pop(request_id, None)
-
-            if event_index is None:
-                # Try extracting from request_id
-                event_index = request_id.replace("explain_", "")
-
-            # Parse and add source marker
-            result_dict = json.loads(result_json)
-            result_dict["ai_enhanced"] = True
-            result_dict["source"] = result_dict.get("source", "groq")
-
-            # Add legacy compatibility fields
-            result_dict["short_title"] = result_dict.get("title", "Event Information")
-            result_dict["explanation"] = result_dict.get("what_happened", "")
-            result_dict["recommendation"] = "; ".join(
-                result_dict.get("what_to_do", [])
-                if isinstance(result_dict.get("what_to_do"), list)
-                else [result_dict.get("what_to_do", "")]
+            result_dict = self._normalize_v5_explanation_payload(result_json)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid V5 explanation payload for request %s: %s",
+                request_id,
+                exc,
             )
-            result_dict["why_it_happens"] = "; ".join(
-                result_dict.get("why_it_happened", [])
-                if isinstance(result_dict.get("why_it_happened"), list)
-                else []
+            self.eventExplanationFailed.emit(
+                event_id, "AI explanation returned an invalid response"
             )
-            result_dict["what_you_can_do"] = result_dict["recommendation"]
-            result_dict["severity_label"] = result_dict.get("severity", "Minor")
+            return
 
+        try:
             explanation_json = json.dumps(result_dict)
-            self.eventExplanationReady.emit(str(event_index), explanation_json)
-            logger.info(f"Groq AI enhancement ready for event {event_index}")
+            self.eventExplanationReady.emit(event_id, explanation_json)
+            logger.info("Groq AI enhancement ready for event %s", event_id)
             self._add_agent_step(
                 "AI Enhancement Complete",
                 "Groq Cloud AI returned detailed analysis",
                 "post-processed output",
                 "AI-enhanced explanation displayed",
             )
-        except Exception as e:
-            logger.error(f"Failed to emit V5 explanation: {e}")
+        except RuntimeError as exc:
+            logger.error(
+                "Failed to deliver V5 explanation for request %s: %s",
+                request_id,
+                exc,
+            )
+            self.eventExplanationFailed.emit(
+                event_id, "Failed to deliver AI explanation"
+            )
 
     def _on_v5_explanation_failed(self, request_id: str, error_msg: str):
         """Handle V5 explainer async failure."""
@@ -1085,7 +1145,7 @@ class BackendBridge(QObject):
             snapshot = self.sys_monitor.snapshot()
             self.snapshotUpdated.emit(snapshot)
         except Exception as e:
-            logger.exception(f"Monitoring error: {e}")
+            logger.exception("Monitoring error: %s", e)
             self.toast.emit("error", f"Monitoring error: {e!s}")
 
     def _compute_event_signature(self, event: dict) -> str:
@@ -1852,6 +1912,7 @@ class BackendBridge(QObject):
                 "sandbox_error": sandbox_data.get("error", ""),
                 "report_path": report_path_str,
                 "errors": result.errors if result.errors else [],
+                "final_decision": result.final_decision or {},
             }
 
         def on_success(wid, result):
@@ -2543,6 +2604,12 @@ class BackendBridge(QObject):
                 "report_path": "",  # Empty - user chooses to save
                 # Breakdown for UI
                 "score_breakdown": scoring_result.breakdown if scoring_result else {},
+                "final_decision": build_final_decision(
+                    score=scoring_result.score if scoring_result else 0,
+                    verdict=scoring_result.verdict_label if scoring_result else "Unknown",
+                    policy="scoring",
+                    scan_failed=scoring_result is None,
+                ).to_dict(),
             }
 
             return result
@@ -3083,9 +3150,9 @@ class BackendBridge(QObject):
 
     @property
     def _scan_history_db(self) -> "Path":
-        from pathlib import Path as _P
+        from backend.platform.paths import resolve_legacy_compatible_data_path
 
-        return _P.home() / ".sentinel" / "sentinel.db"
+        return resolve_legacy_compatible_data_path("sentinel.db")
 
     def _init_scan_history_table(self) -> None:
         """Create the scan_history table if it does not exist (idempotent)."""
@@ -3529,6 +3596,77 @@ class BackendBridge(QObject):
             self.toast.emit("error", f"Failed to load history: {e!s}")
             return []
 
+    @Slot(int, result=list)
+    def getUnifiedScanHistory(self, limit: int = 200) -> list:
+        """Return a normalized file-scan history across legacy and ScanCenter sources."""
+        try:
+            from backend.engines.history import list_combined_scan_history
+
+            return list_combined_scan_history(limit=limit, db_path=self._scan_history_db)
+        except Exception as exc:
+            logger.warning("getUnifiedScanHistory failed: %s", exc)
+            self.toast.emit("error", f"Failed to load file history: {exc!s}")
+            return []
+
+    @Slot(int, result=list)
+    def getUrlScanHistory(self, limit: int = 200) -> list:
+        """Return normalized URL scan history for the unified History page."""
+        try:
+            from backend.engines.history import list_url_history
+
+            return list_url_history(self.scan_repo, limit=limit)
+        except Exception as exc:
+            logger.warning("getUrlScanHistory failed: %s", exc)
+            self.toast.emit("error", f"Failed to load URL history: {exc!s}")
+            return []
+
+    @Slot(result=list)
+    def getQuarantineHistory(self) -> list:
+        """Return the full quarantine audit trail, including restored/deleted entries."""
+        try:
+            from backend.engines.history import list_quarantine_history
+            from backend.engines.scanning.quarantine_manager import get_quarantine_vault
+
+            return list_quarantine_history(get_quarantine_vault())
+        except Exception as exc:
+            logger.warning("getQuarantineHistory failed: %s", exc)
+            self.toast.emit("error", f"Failed to load quarantine history: {exc!s}")
+            return []
+
+    @Slot(str, result="QVariantMap")
+    def restoreQuarantineItem(self, quarantine_id: str) -> dict:
+        """Restore an actively quarantined item to its original path."""
+        try:
+            from backend.engines.scanning.quarantine_manager import get_quarantine_vault
+
+            return get_quarantine_vault().restore_file(quarantine_id)
+        except Exception as exc:
+            logger.warning("restoreQuarantineItem failed: %s", exc)
+            return {"success": False, "message": str(exc)}
+
+    @Slot(str, result="QVariantMap")
+    def deleteQuarantineItem(self, quarantine_id: str) -> dict:
+        """Permanently delete an actively quarantined vault payload."""
+        try:
+            from backend.engines.scanning.quarantine_manager import get_quarantine_vault
+
+            return get_quarantine_vault().delete_permanently(quarantine_id)
+        except Exception as exc:
+            logger.warning("deleteQuarantineItem failed: %s", exc)
+            return {"success": False, "message": str(exc)}
+
+    @Slot(int, result=list)
+    def getIncidentHistory(self, limit: int = 200) -> list:
+        """Return persisted RTP incident history newest-first with computed presentation fields."""
+        try:
+            from backend.engines.history import list_incident_history
+
+            return list_incident_history(limit=limit)
+        except Exception as exc:
+            logger.warning("getIncidentHistory failed: %s", exc)
+            self.toast.emit("error", f"Failed to load incident history: {exc!s}")
+            return []
+
     # ============ Nmap Typed Scan (Streaming) ============
 
     @Slot(result=bool)
@@ -3808,7 +3946,7 @@ class BackendBridge(QObject):
         except Exception as e:
             self.toast.emit("error", f"Export failed: {e}")
 
-    # ==================== AI FEATURES (100% LOCAL) ====================
+    # ==================== AI FEATURES (GROQ + OFFLINE KB) ====================
 
     @Slot(result=bool)
     def aiAvailable(self) -> bool:
@@ -4546,7 +4684,7 @@ class BackendBridge(QObject):
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse event context JSON: {e}")
         except Exception as e:
-            logger.exception(f"Error setting event context for chat: {e}")
+            logger.exception("Error setting event context for chat: %s", e)
 
     # ========================================================================
     # SMART ASSISTANT - New intelligent chatbot with memory and context
@@ -5089,7 +5227,6 @@ class BackendBridge(QObject):
                             _detail_parts.append(f"\nFalse Positive Note: {_fp_note}")
                         _detailed = "\n".join(_detail_parts)
                 except Exception as _ai_exc:
-                    print(f"[Bridge] Controller AI explanation error: {_ai_exc}")
                     logger.debug("Auto-AI explanation failed: %s", _ai_exc)
 
                 # Always emit AI brief/detailed — use fallback from report if AI failed
@@ -5100,10 +5237,10 @@ class BackendBridge(QObject):
                     _label = _v.label if _v else ""
                     _brief = f"Scan complete — Risk: {_risk_str} (Score {_score}/100). {_label}".strip()
                     _detailed = _detailed or _brief
-                    print(f"[Bridge] Controller path: using fallback brief: {_brief!r}")
+                    logger.debug("AI unavailable — using fallback brief for scan result")
                 _brief = self._normalize_ai_report_text(_brief)
                 _detailed = self._normalize_ai_report_text(_detailed)
-                print(f"[Bridge] Controller path: emitting AI brief ({len(_brief)} chars) + detailed ({len(_detailed)} chars)")
+                logger.debug("Emitting AI scan summary (%d chars brief, %d chars detailed)", len(_brief), len(_detailed))
                 self.scanCenterAiBrief.emit(_brief)
                 self.scanCenterAiDetailed.emit(_detailed)
 
@@ -5256,8 +5393,7 @@ class BackendBridge(QObject):
 
     def _on_orchestrator_complete(self, report_dict: dict, brief: str, detailed: str) -> None:
         """Handle ScannerOrchestrator scan_complete signal."""
-        print(f"[Bridge] _on_orchestrator_complete: brief={len(brief)} chars, detailed={len(detailed)} chars")
-        print(f"[Bridge] brief preview: {brief[:120]!r}")
+        logger.debug("Orchestrator complete: brief=%d chars, detailed=%d chars", len(brief), len(detailed))
         self._scancenter_current_report = report_dict
         self._scancenter_orchestrator = None
 
@@ -5270,7 +5406,7 @@ class BackendBridge(QObject):
             label = verdict.get("label", "")
             brief = f"Scan complete — Risk: {risk} (Score {score}/100). {label}".strip()
             detailed = detailed or brief
-            print(f"[Bridge] Using fallback brief: {brief!r}")
+            logger.debug("AI brief unavailable — using verdict fallback")
         brief = self._normalize_ai_report_text(brief)
         detailed = self._normalize_ai_report_text(detailed)
 
@@ -5281,7 +5417,6 @@ class BackendBridge(QObject):
         self.scanCenterFinished.emit(report_dict)
         self.scanCenterAiBrief.emit(brief)
         self.scanCenterAiDetailed.emit(detailed)
-        print(f"[Bridge] All AI signals emitted (brief={len(brief)}, detailed={len(detailed)})")
 
         # Emit final verdict phase update
         verdict = report_dict.get("verdict", {})
@@ -5315,10 +5450,10 @@ class BackendBridge(QObject):
             return  # user cancelled
         try:
             Path(path).write_text(text, encoding="utf-8")
-            print(f"[Bridge] AI report exported to {path}")
+            logger.info("AI report exported to %s", path)
             self.toast.emit("success", f"AI report exported → {path}")
         except OSError as exc:
-            print(f"[Bridge] AI report export failed: {exc}")
+            logger.error("AI report export failed: %s", exc)
             self.toast.emit("error", f"Export failed: {exc}")
 
     @Slot()
@@ -5396,7 +5531,7 @@ class BackendBridge(QObject):
 
     @Slot(str, str)
     def exportScanCenterReport(self, job_id: str, dest_dir: str = "") -> None:
-        """Export the report for *job_id* to *dest_dir* (defaults to ~/.sentinel/reports/)."""
+        """Export the report for *job_id* to *dest_dir* using the platform data dir by default."""
         import threading as _t
 
         from backend.engines.scancenter.export import default_export_dir, export_report, load_report_json

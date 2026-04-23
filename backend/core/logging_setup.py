@@ -42,8 +42,8 @@ class QtCrashHandler(QObject):
         try:
             QMessageBox.critical(None, title, message)
         except RuntimeError:
-            # If even the message box fails, just print
-            print(f"[CRASH] {title}: {message}")
+            # Last-resort crash reporting when the Qt dialog stack is unavailable.
+            sys.stderr.write(f"[CRASH] {title}: {message}\n")
 
 
 def setup_logging(app_name: str = "Sentinel") -> None:
@@ -101,7 +101,7 @@ def setup_logging(app_name: str = "Sentinel") -> None:
             paths.log_dir,
         )
     except OSError as e:
-        logger.exception(f"Failed to initialize file logging: {e}")
+        logger.error("Failed to initialize file logging: %s", e)
 
     # Optional Sentry
     sentry_dsn = os.getenv("SENTRY_DSN")
@@ -114,7 +114,7 @@ def setup_logging(app_name: str = "Sentinel") -> None:
             )
             logger.info("Sentry crash reporting initialized")
         except ValueError as e:
-            logger.warning(f"Sentry initialization failed: {e}")
+            logger.warning("Sentry initialization failed: %s", e)
     elif sentry_dsn and not SENTRY_AVAILABLE:
         logger.warning("SENTRY_DSN set but sentry_sdk not installed (optional)")
 
@@ -136,7 +136,9 @@ def setup_crash_handlers(app_name: str = "Sentinel") -> None:
         """Global exception hook for unhandled exceptions."""
         # Log the exception
         logger.critical(
-            f"Unhandled exception: {exc_type.__name__}: {exc_value}",
+            "Unhandled exception: %s: %s",
+            exc_type.__name__,
+            exc_value,
             exc_info=(exc_type, exc_value, exc_traceback),
         )
 

@@ -57,8 +57,15 @@ class Config:
         return get_app_paths().config_dir
 
     def _candidate_config_files(self) -> tuple[Path, ...]:
-        """Return primary and legacy config file locations."""
-        return self.paths.config_candidates("settings.json")
+        """Return primary and legacy config file locations.
+
+        ``self.config_file`` is always first so that test code (or any caller)
+        can override the path after construction and have ``_load_or_initialize``
+        pick up the override.
+        """
+        primary = self.config_file
+        rest = tuple(p for p in self.paths.config_candidates("settings.json") if p != primary)
+        return (primary, *rest)
 
     def _load_or_initialize(self) -> dict[str, Any]:
         """Load config from file or create with defaults."""
@@ -136,7 +143,7 @@ class Config:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.info(f"Configuration saved to {self.config_file}")
         except OSError as e:
-            logger.exception(f"Failed to save configuration: {e}")
+            logger.exception("Failed to save configuration: %s", e)
             raise
 
     def reset(self) -> None:
@@ -153,7 +160,7 @@ class Config:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
             logger.info(f"Configuration exported to {path}")
         except OSError as e:
-            logger.exception(f"Failed to export configuration: {e}")
+            logger.exception("Failed to export configuration: %s", e)
             raise
 
 

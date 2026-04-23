@@ -197,3 +197,23 @@ def get_app_paths() -> AppPaths:
     if sys.platform.startswith("linux"):
         return _linux_paths().ensure()
     return _generic_paths().ensure()
+
+
+def preferred_data_path(relative_path: str) -> Path:
+    """Return the canonical writable data path for *relative_path*."""
+    path = get_app_paths().data_dir / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def resolve_legacy_compatible_data_path(relative_path: str) -> Path:
+    """Return an existing data path or the canonical writable path.
+
+    This preserves access to older locations such as ``~/.sentinel`` while new
+    installs use the platform-native data directory from ``get_app_paths()``.
+    """
+    candidates = get_app_paths().data_candidates(relative_path)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return preferred_data_path(relative_path)

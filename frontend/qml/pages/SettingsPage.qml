@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../components"
 import "../ui"
 
 Item {
@@ -23,14 +24,11 @@ Item {
         function onStartWithSystemChanged() {
             startupSwitch.reloadFromService()
         }
-        function onStartMinimizedChanged() {
+        function onCloseToTrayChanged() {
             minimizeToTraySwitch.reloadFromService()
         }
         function onEnableGpuMonitoringChanged() {
             gpuSwitch.reloadFromService()
-        }
-        function onSendErrorReportsChanged() {
-            telemetrySwitch.reloadFromService()
         }
         function onUpdateIntervalMsChanged() {
             intervalSpinner.reloadFromService()
@@ -61,6 +59,14 @@ Item {
                     font.pixelSize: ThemeManager.fontSize_h1
                     font.bold: true
                     color: ThemeManager.foreground()
+                }
+
+                Text {
+                    text: "Manage local preferences, startup behavior, and runtime controls that are supported in this session."
+                    color: ThemeManager.muted()
+                    font.pixelSize: ThemeManager.fontSize_body
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                     Layout.bottomMargin: 10
                 }
 
@@ -86,6 +92,14 @@ Item {
                             color: ThemeManager.foreground()
                         }
 
+                        Text {
+                            text: "Theme and typography choices apply locally to this device."
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
                         // Theme Mode Row
                         RowLayout {
                             Layout.fillWidth: true
@@ -98,7 +112,7 @@ Item {
                                 Layout.preferredWidth: 200
                             }
 
-                            ComboBox {
+                            StyledComboBox {
                                 id: themeModeCombo
                                 model: ["Light", "Dark", "System"]
                                 Layout.fillWidth: true
@@ -115,7 +129,6 @@ Item {
                                     if (isInitializing) return
                                     var modes = ["light", "dark", "system"]
                                     if (currentIndex >= 0 && currentIndex < modes.length) {
-                                        console.log("[SettingsPage] Theme changed to:", modes[currentIndex])
                                         ThemeManager.setThemeMode(modes[currentIndex])
                                     }
                                 }
@@ -128,47 +141,6 @@ Item {
                                         isInitializing = true
                                         currentIndex = newIndex
                                         isInitializing = false
-                                    }
-                                }
-
-                                background: Rectangle {
-                                    color: ThemeManager.surface()
-                                    radius: 6
-                                    border.color: ThemeManager.border()
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: themeModeCombo.currentText
-                                    color: ThemeManager.foreground()
-                                    font.pixelSize: ThemeManager.fontSize_body
-                                    leftPadding: 12
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                delegate: ItemDelegate {
-                                    width: themeModeCombo.width
-                                    contentItem: Text {
-                                        text: modelData
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_body
-                                    }
-                                    background: Rectangle {
-                                        color: highlighted ? ThemeManager.elevated() : ThemeManager.surface()
-                                    }
-                                }
-                                popup: Popup {
-                                    y: themeModeCombo.height
-                                    width: themeModeCombo.width
-                                    implicitHeight: contentItem.implicitHeight
-                                    padding: 1
-                                    contentItem: ListView {
-                                        clip: true
-                                        implicitHeight: contentHeight
-                                        model: themeModeCombo.popup.visible ? themeModeCombo.delegateModel : null
-                                    }
-                                    background: Rectangle {
-                                        color: ThemeManager.surface()
-                                        border.color: ThemeManager.border()
-                                        radius: 6
                                     }
                                 }
                             }
@@ -188,7 +160,7 @@ Item {
                                 Layout.preferredWidth: 200
                             }
 
-                            ComboBox {
+                            StyledComboBox {
                                 id: fontSizeCombo
                                 model: ["Small", "Medium", "Large"]
                                 Layout.fillWidth: true
@@ -205,7 +177,6 @@ Item {
                                     if (isInitializing) return
                                     var sizes = ["small", "medium", "large"]
                                     if (currentIndex >= 0 && currentIndex < sizes.length) {
-                                        console.log("[SettingsPage] Font size changed to:", sizes[currentIndex])
                                         ThemeManager.setFontSize(sizes[currentIndex])
                                     }
                                 }
@@ -218,47 +189,6 @@ Item {
                                         isInitializing = true
                                         currentIndex = newIndex
                                         isInitializing = false
-                                    }
-                                }
-
-                                background: Rectangle {
-                                    color: ThemeManager.surface()
-                                    radius: 6
-                                    border.color: ThemeManager.border()
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: fontSizeCombo.currentText
-                                    color: ThemeManager.foreground()
-                                    font.pixelSize: ThemeManager.fontSize_body
-                                    leftPadding: 12
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                delegate: ItemDelegate {
-                                    width: fontSizeCombo.width
-                                    contentItem: Text {
-                                        text: modelData
-                                        color: ThemeManager.foreground()
-                                        font.pixelSize: ThemeManager.fontSize_body
-                                    }
-                                    background: Rectangle {
-                                        color: highlighted ? ThemeManager.elevated() : ThemeManager.surface()
-                                    }
-                                }
-                                popup: Popup {
-                                    y: fontSizeCombo.height
-                                    width: fontSizeCombo.width
-                                    implicitHeight: contentItem.implicitHeight
-                                    padding: 1
-                                    contentItem: ListView {
-                                        clip: true
-                                        implicitHeight: contentHeight
-                                        model: fontSizeCombo.popup.visible ? fontSizeCombo.delegateModel : null
-                                    }
-                                    background: Rectangle {
-                                        color: ThemeManager.surface()
-                                        border.color: ThemeManager.border()
-                                        radius: 6
                                     }
                                 }
                             }
@@ -290,18 +220,26 @@ Item {
                             color: ThemeManager.foreground()
                         }
 
+                        Text {
+                            text: "Controls dashboard telemetry refresh and optional GPU polling. These settings do not override real-time protection safety checks."
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 20
 
                             Text {
-                                text: "Live Monitoring:"
+                                text: "Background Telemetry:"
                                 color: ThemeManager.foreground()
                                 font.pixelSize: ThemeManager.fontSize_body
                                 Layout.preferredWidth: 200
                             }
 
-                            Switch {
+                            StyledSwitch {
                                 id: liveMonitoringSwitch
                                 checked: true
 
@@ -334,13 +272,13 @@ Item {
                             spacing: 20
 
                             Text {
-                                text: "Update Interval (sec):"
+                                text: "Telemetry Refresh (sec):"
                                 color: ThemeManager.foreground()
                                 font.pixelSize: ThemeManager.fontSize_body
                                 Layout.preferredWidth: 200
                             }
 
-                            SpinBox {
+                            StyledSpinBox {
                                 id: intervalSpinner
                                 from: 1
                                 to: 60
@@ -378,13 +316,13 @@ Item {
                             spacing: 20
 
                             Text {
-                                text: "Monitor GPU:"
+                                text: "GPU Telemetry:"
                                 color: ThemeManager.foreground()
                                 font.pixelSize: ThemeManager.fontSize_body
                                 Layout.preferredWidth: 200
                             }
 
-                            Switch {
+                            StyledSwitch {
                                 id: gpuSwitch
 
                                 property bool isInitializing: true
@@ -439,6 +377,14 @@ Item {
                             color: ThemeManager.foreground()
                         }
 
+                        Text {
+                            text: "Startup and tray options are capability-gated so unsupported behavior is not advertised as active."
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 20
@@ -452,14 +398,17 @@ Item {
                                     font.pixelSize: ThemeManager.fontSize_body
                                 }
                                 Text {
-                                    text: "Adds Sentinel to Windows startup via Registry"
+                                    text: (typeof SettingsService !== "undefined" && SettingsService && SettingsService.supportsAutostart)
+                                          ? "Starts Sentinel automatically when you sign in on supported Windows builds"
+                                          : "Autostart is not configured for this platform in the current release"
                                     color: ThemeManager.muted()
                                     font.pixelSize: ThemeManager.fontSize_small
                                 }
                             }
 
-                            Switch {
+                            StyledSwitch {
                                 id: startupSwitch
+                                enabled: typeof SettingsService !== "undefined" && SettingsService && SettingsService.supportsAutostart
 
                                 property bool isInitializing: true
 
@@ -497,19 +446,22 @@ Item {
                                 Layout.preferredWidth: 200
                                 spacing: 2
                                 Text {
-                                    text: "Minimize to Tray:"
+                                    text: "Close to Tray:"
                                     color: ThemeManager.foreground()
                                     font.pixelSize: ThemeManager.fontSize_body
                                 }
                                 Text {
-                                    text: "Keep running in the system tray when closed"
+                                    text: (typeof SettingsService !== "undefined" && SettingsService && SettingsService.supportsCloseToTray)
+                                          ? "Keep Sentinel running in the system tray when the main window is closed"
+                                          : "System tray is not available in this session"
                                     color: ThemeManager.muted()
                                     font.pixelSize: ThemeManager.fontSize_small
                                 }
                             }
 
-                            Switch {
+                            StyledSwitch {
                                 id: minimizeToTraySwitch
+                                enabled: typeof SettingsService !== "undefined" && SettingsService && SettingsService.supportsCloseToTray
 
                                 property bool isInitializing: true
 
@@ -521,16 +473,16 @@ Item {
                                 onCheckedChanged: {
                                     if (isInitializing) return
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.startMinimized = checked
+                                        SettingsService.closeToTray = checked
                                     }
                                 }
 
                                 function reloadFromService() {
                                     isInitializing = true
                                     if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        checked = SettingsService.startMinimized
+                                        checked = SettingsService.closeToTray
                                     } else {
-                                        checked = true
+                                        checked = false
                                     }
                                     isInitializing = false
                                 }
@@ -541,68 +493,53 @@ Item {
                     }
                 }
 
-                // ===== PRIVACY SECTION =====
+                // ===== DIAGNOSTICS SECTION =====
                 Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: privacyContent.implicitHeight + 48
+                    implicitHeight: diagnosticsContent.implicitHeight + 48
                     color: ThemeManager.panel()
                     radius: 12
                     border.color: ThemeManager.border()
                     border.width: 1
 
                     ColumnLayout {
-                        id: privacyContent
+                        id: diagnosticsContent
                         anchors.fill: parent
                         anchors.margins: 24
-                        spacing: 20
+                        spacing: 16
 
                         Text {
-                            text: "Privacy"
+                            text: "Diagnostics"
                             font.pixelSize: ThemeManager.fontSize_h3
                             font.bold: true
                             color: ThemeManager.foreground()
                         }
 
-                        RowLayout {
+                        Text {
+                            text: "Crash and support diagnostics stay local in this release."
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            wrapMode: Text.WordWrap
                             Layout.fillWidth: true
-                            spacing: 20
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            radius: 10
+                            color: Qt.rgba(ThemeManager.info.r, ThemeManager.info.g, ThemeManager.info.b, 0.10)
+                            border.color: Qt.rgba(ThemeManager.info.r, ThemeManager.info.g, ThemeManager.info.b, 0.32)
+                            border.width: 1
+                            implicitHeight: diagnosticsNotice.implicitHeight + 24
 
                             Text {
-                                text: "Send Error Reports:"
+                                id: diagnosticsNotice
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                text: "Sentinel does not automatically send error reports in this build. Diagnostic output remains on the device until you export or review it manually."
                                 color: ThemeManager.foreground()
                                 font.pixelSize: ThemeManager.fontSize_body
-                                Layout.preferredWidth: 200
+                                wrapMode: Text.WordWrap
                             }
-
-                            Switch {
-                                id: telemetrySwitch
-
-                                property bool isInitializing: true
-
-                                Component.onCompleted: {
-                                    reloadFromService()
-                                    isInitializing = false
-                                }
-
-                                onCheckedChanged: {
-                                    if (isInitializing) return
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        SettingsService.sendErrorReports = checked
-                                    }
-                                }
-
-                                function reloadFromService() {
-                                    isInitializing = true
-                                    if (typeof SettingsService !== 'undefined' && SettingsService) {
-                                        checked = SettingsService.sendErrorReports
-                                    } else {
-                                        checked = false
-                                    }
-                                    isInitializing = false
-                                }
-                            }
-
-                            Item { Layout.fillWidth: true }
                         }
                     }
                 }
@@ -643,7 +580,7 @@ Item {
                                     font.bold: true
                                 }
                                 Text {
-                                    text: "Restore all settings to their original defaults"
+                                    text: "Resets local preferences only. History, quarantine records, and scan results stay intact."
                                     color: ThemeManager.muted()
                                     font.pixelSize: ThemeManager.fontSize_small
                                 }

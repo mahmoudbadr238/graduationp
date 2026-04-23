@@ -3,13 +3,16 @@
 # nosec B101 - assert statements are expected in pytest test files
 
 import os
+import sys
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
 from backend.core.types import EventItem, ScanRecord, ScanType
 from backend.infra.sqlite_repo import SqliteRepo
+from backend.platform import paths as paths_mod
 
 
 @pytest.fixture
@@ -47,6 +50,22 @@ def temp_repo():
                 time.sleep(0.1)  # Wait 100ms before retry
                 gc.collect()  # Try GC again
             # On final attempt, just pass - temp files will be cleaned by OS eventually
+
+
+def test_sqlite_repo_uses_platform_data_dir(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    xdg_data = tmp_path / "xdg-data"
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(paths_mod.Path, "home", staticmethod(lambda: home))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_DATA_HOME", str(xdg_data))
+    paths_mod.get_app_paths.cache_clear()
+
+    repo = SqliteRepo()
+
+    assert Path(repo.db_path) == xdg_data / "sentinel" / "sentinel.db"
+    paths_mod.get_app_paths.cache_clear()
 
 
 class TestSqliteRepo:

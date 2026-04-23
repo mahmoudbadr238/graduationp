@@ -87,7 +87,7 @@ Useful optional tools on Linux:
 
 Windows remains the only platform for:
 
-- Event Viewer integration
+- native Windows Event Log collection
 - Windows-specific Defender and UAC flows
 - VMware sandbox execution from the desktop host
 
@@ -115,5 +115,6 @@ Linux:
 ## Need More Detail?
 
 - [README.md](../README.md)
+- [releases/FINAL_RELEASE_CHECKLIST.md](releases/FINAL_RELEASE_CHECKLIST.md)
 - [docs/guides/LINUX_SUPPORT.md](guides/LINUX_SUPPORT.md)
 - [docs/api/README_BACKEND.md](api/README_BACKEND.md)

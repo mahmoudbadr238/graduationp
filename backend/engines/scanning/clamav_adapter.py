@@ -6,17 +6,16 @@ Integrates with ClamAV if installed on the system.
 """
 
 import logging
-import os
-import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from backend.infra.integrations import get_clamav_status
+
 logger = logging.getLogger(__name__)
 
 # Subprocess flags for Windows
-_IS_WINDOWS = os.name == "nt"
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+_SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 @dataclass
@@ -46,42 +45,20 @@ class ClamAVAdapter:
         """Initialize the ClamAV adapter."""
         self._clamscan_path: str | None = None
         self._available = False
+        self._status: dict[str, Any] = {}
         self._detect_clamscan()
 
     def _detect_clamscan(self) -> None:
-        """Detect clamscan executable in PATH."""
-        # Common names for clamscan
-        executables = ["clamscan", "clamscan.exe", "clamdscan", "clamdscan.exe"]
+        """Detect ClamAV via the shared integration probe."""
+        self._status = get_clamav_status()
+        self._clamscan_path = self._status.get("scannerPath") or None
+        self._available = bool(self._status.get("available"))
 
-        for exe in executables:
-            path = shutil.which(exe)
-            if path:
-                self._clamscan_path = path
-                self._available = True
-                logger.info(f"ClamAV detected at: {path}")
-                return
+        if self._available and self._clamscan_path:
+            logger.info("ClamAV detected at: %s", self._clamscan_path)
+            return
 
-        # Check common installation paths on Windows
-        if _IS_WINDOWS:
-            common_paths = [
-                r"C:\Program Files\ClamAV\clamscan.exe",
-                r"C:\Program Files (x86)\ClamAV\clamscan.exe",
-                r"C:\ClamAV\clamscan.exe",
-            ]
-            for path in common_paths:
-                if os.path.exists(path):
-                    self._clamscan_path = path
-                    self._available = True
-                    logger.info(f"ClamAV detected at: {path}")
-                    return
-
-        env_path = os.environ.get("PATH", "<not set>")
-        logger.warning(
-            "ClamAV not detected after checking PATH and common install dirs. "
-            "System PATH:\n%s",
-            env_path,
-        )
-        print(f"[ClamAVAdapter] ClamAV NOT FOUND. System PATH:\n{env_path}")
+        logger.warning("ClamAV not detected: %s", self._status.get("detail", "Unavailable"))
 
     @property
     def is_available(self) -> bool:
@@ -92,6 +69,11 @@ class ClamAVAdapter:
     def clamscan_path(self) -> str | None:
         """Get the path to clamscan executable."""
         return self._clamscan_path
+
+    @property
+    def status(self) -> dict[str, Any]:
+        """Return the normalized ClamAV availability status."""
+        return dict(self._status)
 
     def scan_file(self, file_path: str, timeout: int = 120) -> ClamAVResult:
         """
@@ -154,7 +136,7 @@ class ClamAVAdapter:
             )
 
         except subprocess.TimeoutExpired:
-            logger.warning(f"ClamAV scan timed out for {file_path}")
+            logger.warning("ClamAV scan timed out for %s", file_path)
             return ClamAVResult(
                 available=True,
                 scanned=False,
@@ -164,7 +146,7 @@ class ClamAVAdapter:
                 error="Scan timed out",
             )
         except Exception as e:
-            logger.error(f"ClamAV scan error: {e}")
+            logger.error("ClamAV scan error: %s", e)
             return ClamAVResult(
                 available=True,
                 scanned=False,
@@ -199,7 +181,7 @@ class ClamAVAdapter:
         try:
             # Try to find database files
             db_paths = []
-            if _IS_WINDOWS:
+            if self._status.get("scannerPath", "").lower().endswith(".exe"):
                 db_paths = [
                     r"C:\Program Files\ClamAV\database",
                     r"C:\ProgramData\ClamAV\database",

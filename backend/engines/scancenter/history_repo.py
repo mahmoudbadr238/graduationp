@@ -12,13 +12,15 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from backend.platform.paths import resolve_legacy_compatible_data_path
+
 logger = logging.getLogger(__name__)
 
 _DB_TIMEOUT = 5  # seconds
 
 
 def _db_path() -> Path:
-    return Path.home() / ".sentinel" / "sentinel.db"
+    return resolve_legacy_compatible_data_path("sentinel.db")
 
 
 def _connect() -> sqlite3.Connection:

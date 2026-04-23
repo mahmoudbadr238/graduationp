@@ -13,10 +13,17 @@ Rectangle {
     id: root
     
     // Required properties
-    property string icon: ""
+    property string iconName: "home"
     property string label: ""
     property bool isActive: false
     property bool expanded: true
+    readonly property color accentWash: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.11)
+    readonly property color accentBorder: Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.34)
+    readonly property color hoverWash: Qt.rgba(ThemeManager.elevated().r, ThemeManager.elevated().g, ThemeManager.elevated().b, 0.58)
+    readonly property color idlePlate: Qt.rgba(ThemeManager.panel().r, ThemeManager.panel().g, ThemeManager.panel().b, 0.74)
+    readonly property color hoverPlate: Qt.rgba(ThemeManager.elevated().r, ThemeManager.elevated().g, ThemeManager.elevated().b, 0.74)
+    readonly property color mutedForeground: Qt.rgba(ThemeManager.foreground().r, ThemeManager.foreground().g, ThemeManager.foreground().b, 0.74)
+    readonly property color softMutedForeground: Qt.rgba(ThemeManager.foreground().r, ThemeManager.foreground().g, ThemeManager.foreground().b, 0.88)
     
     // Signals
     signal clicked()
@@ -24,50 +31,95 @@ Rectangle {
     // Layout
     height: 44
     radius: 8
-    color: isActive ? ThemeManager.elevated() : (mouseArea.containsMouse ? Qt.rgba(ThemeManager.elevated().r, ThemeManager.elevated().g, ThemeManager.elevated().b, 0.5) : "transparent")
+    color: isActive
+           ? accentWash
+           : (mouseArea.containsMouse
+              ? hoverWash
+              : "transparent")
+    border.color: isActive
+                  ? accentBorder
+                  : "transparent"
+    border.width: isActive ? 1 : 0
     
     Behavior on color {
         ColorAnimation { duration: 150 }
     }
     
-    RowLayout {
+    Rectangle {
+        width: 3
+        height: expanded ? 22 : 18
+        radius: 2
+        color: ThemeManager.accent
+        anchors.left: parent.left
+        anchors.leftMargin: 6
+        anchors.verticalCenter: parent.verticalCenter
+        opacity: isActive ? 1 : 0
+
+        Behavior on opacity {
+            NumberAnimation { duration: 140 }
+        }
+    }
+
+    Item {
         anchors.fill: parent
-        anchors.leftMargin: expanded ? 16 : 0
-        anchors.rightMargin: expanded ? 16 : 0
-        spacing: expanded ? 12 : 0
-        
-        // Icon
-        Text {
-            id: iconText
-            text: root.icon
-            color: isActive ? ThemeManager.accent : ThemeManager.muted()
-            font.pixelSize: ThemeManager.fontSize_h3
-            Layout.preferredWidth: expanded ? 24 : parent.width
-            horizontalAlignment: expanded ? Text.AlignLeft : Text.AlignHCenter
-            
-            Behavior on color {
-                ColorAnimation { duration: 150 }
+
+        Rectangle {
+            id: iconContainer
+            width: 36
+            height: 36
+            radius: 10
+            color: "transparent"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: expanded ? 16 : (root.width - width) / 2
+
+            Behavior on anchors.leftMargin {
+                NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+            }
+
+            SidebarIcon {
+                anchors.centerIn: parent
+                width: 20
+                height: 20
+                name: root.iconName
+                iconColor: isActive
+                           ? ThemeManager.accent
+                           : (mouseArea.containsMouse ? ThemeManager.foreground() : softMutedForeground)
             }
         }
-        
-        // Label - only visible when expanded
-        Text {
-            id: labelText
-            text: root.label
-            color: isActive ? ThemeManager.accent : ThemeManager.muted()
-            font.pixelSize: ThemeManager.fontSize_body
-            font.weight: isActive ? Font.Bold : Font.Normal
-            Layout.fillWidth: true
-            visible: expanded
+
+        Item {
+            anchors.left: iconContainer.right
+            anchors.leftMargin: expanded ? 12 : 0
+            anchors.right: parent.right
+            anchors.rightMargin: expanded ? 14 : 0
+            anchors.verticalCenter: parent.verticalCenter
+            height: labelText.implicitHeight
+            clip: true
             opacity: expanded ? 1 : 0
-            elide: Text.ElideRight
-            
+
             Behavior on opacity {
-                NumberAnimation { duration: 150 }
+                NumberAnimation { duration: 120 }
             }
             
-            Behavior on color {
-                ColorAnimation { duration: 150 }
+            Behavior on anchors.leftMargin {
+                NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+            }
+
+            Text {
+                id: labelText
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.label
+                color: isActive ? ThemeManager.foreground() : (mouseArea.containsMouse ? softMutedForeground : ThemeManager.muted())
+                font.pixelSize: ThemeManager.fontSize_body
+                font.weight: isActive ? Font.DemiBold : Font.Normal
+                elide: Text.ElideRight
+
+                Behavior on color {
+                    ColorAnimation { duration: 150 }
+                }
             }
         }
     }

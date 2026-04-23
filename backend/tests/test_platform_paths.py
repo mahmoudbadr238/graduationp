@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from backend.engines.scancenter.export import default_export_dir
 from backend.platform import paths as paths_mod
 
 
@@ -80,3 +81,41 @@ def test_windows_paths_keep_appdata_and_programdata_layout(tmp_path, monkeypatch
     assert app_paths.quarantine_dir == program_data / "Sentinel" / "Quarantine"
     assert app_paths.scan_reports_dir == roaming / "Sentinel" / "scan_reports"
     assert app_paths.quarantine_dir.exists()
+
+
+def test_resolve_legacy_compatible_data_path_prefers_existing_legacy_db(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    legacy_db = home / ".sentinel" / "sentinel.db"
+    legacy_db.parent.mkdir(parents=True, exist_ok=True)
+    legacy_db.write_text("legacy", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(paths_mod.Path, "home", staticmethod(lambda: home))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+
+    _clear_paths_cache()
+    resolved = paths_mod.resolve_legacy_compatible_data_path("sentinel.db")
+
+    assert resolved == legacy_db
+
+
+def test_preferred_data_path_and_default_export_dir_use_platform_data_dir(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    xdg_data = tmp_path / "xdg-data"
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(paths_mod.Path, "home", staticmethod(lambda: home))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_DATA_HOME", str(xdg_data))
+
+    _clear_paths_cache()
+    preferred = paths_mod.preferred_data_path("sentinel.db")
+    export_dir = default_export_dir("job:123/report")
+
+    assert preferred == xdg_data / "sentinel" / "sentinel.db"
+    assert export_dir == xdg_data / "sentinel" / "reports" / "job_123_report"

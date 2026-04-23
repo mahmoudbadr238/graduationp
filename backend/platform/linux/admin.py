@@ -5,9 +5,12 @@ Replaces backend/utils/admin.py on Linux.
 Uses os.geteuid() for detection and pkexec for graphical elevation.
 """
 
+import logging
 import os
 import subprocess
 import sys
+
+_log = logging.getLogger(__name__)
 
 
 class AdminPrivileges:
@@ -48,25 +51,23 @@ class AdminPrivileges:
             return proc.returncode
 
         except FileNotFoundError:
-            print("[WARNING] pkexec not found — cannot elevate privileges")
-            print("  Install policykit-1 or run with: sudo python main.py")
+            _log.warning("pkexec not found — cannot elevate privileges; install policykit-1 or run with sudo")
             return None
         except (OSError, ValueError) as e:
-            print(f"Failed to elevate privileges: {e}")
+            _log.warning("Failed to elevate privileges: %s", e)
             return None
 
     @staticmethod
     def request_if_needed(auto_elevate: bool = False) -> bool:
         """Check root privileges and optionally request elevation."""
         if AdminPrivileges.is_admin():
-            print("[OK] Running with root privileges")
+            _log.debug("Running with root privileges")
             return True
 
-        print("[WARNING] Not running with root privileges")
-        print("  Some features (firewall, security events) may be limited.")
+        _log.warning("Not running with root privileges — some features (firewall, security events) may be limited")
 
         if auto_elevate:
-            print("  Requesting elevation...")
+            _log.info("Requesting privilege elevation")
             result = AdminPrivileges.elevate()
             if result is None:
                 return False

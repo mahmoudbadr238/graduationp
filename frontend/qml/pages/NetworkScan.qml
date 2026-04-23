@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../components"
 import "../ui"
 
 /**
@@ -12,9 +13,10 @@ import "../ui"
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
     
     // Check if nmap is available
-    property bool nmapAvailable: Backend ? Backend.nmapAvailable : false
+    property bool nmapAvailable: backend ? backend.nmapAvailable : false
     
     // Regex for host validation (IP or hostname only)
     readonly property var hostRegex: /^[a-zA-Z0-9][a-zA-Z0-9.\-:]*$/
@@ -32,16 +34,15 @@ Item {
     // Start a scan
     function startScan(scanType, hostField) {
         // Check nmap availability first
-        if (!Backend) {
-            console.error("Backend not available")
+        if (!backend) {
             return
         }
         
-        if (!Backend.nmapAvailable) {
-            var msg = Backend.isLinux
+        if (!backend.nmapAvailable) {
+            var msg = backend.isLinux
                 ? "Nmap is not installed. Run: sudo apt install nmap"
                 : "Nmap is not installed. Please install Nmap from https://nmap.org and restart Sentinel."
-            Backend.toast("error", msg)
+            backend.toast("error", msg)
             return
         }
         
@@ -52,17 +53,17 @@ Item {
         var requiresHost = ["port_scan", "os_detect", "service_version", "firewall_detect", "vuln_scan", "protocol_scan"]
         if (requiresHost.indexOf(scanType) >= 0) {
             if (!host) {
-                Backend.toast("error", "Please enter a target IP or hostname")
+                backend.toast("error", "Please enter a target IP or hostname")
                 return
             }
             if (!isValidHost(host)) {
-                Backend.toast("error", "Invalid host format. Use IP address or hostname only.")
+                backend.toast("error", "Invalid host format. Use IP address or hostname only.")
                 return
             }
         }
         
         // Call backend to start scan
-        Backend.runNmapScan(scanType, host)
+        backend.runNmapScan(scanType, host)
         
         // Navigate to result page
         window.loadRoute("nmap-result")
@@ -91,7 +92,7 @@ Item {
                 height: 50
                 radius: 8
                 color: ThemeManager.danger
-                visible: !root.nmapAvailable
+                visible: !!root.backend && !root.nmapAvailable
                 
                 RowLayout {
                     anchors.fill: parent
@@ -100,15 +101,15 @@ Item {
                     
                     Text {
                         text: "⚠"
-                        color: "#FFFFFF"
+                        color: ThemeManager.selectionForeground
                         font.pixelSize: ThemeManager.fontSize_h3
                     }
                     
                     Text {
-                        text: (Backend && Backend.isLinux)
+                        text: (backend && backend.isLinux)
                               ? "Nmap is not installed. Run: sudo apt install nmap"
                               : "Nmap is not installed. Please download and install Nmap from nmap.org, then restart Sentinel."
-                        color: "#FFFFFF"
+                        color: ThemeManager.selectionForeground
                         font.pixelSize: ThemeManager.fontSize_small
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
@@ -160,7 +161,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -209,7 +210,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -259,22 +260,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput3
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -289,7 +282,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -338,22 +331,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput4
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -368,7 +353,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -417,22 +402,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput5
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -447,7 +424,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -496,22 +473,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput6
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -526,7 +495,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -575,22 +544,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput7
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -605,7 +566,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }
@@ -654,22 +615,14 @@ Item {
                                     font.bold: true
                                 }
                                 
-                                TextField {
+                                StyledTextField {
                                     id: hostInput8
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
                                     Layout.maximumWidth: 200
-                                    placeholderText: "ex :- 192.168.1.10"
-                                    color: ThemeManager.foreground()
-                                    placeholderTextColor: ThemeManager.muted()
+                                    placeholderText: "e.g. 192.168.1.10"
                                     font.pixelSize: ThemeManager.fontSize_small
                                     maximumLength: 256
-                                    
-                                    background: Rectangle {
-                                        color: "transparent"
-                                        border.color: ThemeManager.border()
-                                        border.width: 1
-                                        radius: 6
-                                    }
                                 }
                             }
                             
@@ -684,7 +637,7 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Scan"
-                                    color: "#FFFFFF"
+                                    color: ThemeManager.selectionForeground
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.bold: true
                                 }

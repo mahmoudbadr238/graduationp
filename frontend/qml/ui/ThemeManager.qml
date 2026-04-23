@@ -24,34 +24,25 @@ QtObject {
         if (_initialized) return
         
         if (typeof SettingsService !== 'undefined' && SettingsService) {
-            // Load from settings
-            // Normalize theme string to avoid casing/whitespace issues
             var loadedTheme = (SettingsService.themeMode || "system").toString().trim().toLowerCase()
             var loadedFontSize = SettingsService.fontSize
-            
-            console.log("[ThemeManager] Loaded themeMode:", loadedTheme)
-            console.log("[ThemeManager] Loaded fontSize:", loadedFontSize)
-            
+
             themeMode = loadedTheme
             fontSize = loadedFontSize
             _initialized = true
-            
-            // Connect for changes
+
             try {
                 SettingsService.themeModeChanged.connect(onThemeModeChanged)
                 SettingsService.fontSizeChanged.connect(onFontSizeChanged)
-                console.log("[ThemeManager] Connected to SettingsService signals")
             } catch(e) {
                 console.warn("[ThemeManager] Could not connect to SettingsService signals:", e)
             }
         } else {
-            // SettingsService not ready yet, retry after a short delay
             _retryCount++
             if (_retryCount < _maxRetries) {
-                console.log("[ThemeManager] SettingsService not ready, retry", _retryCount)
                 _initTimer.start()
             } else {
-                console.warn("[ThemeManager] Failed to connect to SettingsService after", _maxRetries, "retries")
+                console.warn("[ThemeManager] SettingsService unavailable after", _maxRetries, "retries — using defaults")
             }
         }
     }

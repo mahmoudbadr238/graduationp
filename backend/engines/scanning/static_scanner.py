@@ -43,6 +43,7 @@ except ImportError:
     logger.warning("pefile not installed. Install with: pip install pefile")
 
 from .clamav_adapter import get_clamav_adapter
+from .decision import decision_from_scan_result
 
 # Suspicious PE imports that indicate potential malicious behavior
 SUSPICIOUS_IMPORTS = {
@@ -176,6 +177,7 @@ class ScanResult:
     verdict: str  # Safe, Suspicious, Malicious, Unknown
     score: int  # 0-100
     summary: str
+    final_decision: dict[str, Any] = field(default_factory=dict)
 
     # Detailed results
     findings: list[Finding] = field(default_factory=list)
@@ -371,6 +373,7 @@ class StaticScanner:
             # Stage 8: Calculate score and verdict
             result.score = self._calculate_score(result)
             result.verdict = self._determine_verdict(result.score)
+            result.final_decision = decision_from_scan_result(result).to_dict()
             result.summary = self._generate_summary(result)
 
             # Store static analysis metadata
@@ -385,6 +388,7 @@ class StaticScanner:
             logger.error(f"Scan error for {file_path}: {e}")
             result.errors.append(str(e))
             result.verdict = "Unknown"
+            result.final_decision = decision_from_scan_result(result).to_dict()
             result.summary = f"Error during scan: {e}"
 
         return result
@@ -1050,7 +1054,7 @@ class StaticScanner:
 
     def _error_result(self, file_path: str, error: str) -> ScanResult:
         """Create error result."""
-        return ScanResult(
+        result = ScanResult(
             file_path=file_path,
             file_name=os.path.basename(file_path),
             file_size=0,
@@ -1060,8 +1064,11 @@ class StaticScanner:
             verdict="Unknown",
             score=0,
             summary=f"Error: {error}",
+            final_decision={},
             errors=[error],
         )
+        result.final_decision = decision_from_scan_result(result).to_dict()
+        return result
 
 
 def get_static_scanner() -> StaticScanner:

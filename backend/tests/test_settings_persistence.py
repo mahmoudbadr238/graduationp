@@ -1,45 +1,61 @@
-#!/usr/bin/env python3
-"""Test script to verify Settings persistence"""
+"""Integration tests for QSettings-backed settings persistence."""
 
 import sys
-from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
 
-# Add app to path
-sys.path.insert(0, str(Path(__file__).parent))
+from PySide6.QtCore import QCoreApplication, QSettings
 
 from backend.api.settings_service import SettingsService
 
 
-def test_settings_persistence():
-    """Test that settings save and load correctly"""
+class TestSettingsPersistence(unittest.TestCase):
+    def setUp(self) -> None:
+        self._app = QCoreApplication.instance() or QCoreApplication([])
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._old_format = QSettings.defaultFormat()
+        QSettings.setDefaultFormat(QSettings.IniFormat)
+        QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, self._tmpdir.name)
 
-    # Create settings service
-    settings = SettingsService()
+    def tearDown(self) -> None:
+        QSettings.setDefaultFormat(self._old_format)
+        self._tmpdir.cleanup()
 
-    print("[Test] Initial settings:")
-    print(f"  - Theme Mode: {settings.themeMode}")
-    print(f"  - Font Size: {settings.fontSize}")
+    def test_font_size_persists_across_instances(self) -> None:
+        first = SettingsService()
+        first.fontSize = "large"
+        first._qs.sync()
 
-    # Change font size
-    print("\n[Test] Changing font size to 'large'...")
-    settings.fontSize = "large"
+        second = SettingsService()
 
-    # Verify it was set
-    print(f"  - Font Size after set: {settings.fontSize}")
+        self.assertEqual(second.fontSize, "large")
 
-    # Create new instance (simulates app restart/new page load)
-    print("\n[Test] Creating new SettingsService instance (simulating app reload)...")
-    settings2 = SettingsService()
-    print(f"  - Font Size from new instance: {settings2.fontSize}")
+    def test_close_to_tray_alias_persists_across_instances(self) -> None:
+        first = SettingsService()
+        first.closeToTray = True
+        first._qs.sync()
 
-    # Verify persistence
-    if settings2.fontSize == "large":
-        print("\n✅ SUCCESS: Settings persisted correctly!")
-        return True
-    print(f"\n❌ FAILURE: Expected 'large', got '{settings2.fontSize}'")
-    return False
+        second = SettingsService()
+
+        self.assertTrue(second.closeToTray)
+        self.assertTrue(second.startMinimized)
+
+    def test_autostart_enable_is_ignored_when_unsupported(self) -> None:
+        with patch.object(sys, "platform", "linux"):
+            service = SettingsService()
+            service.startWithSystem = True
+            self.assertFalse(service.startWithSystem)
+
+    def test_autostart_calls_windows_registry_helper_when_supported(self) -> None:
+        with patch.object(sys, "platform", "win32"):
+            service = SettingsService()
+            with patch.object(service, "_set_windows_autostart") as autostart:
+                service.startWithSystem = True
+
+            self.assertTrue(service.startWithSystem)
+            autostart.assert_called_once_with(True)
 
 
 if __name__ == "__main__":
-    success = test_settings_persistence()
-    sys.exit(0 if success else 1)
+    unittest.main()

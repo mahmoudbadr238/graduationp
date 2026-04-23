@@ -136,7 +136,6 @@ Rectangle {
                 }
                 
                 onClicked: {
-                    console.log("[SIDEBAR] Item clicked:", model.label, "index:", index)
                     root.currentIndex = index
                     root.navigationChanged(index)
                 }

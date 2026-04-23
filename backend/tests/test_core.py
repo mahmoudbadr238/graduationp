@@ -75,6 +75,5 @@ def test_nmap_integration():
     """Test that nmap integration can be imported."""
     from backend.infra.integrations import nmap_available
 
-    assert (
-        nmap_available() or not nmap_available()
-    )  # Should return bool without crashing
+    result = nmap_available()
+    assert isinstance(result, bool), f"nmap_available() must return bool, got {type(result)}"

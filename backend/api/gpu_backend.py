@@ -89,7 +89,7 @@ class GPUBackend(QObject):
 
             logger.info(f"GPU Backend initialized: {self._gpu_count} GPU(s)")
         except Exception as e:
-            logger.exception(f"Failed to initialize GPU manager: {e}")
+            logger.exception("Failed to initialize GPU manager: %s", e)
             self._manager = None
             self._gpu_count = 0
             self._set_status("error")

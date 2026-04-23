@@ -344,7 +344,7 @@ def run_file_analysis(
         guest_in_sample = _GUEST_PAYLOAD
         emit_step("Running", f"[8/14] Copying sample to guest: {guest_in_sample}")
         runner.copy_to_guest(sample, guest_in_sample, timeout=120)
-        print(f"[Sandbox] Copied {sample.name} → {guest_in_sample}")
+        logger.debug("Copied %s → guest %s", sample.name, guest_in_sample)
         _milestone("copy_sample_done", f"{sample.name} → guest {guest_in_sample}")
         if _aborted():
             raise InterruptedError("Cancelled after step 8.")

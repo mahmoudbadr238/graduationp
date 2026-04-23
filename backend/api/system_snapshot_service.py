@@ -1,10 +1,14 @@
 """Windows System Snapshot Service using psutil."""
 
+import logging
 import platform
 import socket
 import subprocess
+import sys
 import threading
 import time
+
+_log = logging.getLogger(__name__)
 
 import psutil
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -113,7 +117,7 @@ class SystemSnapshotService(QObject):
         # Security info involves slow PowerShell commands (can take 5-10+ seconds)
         # Delay 10 seconds to let the app fully stabilize first
         QTimer.singleShot(10000, self._update_security_info)
-        print("[SnapshotService] Initial metrics updated")
+        _log.debug("Initial metrics updated; security info deferred 10 s")
 
     def set_notification_service(self, service):
         """Set the notification service for security alerts."""
@@ -129,7 +133,7 @@ class SystemSnapshotService(QObject):
         # Force initial update before starting timer
         self._update_metrics()
         self._timer.start(interval_ms)
-        print(f"[SnapshotService] Started with {interval_ms}ms interval")
+        _log.info("Monitoring started with %d ms interval", interval_ms)
 
     def stop(self):
         """Stop monitoring."""
@@ -158,7 +162,7 @@ class SystemSnapshotService(QObject):
             self._system_uptime = uptime_seconds
             self.systemUptimeChanged.emit()
         except Exception as e:
-            print(f"[SystemSnapshot] Error getting uptime: {e}")
+            _log.warning("Error getting uptime: %s", e)
 
     @Slot()
     def _update_metrics(self):
@@ -205,9 +209,10 @@ class SystemSnapshotService(QObject):
             self._memory_available = mem.available
             self.memoryAvailableChanged.emit()
 
-            # Disk usage (system partition)
+            # Disk usage — use the partition containing the OS root
             try:
-                disk = psutil.disk_usage("C:\\")
+                _root = "C:\\" if sys.platform == "win32" else "/"
+                disk = psutil.disk_usage(_root)
                 self._disk_usage = disk.percent
                 self.diskUsageChanged.emit()
             except (PermissionError, OSError):
@@ -292,7 +297,7 @@ class SystemSnapshotService(QObject):
             self._update_network_interfaces()
 
         except Exception as e:
-            print(f"[SystemSnapshot] Error updating metrics: {e}")
+            _log.error("Error updating metrics: %s", e)
 
     def _update_disk_partitions(self):
         """Update disk partitions with usage information."""
@@ -323,7 +328,7 @@ class SystemSnapshotService(QObject):
                 self._disk_partitions = partitions
                 self.diskPartitionsChanged.emit()
         except Exception as e:
-            print(f"[SystemSnapshot] Error updating disk partitions: {e}")
+            _log.error("Error updating disk partitions: %s", e)
 
     def _update_network_interfaces(self):
         """Update network interfaces list with IPs and stats."""
@@ -409,7 +414,7 @@ class SystemSnapshotService(QObject):
                 self._active_interface_ipv4 = active_ipv4
 
         except Exception as e:
-            print(f"[SystemSnapshot] Error updating network interfaces: {e}")
+            _log.error("Error updating network interfaces: %s", e)
 
     # Properties
     @Property(float, notify=cpuUsageChanged)
@@ -498,7 +503,7 @@ class SystemSnapshotService(QObject):
 
     @Property(bool, constant=True)
     def isWindows(self) -> bool:
-        return True
+        return sys.platform == "win32"
 
     @Property(bool, constant=True)
     def isAdmin(self) -> bool:
@@ -603,10 +608,10 @@ class SystemSnapshotService(QObject):
         info = {
             "firewallStatus": "Unknown",
             "antivirus": "Unknown",
-            "antivirusEnabled": False,
+            "antivirusEnabled": None,
             "secureBoot": "N/A",
             "tpmPresent": "N/A",
-            "tpmEnabled": False,
+            "tpmEnabled": None,
             "tpmVersion": "Unknown",
             "appArmorEnabled": "N/A",
             "selinuxEnabled": "N/A",
@@ -619,23 +624,23 @@ class SystemSnapshotService(QObject):
             "windowsUpdateStatus": "Unknown",
             "windowsUpdateLastInstall": "",
             "windowsUpdateDetail": "",
-            "remoteDesktopEnabled": False,
-            "remoteDesktopNla": True,
+            "remoteDesktopEnabled": None,
+            "remoteDesktopNla": None,
             "remoteDesktopDetail": "",
-            "adminAccountCount": 0,
+            "adminAccountCount": None,
             "adminAccountDetail": "",
             "uacLevel": "Unknown",
             "uacDetail": "",
-            "smartScreenEnabled": True,
+            "smartScreenEnabled": None,
             "smartScreenDetail": "",
-            "memoryIntegrityEnabled": False,
+            "memoryIntegrityEnabled": None,
             "memoryIntegrityDetail": "",
             # Simplified security status for user-friendly UI
             "simplified": None,
         }
 
         try:
-            if True:  # Windows-only app
+            if sys.platform == "win32":
                 # Use centralized SecurityInfo service for Windows
                 security_status = SecurityInfo.get_all_security_status()
 
@@ -685,10 +690,14 @@ class SystemSnapshotService(QObject):
 
                 # Get proper TPM status
                 tpm_status = SecurityInfo.get_tpm_status()
-                info["tpmPresent"] = (
-                    "Present" if tpm_status.get("present") else "Not Present"
-                )
-                info["tpmEnabled"] = tpm_status.get("enabled", False)
+                tpm_present = tpm_status.get("present")
+                if tpm_present is True:
+                    info["tpmPresent"] = "Present"
+                elif tpm_present is False:
+                    info["tpmPresent"] = "Not Present"
+                else:
+                    info["tpmPresent"] = "Unknown"
+                info["tpmEnabled"] = tpm_status.get("enabled")
                 info["tpmVersion"] = tpm_status.get("version", "Unknown")
 
                 # Get extended security metrics
@@ -710,13 +719,13 @@ class SystemSnapshotService(QObject):
 
                     # Remote Desktop
                     rdp = extended.get("remoteDesktop", {})
-                    info["remoteDesktopEnabled"] = rdp.get("enabled", False)
-                    info["remoteDesktopNla"] = rdp.get("nlaEnabled", True)
+                    info["remoteDesktopEnabled"] = rdp.get("enabled")
+                    info["remoteDesktopNla"] = rdp.get("nlaEnabled")
                     info["remoteDesktopDetail"] = rdp.get("detail", "")
 
                     # Admin Accounts
                     admin = extended.get("adminAccounts", {})
-                    info["adminAccountCount"] = admin.get("count", 0)
+                    info["adminAccountCount"] = admin.get("count")
                     info["adminAccountDetail"] = admin.get("detail", "")
 
                     # UAC Level
@@ -726,30 +735,53 @@ class SystemSnapshotService(QObject):
 
                     # SmartScreen
                     smartscreen = extended.get("smartScreen", {})
-                    info["smartScreenEnabled"] = smartscreen.get("enabled", True)
+                    info["smartScreenEnabled"] = smartscreen.get("enabled")
                     info["smartScreenDetail"] = smartscreen.get("detail", "")
 
                     # Memory Integrity
                     mem_int = extended.get("memoryIntegrity", {})
-                    info["memoryIntegrityEnabled"] = mem_int.get("enabled", False)
+                    info["memoryIntegrityEnabled"] = mem_int.get("enabled")
                     info["memoryIntegrityDetail"] = mem_int.get("detail", "")
 
                 except Exception as e:
-                    print(
-                        f"[SystemSnapshot] Error gathering extended security info: {e}"
-                    )
+                    _log.warning("Error gathering extended security info: %s", e)
 
-                # Get simplified security status for user-friendly UI
+                    # Get simplified security status for user-friendly UI
                 try:
                     info["simplified"] = SecurityInfo.get_simplified_security_status()
+                    raw = ((info["simplified"] or {}).get("raw") or {})
+                    if raw:
+                        info["smartScreenEnabled"] = raw.get(
+                            "smartScreenEnabled", info["smartScreenEnabled"]
+                        )
+                        info["smartScreenDetail"] = raw.get(
+                            "smartScreenDetail", info["smartScreenDetail"]
+                        )
+                        info["memoryIntegrityEnabled"] = raw.get(
+                            "memoryIntegrityEnabled", info["memoryIntegrityEnabled"]
+                        )
+                        info["memoryIntegrityDetail"] = raw.get(
+                            "memoryIntegrityDetail", info["memoryIntegrityDetail"]
+                        )
+                        info["remoteDesktopEnabled"] = raw.get(
+                            "remoteDesktopEnabled", info["remoteDesktopEnabled"]
+                        )
+                        info["remoteDesktopNla"] = raw.get(
+                            "remoteDesktopNla", info["remoteDesktopNla"]
+                        )
+                        info["remoteDesktopDetail"] = raw.get(
+                            "remoteDesktopDetail", info["remoteDesktopDetail"]
+                        )
+                        info["adminAccountCount"] = raw.get(
+                            "adminAccountCount", info["adminAccountCount"]
+                        )
+                        info["uacLevel"] = raw.get("uacLevel", info["uacLevel"])
+                        info["uacDetail"] = raw.get("uacDetail", info["uacDetail"])
                 except Exception as e:
-                    print(
-                        f"[SystemSnapshot] Error gathering simplified security info: {e}"
-                    )
-
+                    _log.warning("Error gathering simplified security info: %s", e)
 
         except Exception as e:
-            print(f"[SystemSnapshot] Error gathering security info: {e}")
+            _log.error("Error gathering security info: %s", e)
 
         # Emit signal via thread-safe internal signal (main thread will handle it)
         self._securityInfoReadyInternal.emit(info)
@@ -808,7 +840,7 @@ class SystemSnapshotService(QObject):
                 message += f" (+{len(issues) - 2} more)"
 
         self._notification_service.push(title, message, notif_type)
-        print(f"[SnapshotService] Security notification pushed: {title}")
+        _log.debug("Security notification pushed: %s", title)
 
     def _get_system_uptime(self) -> str:
         """Get system uptime as a formatted string."""
@@ -928,4 +960,5 @@ class SystemSnapshotService(QObject):
     @Slot()
     def refreshSecurityInfo(self):
         """Manually refresh security information."""
+        SecurityInfo.clear_cache()
         self._update_security_info()

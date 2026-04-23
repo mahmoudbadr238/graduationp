@@ -154,19 +154,16 @@ Item {
         }
         
         function onEventExplanationReady(eventId, explanation) {
-            console.log("[EventViewer] AI explanation received for event", eventId)
             aiBusy = false
             aiError = ""
-            
+
             try {
                 if (typeof explanation === "string") {
                     aiData = JSON.parse(explanation)
-                    console.log("[EventViewer] Parsed AI data:", JSON.stringify(aiData))
                 } else {
                     aiData = explanation
                 }
             } catch (e) {
-                console.log("[EventViewer] JSON parse error, using fallback:", e)
                 aiData = {
                     severity: "Safe",
                     title: "Event Analysis",
@@ -176,16 +173,14 @@ Item {
                 }
             }
         }
-        
+
         function onEventExplanationFailed(eventId, errorMsg) {
-            console.log("[EventViewer] AI explanation failed for event", eventId, ":", errorMsg)
             aiBusy = false
             aiData = null
             aiError = errorMsg || "Analysis failed"
         }
-        
+
         function onEventPreviewReady(eventId, previewJson) {
-            console.log("[EventViewer] Preview received for event", eventId)
             try {
                 briefData = JSON.parse(previewJson)
             } catch (e) {
@@ -407,7 +402,6 @@ Item {
                         }
                         
                         onClicked: {
-                            console.log("[EventViewer] Explain button clicked, selectedEventIndex:", selectedEventIndex)
                             requestExplanation()
                         }
                     }
@@ -438,7 +432,6 @@ Item {
                         }
                         
                         onClicked: {
-                            console.log("[EventViewer] Refresh button clicked")
                             if (typeof Backend !== "undefined" && Backend.loadRecentEvents) {
                                 isLoading = true
                                 selectedEvent = null
@@ -446,8 +439,6 @@ Item {
                                 aiData = null
                                 aiError = ""
                                 Backend.loadRecentEvents()
-                            } else {
-                                console.log("[EventViewer] Backend not available!")
                             }
                         }
                     }
@@ -1518,7 +1509,6 @@ Item {
                                         explanation: aiData
                                     }
                                     Backend.setEventContextForChat(JSON.stringify(eventContext))
-                                    console.log("[EventViewer] Sent event context to chatbot, navigation will follow")
                                 }
                             }
                         }

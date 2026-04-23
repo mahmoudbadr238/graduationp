@@ -376,8 +376,8 @@ class NmapCli(INetworkScanner):
                     return future.result(timeout=SCAN_TIMEOUT + 60)
             else:
                 return asyncio.run(self.scan_async(target, fast))
-        except Exception as e:
-            logger.error(f"Sync scan failed for {target}: {e}")
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.error("Sync scan failed for %s: %s", target, e)
             return {"target": target, "status": "error", "error": str(e), "hosts": []}
 
     def _find_nmap(self) -> str:
@@ -555,10 +555,15 @@ class NmapCli(INetworkScanner):
 
         except FileNotFoundError:
             output_callback("[ERROR] Nmap executable not found\n")
+            logger.error("Nmap executable not found at path: %s", self.nmap_path)
             return False, 1, ""
-        except Exception as e:
-            output_callback(f"[ERROR] Scan failed: {e}\n")
-            logger.exception(f"Scan error: {e}")
+        except PermissionError as e:
+            output_callback(f"[ERROR] Permission denied: {e}\n")
+            logger.error("Nmap permission error for target %s: %s", target, e)
+            return False, 1, ""
+        except OSError as e:
+            output_callback(f"[ERROR] OS error during scan: {e}\n")
+            logger.error("OS error scanning %s: %s", target, e)
             return False, 1, ""
 
     def save_scan_output(self, scan_id: str, output: str) -> str:

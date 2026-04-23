@@ -245,7 +245,15 @@ class SentinelTools:
             from backend.engines.scanning.quarantine_manager import get_quarantine_vault
 
             vault = get_quarantine_vault()
-            result = vault.quarantine_file(file_path)
+            result = vault.quarantine_file(
+                file_path,
+                metadata={
+                    "enforcement_source": "manual",
+                    "source_detail": "security_assistant",
+                    "action_reason": "Manual quarantine requested through Security Assistant.",
+                    "requested_by": "security_assistant",
+                },
+            )
             return result["message"]
 
         except Exception as exc:

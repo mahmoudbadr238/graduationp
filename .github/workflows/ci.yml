@@ -37,8 +37,8 @@ jobs:
           test -f frontend/qml/pages/ScanCenter.qml
           test -f frontend/qml/pages/AiReport.qml
 
-  test:
-    name: Test on Windows
+  test-windows:
+    name: Full Test Suite on Windows
     runs-on: windows-latest
 
     steps:
@@ -77,3 +77,43 @@ jobs:
           SKIP_UAC: "1"
         run: |
           python -m backend --diagnose
+
+      - name: Run full pytest suite
+        env:
+          SKIP_UAC: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest backend/tests/ \
+            --ignore=backend/tests/test_linux_amd_gpu.py \
+            -q --tb=short
+
+  test-linux:
+    name: Full Test Suite on Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r linux_requirements.txt pytest pytest-qt
+
+      - name: Syntax check
+        run: |
+          python -m py_compile main.py
+          python -m py_compile backend/application.py
+          python -m py_compile backend/__main__.py
+          python -m py_compile backend/api/backend_bridge.py
+          python -m py_compile backend/utils/diagnostics.py
+
+      - name: Run full pytest suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest backend/tests/ -q --tb=short

@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wintypes
+import logging
 import struct
 import sys
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Signal
+
+_log = logging.getLogger(__name__)
 
 WM_DROPFILES = 0x0233
 
@@ -106,11 +109,11 @@ class DropEventFilter(QAbstractNativeEventFilter, QObject):
             shell32.DragFinish(hDrop)
 
             if file_path:
-                print(f"[DROP] Native WM_DROPFILES: {file_path}")
+                _log.debug("Native WM_DROPFILES: %s", file_path)
                 self.fileDropped.emit(file_path)
 
             return True, 0
 
         except Exception as exc:
-            print(f"[WARNING] DropEventFilter error: {exc}")
+            _log.warning("DropEventFilter error: %s", exc)
             return False, 0

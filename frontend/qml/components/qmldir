@@ -38,8 +38,12 @@ SecurityCard 1.0 SecurityCard.qml
 RiskConfirmDialog 1.0 RiskConfirmDialog.qml
 SecurityTriangle 1.0 SecurityTriangle.qml
 SidebarItem 1.0 SidebarItem.qml
+SidebarIcon 1.0 SidebarIcon.qml
 NotificationCenter 1.0 NotificationCenter.qml
 ReportPreviewDialog 1.0 ReportPreviewDialog.qml
 SandboxLiveView 1.0 SandboxLiveView.qml
 StyledTextField 1.0 StyledTextField.qml
 StyledComboBox 1.0 StyledComboBox.qml
+StyledSwitch 1.0 StyledSwitch.qml
+StyledCheckBox 1.0 StyledCheckBox.qml
+StyledSpinBox 1.0 StyledSpinBox.qml

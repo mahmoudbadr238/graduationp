@@ -5,7 +5,7 @@ import "../ui"
 import "../components"
 
 /**
- * SecurityAssistant - Smart Local AI Security Chatbot Page
+ * SecurityAssistant - Smart AI Security Chatbot Page
  * 
  * Provides a conversational interface for security assistance with:
  * - Conversation memory and context
@@ -13,11 +13,13 @@ import "../components"
  * - Structured responses with sources and confidence
  * - Technical details collapsible
  * 
- * 100% local - no network calls, all AI runs on the user's machine.
+ * Groq-backed when configured, with local/non-AI fallbacks elsewhere in Sentinel.
  */
 Item {
     id: root
     anchors.fill: parent
+    readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
+    readonly property string assistantAiMode: root.backend ? root.backend.aiMode() : "loading"
 
     // State
     property bool isThinking: false
@@ -36,7 +38,7 @@ Item {
 
     // Backend connections
     Connections {
-        target: Backend || null
+        target: root.backend
         enabled: target !== null
 
         function onChatMessageAdded(role, content) {
@@ -74,12 +76,11 @@ Item {
                     }
                 }
             } catch (e) {
-                console.log("[SecurityAssistant] Failed to parse response:", e)
+                // Response is plain text, already handled above
             }
         }
-        
+
         function onSmartAssistantError(errorMsg) {
-            console.log("[SecurityAssistant] Smart assistant error:", errorMsg)
             isThinking = false
             scanProgress = -1
             scanStatusText = ""
@@ -114,7 +115,7 @@ Item {
     Component.onCompleted: {
         chatModel.append({
             "role": "assistant",
-            "content": "**Hey! I'm Sentinel AI, your security assistant.** 🛡️\n\nI'm powered by Groq and can help you with pretty much anything on your machine:\n\n• **System info** — \"Show my CPU and RAM usage\", \"What's eating my memory?\"\n• **Network** — \"Show active connections\", \"What's my IP?\"\n• **Processes** — \"What's running right now?\", \"Top processes by RAM\"\n• **Security** — Scan files, quarantine threats, manage real-time protection\n• **Software** — Install or update apps via winget\n• **General chat** — Ask me anything, I'm here to help\n\nJust type what you need — I'll fetch live data when needed.",
+            "content": "**I'm Sentinel AI, your security assistant.**\n\nWhen Groq is configured, I can help explain events, summarize scans, and answer live system questions.\n\n• **System info** - \"Show my CPU and RAM usage\"\n• **Network** - \"Show active connections\"\n• **Processes** - \"What's using the most memory?\"\n• **Security** - Scan files, quarantine threats, and review protection status\n• **Software** - Supported package actions depend on the current platform and available tools\n\nSome actions require administrator/root access, and cloud AI features need `GROQ_API_KEY`.",
             "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm"),
             "hasStructuredData": false,
             "structuredData": ""
@@ -147,7 +148,7 @@ Item {
                 }
 
                 Text {
-                    text: "Groq AI • Conversation Memory • System Access"
+                    text: "Groq-backed AI • Conversation Memory • System Access"
                     font.pixelSize: ThemeManager.fontSize_small
                     color: ThemeManager.muted()
                 }
@@ -160,18 +161,19 @@ Item {
                 width: aiModeLabel.implicitWidth + 20
                 height: 28
                 radius: 14
-                color: Backend && Backend.aiAvailable() ? 
-                       ThemeManager.accent : 
-                       ThemeManager.surface()
+                color: root.assistantAiMode === "online" ?
+                       ThemeManager.accent :
+                       (root.assistantAiMode === "offline-kb" ? ThemeManager.warning : ThemeManager.surface())
                 opacity: 0.8
 
                 Text {
                     id: aiModeLabel
                     anchors.centerIn: parent
-                    text: Backend ? (Backend.aiAvailable() ? "AI Ready" : "AI Unavailable") : "Loading..."
-                    color: Backend && Backend.aiAvailable() ? 
-                           "white" : 
-                           ThemeManager.muted()
+                    text: root.assistantAiMode === "online" ? "Groq Connected"
+                         : (root.assistantAiMode === "offline-kb" ? "Offline KB Only" : "AI Unavailable")
+                    color: root.assistantAiMode === "online" ?
+                           ThemeManager.selectionForeground :
+                           ThemeManager.foreground()
                     font.pixelSize: ThemeManager.fontSize_small
                     font.bold: true
                 }
@@ -198,8 +200,8 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (Backend && !isThinking) {
-                            Backend.explainRecentEvents("5")
+                        if (root.backend && !isThinking) {
+                            root.backend.explainRecentEvents("5")
                             isThinking = true
                         }
                     }
@@ -230,7 +232,7 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         chatModel.clear()
-                        if (Backend) Backend.clearChatHistory()
+                        if (root.backend) root.backend.clearChatHistory()
                         lastStructuredResponse = null
                         // Re-add welcome message
                         chatModel.append({
@@ -510,7 +512,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: "➤"
-                            color: "white"
+                            color: ThemeManager.selectionForeground
                             font.pixelSize: ThemeManager.fontSize_h2
                             font.bold: true
                         }
@@ -588,9 +590,9 @@ Item {
         inputField.text = ""
         isThinking = true
 
-        if (Backend) {
+        if (root.backend) {
             // Use smart assistant for intelligent responses
-            Backend.sendSmartMessage(text)
+            root.backend.sendSmartMessage(text)
         } else {
             // Fallback if backend not available
             chatModel.append({

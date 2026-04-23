@@ -85,7 +85,7 @@ class LibraryInstaller:
                 logger.info(f"✅ Successfully installed {package}")
                 return True
             except subprocess.CalledProcessError as e:
-                logger.exception(f"❌ Failed to install {package}: {e}")
+                logger.exception("Failed to install %s: %s", package, e)
                 return False
 
     @staticmethod
@@ -285,7 +285,7 @@ class NVIDIAMonitor:
                 supports_power_limit=supports_power,
             )
         except Exception as e:
-            logger.exception(f"Error getting NVIDIA GPU {gpu_id} metrics: {e}")
+            logger.exception("Error getting NVIDIA GPU %s metrics: %s", gpu_id, e)
             return None
 
     def set_fan_speed(self, gpu_id: int, percent: int) -> bool:
@@ -362,7 +362,7 @@ class AMDMonitor:
                     if pnp_id:
                         self.pnp_to_phys[pnp_id] = phys_idx
         except Exception as e:
-            logger.exception(f"Error caching AMD performance counters: {e}")
+            logger.exception("Error caching AMD performance counters: %s", e)
 
     def _get_performance_counter_usage(self) -> dict[int, float]:
         """Get AMD GPU usage from Windows Performance Counters"""
@@ -474,7 +474,7 @@ class AMDMonitor:
                 supports_power_limit=False,
             )
         except Exception as e:
-            logger.exception(f"Error getting AMD GPU {gpu_id} metrics: {e}")
+            logger.exception("Error getting AMD GPU %s metrics: %s", gpu_id, e)
             return None
 
 
@@ -559,7 +559,7 @@ class IntelMonitor:
                 supports_power_limit=False,
             )
         except Exception as e:
-            logger.exception(f"Error getting Intel GPU {gpu_id} metrics: {e}")
+            logger.exception("Error getting Intel GPU %s metrics: %s", gpu_id, e)
             return None
 
 

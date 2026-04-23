@@ -88,7 +88,7 @@ class ReportWriter:
         f.write("=" * 70 + "\n\n")
 
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("Sentinel Local Scanner - 100% Offline Analysis\n\n")
+        f.write("Sentinel analysis report (local evidence; optional AI noted separately)\n\n")
 
         # Verdict
         f.write("-" * 70 + "\n")
@@ -335,7 +335,7 @@ class ReportWriter:
         f.write("=" * 70 + "\n\n")
 
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("Sentinel Local Scanner - 100% Offline Analysis\n\n")
+        f.write("Sentinel analysis report (local evidence; optional AI noted separately)\n\n")
 
         # Verdict
         f.write("-" * 70 + "\n")

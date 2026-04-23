@@ -34,7 +34,7 @@ Card {
         Text {
             id: chartTitle
             text: dualChartCard.title
-            color: Theme.text_primary
+            color: Theme.text
             font.pixelSize: Theme.typography.body.size
             font.weight: Theme.typography.body.weight
             Layout.fillWidth: true
@@ -55,7 +55,7 @@ Card {
                 }
                 Text {
                     text: dualChartCard.labelUp
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                 }
             }
@@ -70,7 +70,7 @@ Card {
                 }
                 Text {
                     text: dualChartCard.labelDown
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                 }
             }
@@ -88,7 +88,7 @@ Card {
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
-            radius: Theme.radius_sm
+            radius: Theme.radii_sm
             
             ChartView {
                 id: chartView
@@ -116,7 +116,7 @@ Card {
                     max: Math.max(1, dualChartCard.pointCount - 1)
                     labelsVisible: false
                     gridVisible: true
-                    gridLineColor: Theme.divider
+                    gridLineColor: Theme.border
                 }
                 
                 // Y-Axis
@@ -125,8 +125,8 @@ Card {
                     min: dualChartCard.minValue
                     max: dualChartCard.maxValue
                     tickCount: 5
-                    labelsColor: Theme.text_secondary
-                    gridLineColor: Theme.divider
+                    labelsColor: Theme.textSecondary
+                    gridLineColor: Theme.border
                 }
                 
                 // Upload Line Series
@@ -158,7 +158,7 @@ Card {
             Text {
                 anchors.centerIn: parent
                 text: "No data yet"
-                color: Theme.text_secondary
+                color: Theme.textSecondary
                 font.pixelSize: Theme.typography.body.size
                 visible: dualChartCard.historyDataUp.length === 0 && dualChartCard.historyDataDown.length === 0
             }
@@ -175,7 +175,7 @@ Card {
                 
                 Text {
                     text: "↑ " + dualChartCard.labelUp
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                     font.weight: Font.Medium
                 }
@@ -187,7 +187,7 @@ Card {
                         spacing: 2
                         Text {
                             text: "Now"
-                            color: Theme.text_secondary
+                            color: Theme.textSecondary
                             font.pixelSize: Theme.typography.caption.size
                         }
                         Text {
@@ -198,7 +198,7 @@ Card {
                                 }
                                 return "—"
                             }
-                            color: Theme.text_primary
+                            color: Theme.text
                             font.pixelSize: Theme.typography.body.size
                             font.weight: Font.DemiBold
                         }
@@ -208,7 +208,7 @@ Card {
                         spacing: 2
                         Text {
                             text: "Peak"
-                            color: Theme.text_secondary
+                            color: Theme.textSecondary
                             font.pixelSize: Theme.typography.caption.size
                         }
                         Text {
@@ -219,7 +219,7 @@ Card {
                                 }
                                 return "—"
                             }
-                            color: Theme.text_primary
+                            color: Theme.text
                             font.pixelSize: Theme.typography.body.size
                             font.weight: Font.DemiBold
                         }
@@ -233,7 +233,7 @@ Card {
                 
                 Text {
                     text: "↓ " + dualChartCard.labelDown
-                    color: Theme.text_secondary
+                    color: Theme.textSecondary
                     font.pixelSize: Theme.typography.caption.size
                     font.weight: Font.Medium
                 }
@@ -245,7 +245,7 @@ Card {
                         spacing: 2
                         Text {
                             text: "Now"
-                            color: Theme.text_secondary
+                            color: Theme.textSecondary
                             font.pixelSize: Theme.typography.caption.size
                         }
                         Text {
@@ -256,7 +256,7 @@ Card {
                                 }
                                 return "—"
                             }
-                            color: Theme.text_primary
+                            color: Theme.text
                             font.pixelSize: Theme.typography.body.size
                             font.weight: Font.DemiBold
                         }
@@ -266,7 +266,7 @@ Card {
                         spacing: 2
                         Text {
                             text: "Peak"
-                            color: Theme.text_secondary
+                            color: Theme.textSecondary
                             font.pixelSize: Theme.typography.caption.size
                         }
                         Text {
@@ -277,7 +277,7 @@ Card {
                                 }
                                 return "—"
                             }
-                            color: Theme.text_primary
+                            color: Theme.text
                             font.pixelSize: Theme.typography.body.size
                             font.weight: Font.DemiBold
                         }

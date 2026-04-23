@@ -3,13 +3,13 @@ name: GUI Responsiveness Check
 on:
   push:
     paths:
-      - 'qml/**'
+      - 'frontend/qml/**'
       - 'scripts/dev/gui_probe.py'
       - 'scripts/dev/qml_lint.py'
       - '.github/workflows/gui-*.yml'
   pull_request:
     paths:
-      - 'qml/**'
+      - 'frontend/qml/**'
       - 'scripts/dev/gui_probe.py'
       - 'scripts/dev/qml_lint.py'
 
