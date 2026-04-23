@@ -63,7 +63,11 @@ def _is_windows_system_path(path: str) -> bool:
     if not normalized:
         return False
     system_root = _canonical_path(os.environ.get("SystemRoot") or r"C:\Windows")
-    return normalized == system_root or normalized.startswith(system_root + os.sep)
+    return (
+        normalized == system_root
+        or normalized.startswith(system_root + "\\")
+        or normalized.startswith(system_root + "/")
+    )
 
 
 def _quarantine_source(item: dict[str, Any]) -> tuple[str, str]:
