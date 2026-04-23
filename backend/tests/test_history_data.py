@@ -221,7 +221,11 @@ def test_manual_quarantine_records_source_and_cleaner_defaults(tmp_path: Path) -
     assert rows[0]["metadata_quality"] == "manual_record"
 
 
-def test_legacy_quarantine_record_is_marked_incomplete(tmp_path: Path) -> None:
+def test_legacy_quarantine_record_is_marked_incomplete(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "backend.engines.history.unified_history._canonical_path",
+        lambda p: str(p).replace("/", "\\").lower(),
+    )
     vault = QuarantineVault(tmp_path / "vault")
     vault._append_entry(
         {

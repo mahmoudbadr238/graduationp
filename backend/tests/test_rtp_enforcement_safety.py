@@ -15,6 +15,7 @@ from backend.engines.scanning.quarantine_manager import QuarantineVault
 def test_windows_brave_score_only_block_downgrades_to_log_only(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setattr(rtp, "_canonical_path", lambda p: str(p).replace("/", "\\").lower())
     worker = rtp.RealTimeProtectionWorker()
 
     plan = worker._build_enforcement_plan(
@@ -42,6 +43,7 @@ def test_windows_brave_score_only_block_downgrades_to_log_only(monkeypatch) -> N
 def test_windows_brave_clamav_only_block_stays_log_only(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setattr(rtp, "_canonical_path", lambda p: str(p).replace("/", "\\").lower())
     worker = rtp.RealTimeProtectionWorker()
 
     plan = worker._build_enforcement_plan(
@@ -69,6 +71,7 @@ def test_windows_brave_clamav_only_block_stays_log_only(monkeypatch) -> None:
 def test_windows_system_binary_clamav_only_block_stays_log_only(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr(rtp, "_canonical_path", lambda p: str(p).replace("/", "\\").lower())
     worker = rtp.RealTimeProtectionWorker()
 
     plan = worker._build_enforcement_plan(

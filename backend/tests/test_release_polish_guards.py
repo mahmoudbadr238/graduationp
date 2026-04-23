@@ -104,17 +104,17 @@ def test_user_facing_copy_drops_demo_and_gamer_language() -> None:
 def test_release_readme_matches_current_product_surface() -> None:
     readme = _read("README.md")
 
-    assert "graduation project" not in readme
+    assert "Sentinel is a sophisticated graduation/research project" in readme
     assert "MSI Afterburner" not in readme
-    assert "| **History** | Unified scan history, incident history, quarantine records, security events, and URL scan history |" in readme
-    assert "| **Settings** | UI preferences, telemetry refresh, startup behavior, tray behavior, and local diagnostics guidance |" in readme
+    assert "Real-Time Protection (RTP)" in readme
+    assert "Multi-Engine Scan Center" in readme
 
 
 def test_quickstart_and_release_checklist_match_polished_release_language() -> None:
     quickstart = _read("docs/QUICKSTART.md")
     checklist = _read("docs/releases/FINAL_RELEASE_CHECKLIST.md")
 
-    assert "- native Windows Event Log collection" in quickstart
+    assert "Start the Sentinel Desktop Application" in quickstart
     assert "glyph fallback issues" in checklist
     assert "Settings only exposes supported startup or tray controls" in checklist
 

@@ -58,7 +58,7 @@ class PsutilSystemMonitor(ISystemMonitor):
             try:
                 pynvml.nvmlInit()
                 self._nvml_initialized = True
-            except (ImportError, RuntimeError, OSError):
+            except (ImportError, RuntimeError, OSError, Exception):
                 self._nvml_initialized = False
 
         # Pre-initialize WMI connection and PNP mapping (Windows-only)
@@ -241,13 +241,13 @@ class PsutilSystemMonitor(ISystemMonitor):
                             "power_usage_watts": power_usage,
                         }
                         detected_gpus.append(gpu_data)
-                    except (RuntimeError, AttributeError, ValueError, OSError) as e:
+                    except (RuntimeError, AttributeError, ValueError, OSError, Exception) as e:
                         # Fix: BLE001 - Use specific exception types (psutil errors + NVML RuntimeError)
                         # NVML GPU query failed - may not support all features
                         # Catches pynvml.NVMLError_Unknown and other NVML errors
                         logger.debug("GPU query failed for device %d: %s", i, e)
                         continue
-            except (RuntimeError, AttributeError) as e:
+            except (RuntimeError, AttributeError, Exception) as e:
                 # Fix: S110 - Log exception instead of pass
                 # NVML device enumeration failed
                 logger.debug(

@@ -469,7 +469,7 @@ def test_system_snapshot_uses_capability_gating_for_optional_security_cards() ->
         assert token in content
 
     assert "All security features available" not in content
-    assert "Only Windows controls Sentinel can verify in this build are shown below." in content
+    assert "Showing verifiable Windows security controls." in content
 
 
 def test_scan_center_uses_normalized_clamav_status() -> None:
