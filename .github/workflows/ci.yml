@@ -79,13 +79,12 @@ jobs:
           python -m backend --diagnose
 
       - name: Run full pytest suite
+        shell: powershell
         env:
           SKIP_UAC: "1"
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest backend/tests/ \
-            --ignore=backend/tests/test_linux_amd_gpu.py \
-            -q --tb=short
+          python -m pytest backend/tests/ -q --tb=short --ignore=backend/tests/test_linux_amd_gpu.py
 
   test-linux:
     name: Full Test Suite on Linux
@@ -98,6 +97,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libopengl0 \
+            libxkbcommon-x11-0 \
+            libdbus-1-3 \
+            libfontconfig1 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xinput0
 
       - name: Install dependencies
         run: |
