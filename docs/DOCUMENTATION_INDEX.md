@@ -179,9 +179,9 @@ archive/docs/
 
 | File | Purpose |
 |------|---------|
-| `pyproject.toml` | Python project metadata |
-| `pytest.ini` | Test runner configuration |
-| `sentinel.spec` | PyInstaller build specification |
+| `sentinel.spec` | Windows PyInstaller GUI build specification |
+| `sentinel_gpu_worker.spec` | GPU helper PyInstaller specification |
+| `sentinel_url_detonator.spec` | URL detonator helper PyInstaller specification |
 
 **Documentation**: See `FOLDER_STRUCTURE.md`
 
@@ -357,6 +357,10 @@ Test Config:
 
 Build Config:
 └─ config/sentinel.spec
+└─ config/sentinel_gpu_worker.spec
+└─ config/sentinel_url_detonator.spec
+└─ scripts/build/build.ps1
+└─ scripts/build/build_linux.sh
 ```
 
 ### Important Source Files

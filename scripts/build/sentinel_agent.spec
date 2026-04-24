@@ -1,0 +1,42 @@
+# -*- mode: python ; coding: utf-8 -*-
+
+from pathlib import Path
+
+PROJECT_ROOT = Path(SPECPATH).resolve().parents[1]
+SOURCE = PROJECT_ROOT / 'payload' / 'sandbox_agent' / 'agent_payload.py'
+
+a = Analysis(
+    [str(SOURCE)],
+    pathex=[str(PROJECT_ROOT)],
+    binaries=[],
+    datas=[],
+    hiddenimports=['pyautogui', 'tkinter', 'psutil', 'wmi', 'pywinauto'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='sentinel_agent',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)

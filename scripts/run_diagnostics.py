@@ -53,7 +53,7 @@ except ImportError:
 
 
 # -- Globals -----------------------------------------------------------------
-WORKSPACE = Path(__file__).resolve().parent
+WORKSPACE = Path(__file__).resolve().parent.parent
 RESULTS: List[Tuple[str, bool, str, str]] = []  # (name, passed, detail, action)
 VERBOSE = False
 
@@ -620,7 +620,7 @@ def print_report() -> None:
 # ===========================================================================
 # MAIN
 # ===========================================================================
-def main() -> None:
+def main() -> int:
     global VERBOSE
 
     parser = argparse.ArgumentParser(description="Sentinel Pre-Flight Diagnostic Suite")
@@ -672,6 +672,9 @@ def main() -> None:
     print_report()
     print(f"  Completed in {elapsed:.2f}s\n")
 
+    failed = any(not ok for _, ok, _, _ in RESULTS)
+    return 1 if failed else 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

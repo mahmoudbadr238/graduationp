@@ -30,7 +30,7 @@ Sentinel is engineered to professional standards, heavily focusing on resilience
 - **Process Isolation & IPC:** Heavy workloads like GPU telemetry, URL detonation, and the VMware Sandbox run in isolated subprocesses. A custom QML-to-Python `BackendBridge` manages asynchronous IPC, ensuring the UI remains highly responsive even during 100% CPU scanning events.
 - **Graceful Degradation:** The application implements "truthful platform boundaries." If `nmap`, `clamav`, `vmrun`, or an API key is missing, Sentinel dynamically adjusts the UI to report `Unavailable` or `Permission Required` rather than failing.
 - **Native Telemetry (No Wrappers):** Instead of relying on generic wrappers, Sentinel natively parses the Linux systemd journal, enumerates PCI buses for hybrid GPU detection, and queries Windows Event Logs via `pywin32`.
-- **Quality Assurance:** The repository enforces strict `mypy` typing, extensive `ruff` and `bandit` linting, and relies on an automated suite of over 30 backend tests specifically targeting regression guards and hardware mocking.
+- **Quality Assurance:** The repository relies on a broad `pytest` backend regression suite and includes configured `ruff`, `mypy`, and Bandit tooling. Current full-repo `ruff`/`mypy` output is an active cleanup baseline, not a passing release gate.
 
 For a deep dive into the system design, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -82,7 +82,7 @@ Sentinel respects platform realities. It does not attempt to simulate Windows fe
 - **Windows Integrations:** `pywin32`, `wmi`, `pefile`, VMware `vmrun`
 - **Linux Integrations:** `journalctl`, `sysfs`/DRM parsing, `ufw`/`aa-status` wrappers
 - **AI/LLM:** Groq API SDK
-- **Testing & Tooling:** `pytest`, `mypy` (strict), `ruff`, `bandit`, PyInstaller
+- **Testing & Tooling:** `pytest`, configured `ruff`/`mypy`/Bandit quality baselines, PyInstaller
 
 ---
 
@@ -148,7 +148,7 @@ To explore the engineering depth of Sentinel, refer to the following specific do
 
 1. [**ARCHITECTURE.md**](docs/ARCHITECTURE.md): Deep dive into IPC, subprocess isolation, and the UI-to-Backend bridge.
 2. [**FEATURES_AND_WORKFLOWS.md**](docs/FEATURES_AND_WORKFLOWS.md): Detailed breakdowns of the 11-stage scan pipeline, dynamic sandbox, and AI integration.
-3. [**BUILD_AND_VALIDATION.md**](docs/BUILD_AND_VALIDATION.md): Overview of the strict typing, testing rigor, and packaging strategies.
+3. [**BUILD_AND_VALIDATION.md**](docs/BUILD_AND_VALIDATION.md): Current validation commands, testing coverage, quality baselines, and packaging strategies.
 4. [**QUICKSTART.md**](docs/QUICKSTART.md): Complete setup guide, including environment variables and optional tools.
 
 ---
@@ -156,7 +156,8 @@ To explore the engineering depth of Sentinel, refer to the following specific do
 ## Limitations & Truthfulness Notes
 
 In the interest of full engineering transparency:
-- **Production Readiness:** Sentinel is a sophisticated graduation/research project. While it employs production-grade patterns (strict typing, IPC), it is not a commercially certified EDR replacement.
+- **Production Readiness:** Sentinel is a sophisticated graduation/research project. While it employs production-grade patterns such as IPC isolation and typed interfaces, it is not a commercially certified EDR replacement.
+- **Static Analysis Baseline:** Full-repo `ruff` and `mypy` currently report existing issues. Treat them as configured cleanup tools until the baseline is paid down.
 - **AI Hallucinations:** The Groq-powered AI Assistant and NGAV components are assistive. LLMs can hallucinate; therefore, the core enforcement engine relies on deterministic scoring.
 - **Sandbox Extensibility:** The Sandbox Lab requires a locally installed, licensed copy of VMware Workstation. It is not currently designed for cloud hypervisor scaling.
 - **Linux Evasion:** The Linux Real-Time Protection relies on user-space process polling (`psutil`). Advanced rootkits can bypass user-space polling by hiding PIDs in the kernel.

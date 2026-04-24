@@ -5,7 +5,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_DIR="$REPO_ROOT/.venv"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║          Sentinel Security Suite — Linux Setup              ║"
@@ -77,12 +78,12 @@ else
 fi
 
 source "$VENV_DIR/bin/activate"
-pip install --upgrade pip -q
+python -m pip install --upgrade pip -q
 
 # ── Step 4: Install Python dependencies ──────────────────────────────
 echo ""
 echo "── Installing Python dependencies ──"
-pip install -r "$SCRIPT_DIR/linux_requirements.txt" -q
+python -m pip install -r "$REPO_ROOT/linux_requirements.txt" -q
 echo "[OK] Python packages installed"
 
 # ── Step 5: Run the application ──────────────────────────────────────
@@ -92,5 +93,5 @@ echo "║              Starting Sentinel...                           ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-cd "$SCRIPT_DIR"
-$PYTHON main.py "$@"
+cd "$REPO_ROOT"
+python main.py "$@"

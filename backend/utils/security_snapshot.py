@@ -26,7 +26,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Platform detection
-_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW
+_IS_WINDOWS = platform.system() == "Windows"
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0
 
 
 # ============================================================================

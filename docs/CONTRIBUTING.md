@@ -140,7 +140,7 @@ Include:
 
 ## 🎯 Code Quality Standards
 
-Sentinel uses local tooling and GitHub Actions to enforce quality.
+Sentinel has local Ruff, mypy, Bandit, and pytest tooling configured. The full-repo Ruff and mypy baselines are not currently clean, so record those results honestly and treat touched-code cleanup separately unless CI is updated to require a clean baseline.
 
 ### Pre-commit Hooks
 
@@ -228,7 +228,7 @@ Before submitting a PR:
 - [ ] The change is scoped and understandable
 - [ ] Relevant diagnostics were run
 - [ ] Relevant tests were run
-- [ ] Ruff passes for touched Python code
+- [ ] Ruff was checked for touched Python code, or remaining findings were documented
 - [ ] MyPy was run if types or interfaces changed
 - [ ] Documentation was updated if behavior changed
 - [ ] No secrets or local machine paths were committed unintentionally

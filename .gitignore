@@ -229,6 +229,8 @@ chart_*.txt
 # Build and distribution artifacts
 build/
 dist/
+!scripts/build/
+!scripts/build/**
 *.egg
 *.whl
 # Diagnostic artifacts

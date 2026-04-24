@@ -12,6 +12,162 @@ from backend.core import realtime_protection as rtp
 from backend.engines.scanning.quarantine_manager import QuarantineVault
 
 
+def test_trusted_packaged_gpu_worker_is_allowed_before_scan(monkeypatch, tmp_path: Path) -> None:
+    app_root = tmp_path / "Sentinel"
+    app_root.mkdir()
+    worker_exe = app_root / "sentinel_gpu_worker.exe"
+    worker_exe.write_text("stub", encoding="utf-8")
+    scan_calls: list[str] = []
+
+    class FakeTimedOut(Exception):
+        pass
+
+    class FakeWmiConnection:
+        def __init__(self) -> None:
+            self._emitted = False
+
+        def watch_for(self, **_kwargs):
+            def watcher(*, timeout_ms: int):  # noqa: ARG001
+                if not self._emitted:
+                    self._emitted = True
+                    return types.SimpleNamespace(
+                        Name="sentinel_gpu_worker.exe",
+                        ProcessId=4242,
+                        ParentProcessId=os.getpid(),
+                        ExecutablePath=str(worker_exe),
+                    )
+                raise FakeTimedOut()
+
+            return watcher
+
+    class FakeStaticScanner:
+        def scan_file(self, path: str):
+            scan_calls.append(path)
+            return types.SimpleNamespace(score=99, verdict="Malicious", sha256="bad")
+
+    fake_static_scanner = types.ModuleType("backend.engines.scanning.static_scanner")
+    fake_static_scanner.StaticScanner = FakeStaticScanner
+
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(rtp, "_sentinel_trusted_roots", lambda: (app_root,))
+    monkeypatch.setitem(
+        sys.modules,
+        "pythoncom",
+        types.SimpleNamespace(CoInitialize=lambda: None, CoUninitialize=lambda: None),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "wmi",
+        types.SimpleNamespace(WMI=lambda: FakeWmiConnection(), x_wmi_timed_out=FakeTimedOut),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "psutil",
+        types.SimpleNamespace(NoSuchProcess=RuntimeError, AccessDenied=PermissionError),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "backend.engines.scanning.static_scanner",
+        fake_static_scanner,
+    )
+
+    worker = rtp.RealTimeProtectionWorker()
+    scanned: list[str] = []
+    detected: list[tuple[str, str, str]] = []
+    threats: list[str] = []
+    worker.process_scanned.connect(scanned.append)
+    worker.threat_detected.connect(threats.append)
+
+    def _capture_detection(timestamp: str, name: str, pid: str) -> None:
+        detected.append((timestamp, name, pid))
+        worker.stop()
+
+    worker.process_detected.connect(_capture_detection)
+    worker.run()
+
+    assert scan_calls == []
+    assert scanned == []
+    assert threats == []
+    assert detected
+    assert detected[0][1:] == ("sentinel_gpu_worker.exe", "4242")
+
+
+def test_fake_gpu_worker_outside_app_tree_is_not_trusted(monkeypatch, tmp_path: Path) -> None:
+    app_root = tmp_path / "Sentinel"
+    fake_root = tmp_path / "Downloads"
+    app_root.mkdir()
+    fake_root.mkdir()
+    fake_worker = fake_root / "sentinel_gpu_worker.exe"
+    fake_worker.write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(rtp, "_sentinel_trusted_roots", lambda: (app_root,))
+    worker = rtp.RealTimeProtectionWorker()
+
+    assert not rtp._is_trusted_sentinel_internal_helper(
+        "sentinel_gpu_worker.exe",
+        str(fake_worker),
+        parent_pid=os.getpid(),
+    )
+
+    plan = worker._build_enforcement_plan(
+        "sentinel_gpu_worker.exe",
+        str(fake_worker),
+        {
+            "action": "block",
+            "score": 91,
+            "verdict_label": "Malicious",
+            "action_reason": "ClamAV confirmed malware.",
+        },
+        scan_context={
+            "signature_valid": None,
+            "publisher": "",
+            "strong_evidence": True,
+            "parent_pid": os.getpid(),
+            "fingerprint": (100, 200),
+        },
+    )
+
+    assert plan.process_action == "kill_process"
+    assert plan.file_action == "quarantine_file"
+    assert plan.trusted_internal_helper is False
+
+
+def test_trusted_parent_and_trusted_child_downgrades_block_to_log_only(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    app_root = tmp_path / "Sentinel"
+    app_root.mkdir()
+    worker_exe = app_root / "sentinel_gpu_worker.exe"
+    worker_exe.write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(rtp, "_sentinel_trusted_roots", lambda: (app_root,))
+    worker = rtp.RealTimeProtectionWorker()
+
+    plan = worker._build_enforcement_plan(
+        "sentinel_gpu_worker.exe",
+        str(worker_exe),
+        {
+            "action": "block",
+            "score": 95,
+            "verdict_label": "Malicious",
+            "action_reason": "Scanner classified helper as malicious.",
+        },
+        scan_context={
+            "signature_valid": None,
+            "publisher": "",
+            "strong_evidence": True,
+            "parent_pid": os.getpid(),
+            "fingerprint": (100, 200),
+        },
+    )
+
+    assert plan.process_action == "log_only"
+    assert plan.file_action == "allow"
+    assert plan.trusted_internal_helper is True
+    assert "sentinel-shipped internal helper" in plan.reason.lower()
+
+
 def test_windows_brave_score_only_block_downgrades_to_log_only(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32", raising=False)
     monkeypatch.setenv("ProgramFiles", r"C:\Program Files")

@@ -217,9 +217,14 @@ python main.py
 ```
 
 ### Create Executable
-```bash
+```powershell
 pip install pyinstaller
-pyinstaller sentinel.spec --clean --noconfirm
+.\scripts\build\build.ps1
+```
+
+```bash
+python -m pip install pyinstaller
+./scripts/build/build_linux.sh
 ```
 
 ---

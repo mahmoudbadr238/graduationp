@@ -1,24 +1,23 @@
 # Build, Validation & Quality Assurance
 
-Sentinel is developed under strict engineering standards. Because an Endpoint Security suite handles highly sensitive system APIs, process manipulation, and real-time scanning, the codebase is aggressively linted and tested.
+Sentinel handles sensitive system APIs, process manipulation, and real-time scanning, so release validation must be explicit and repeatable. This document describes the current commands that exist in the repository and separates passing release checks from configured cleanup baselines.
 
 ---
 
 ## 1. Static Analysis & Linting
 
-Sentinel utilizes modern Python tooling configured for strict enforcement. See `pyproject.toml` for the complete configuration rulesets.
+`pyproject.toml` contains Ruff, mypy, Bandit, and pytest configuration. The full-repo Ruff and mypy baselines are currently not clean, so they are **not** documented as passing release gates until those findings are paid down.
 
-### Mypy (Strict Mode)
-All Python code runs through `mypy` with `strict = true` enabled. This enforces:
-- `disallow_untyped_defs`
-- `no_implicit_optional`
-- `strict_equality`
+Use these commands to inspect the current static-analysis baseline:
 
-This prevents a massive class of runtime `NoneType` and type-casting errors that plague complex cross-platform integrations.
+```bash
+python -m ruff check backend main.py scripts
+python -m ruff format backend main.py scripts --check
+python -m mypy backend main.py --config-file pyproject.toml
+python -m bandit -s B101 -r backend main.py
+```
 
-### Ruff & Bandit
-Code quality and formatting are governed by **Ruff**, utilizing over 30 extended rulesets (including `flake8-bugbear`, `flake8-simplify`, and `perflint`). 
-Additionally, **Bandit** is run continuously to catch insecure patterns (e.g., hardcoded SQL, insecure subprocess calls without shell escaping).
+For release readiness, record the results honestly. Do not claim Ruff or mypy pass unless the commands above complete successfully on the release branch.
 
 ---
 
@@ -67,13 +66,20 @@ Sentinel is packaged into a standalone, portable desktop application using **PyI
 ### Packaging on Windows
 Due to WMI and `pywin32` dependencies, the Windows build must be executed on a Windows host.
 ```powershell
-# Create the standalone executable (hidden console)
-pyinstaller scripts/build/sentinel_agent.spec
+# Build the GUI bundle, helper executables, sandbox agent, and ZIP artifact.
+.\scripts\build\build.ps1
 ```
+
+The Windows build script produces `dist\Sentinel\Sentinel.exe` and `dist\Sentinel-Windows-x64.zip`. It also validates `Sentinel.exe --diagnose`, the URL detonator helper, and the GPU worker startup stream.
 
 ### Packaging on Linux
 A helper script is provided to automate the virtual environment, install dependencies, and build a localized `dist` folder.
 ```bash
-scripts/build/build_linux.sh
+chmod +x scripts/run_linux.sh scripts/build/build_linux.sh
+./scripts/run_linux.sh
+./scripts/build/build_linux.sh
+
+# Optional release archive after a successful packaged smoke test:
+tar -czf Sentinel-Linux-x64.tar.gz -C dist Sentinel
 ```
 *Note: Due to Qt/PySide6 dynamic linking (`.so` files), the Linux build is most compatible when packaged on older distributions (like Ubuntu 20.04/22.04) to ensure glibc backward compatibility on the target machine.*

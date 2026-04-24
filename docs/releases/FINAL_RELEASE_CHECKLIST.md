@@ -60,9 +60,9 @@ historical context only.
    - System Snapshot security cards
    - Event Viewer with `journalctl`
    - Settings persistence
-5. Build the Linux package with `./build_linux.sh` on Linux.
+5. Build the Linux package with `./scripts/build/build_linux.sh` on Linux.
 6. If distributing source to Linux systems from Windows, create the handoff zip
-   with `./pack_linux.ps1`.
+   with `.\scripts\build\pack_linux.ps1`.
 
 ## Pre-release validation
 

@@ -54,7 +54,9 @@ The project root now contains **only essential files**:
 📁 config/
    ├── pyproject.toml                ← Project metadata
    ├── pytest.ini                    ← Test configuration
-   └── sentinel.spec                 ← Build specification
+   ├── sentinel.spec                 ← Windows GUI build specification
+   ├── sentinel_gpu_worker.spec      ← GPU helper build specification
+   └── sentinel_url_detonator.spec   ← URL detonator build specification
 
 📁 docs/
    ├── README.md                     ← Docs hub overview
@@ -236,6 +238,10 @@ PROJECT_STATUS.md           ← Current status
 config/pyproject.toml
 config/pytest.ini
 config/sentinel.spec
+config/sentinel_gpu_worker.spec
+config/sentinel_url_detonator.spec
+scripts/build/build.ps1
+scripts/build/build_linux.sh
 ```
 
 ### Guides & Manuals

@@ -175,7 +175,7 @@ line-ending = "auto"
 # MYPY - Type Checking
 # ============================================================================
 [tool.mypy]
-# Strict mode enabled for professional quality
+# Strict-mode configuration; current findings are tracked as a cleanup baseline.
 python_version = "3.11"
 strict = true
 warn_return_any = true

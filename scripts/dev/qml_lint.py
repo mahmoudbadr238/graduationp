@@ -17,7 +17,8 @@ class QMLLinter:
     def __init__(self):
         self.violations = []
         self.files_checked = 0
-        self.qml_root = Path(__file__).parent.parent / 'qml'
+        self.repo_root = Path(__file__).resolve().parents[2]
+        self.qml_root = self.repo_root / 'frontend' / 'qml'
         
     def lint_all(self):
         """Scan all QML files"""
@@ -29,7 +30,7 @@ class QMLLinter:
             self.lint_file(qml_file)
             
         self._print_report()
-        return len(self.violations) == 0
+        return not any(v['severity'] == 'error' for v in self.violations)
         
     def lint_file(self, filepath: Path):
         """Lint a single QML file"""
@@ -40,6 +41,13 @@ class QMLLinter:
                 lines = content.split('\n')
         except Exception as e:
             print(f"Error reading {filepath}: {e}")
+            self.violations.append({
+                'file': filepath,
+                'line': 0,
+                'severity': 'error',
+                'message': f"Could not read QML file: {e}",
+                'fix': "Restore file readability and encoding",
+            })
             return
             
         # Check for violations

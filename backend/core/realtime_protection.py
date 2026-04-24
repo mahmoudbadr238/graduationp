@@ -164,6 +164,7 @@ class EnforcementPlan:
     reason: str
     trusted_install: bool = False
     protected_signed_install: bool = False
+    trusted_internal_helper: bool = False
     strong_evidence: bool = False
     publisher: str = ""
     signature_valid: bool | None = None
@@ -257,6 +258,17 @@ _LINUX_PROTECTED_BROWSER_RULES: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 
+_SENTINEL_INTERNAL_HELPER_NAMES = frozenset({
+    "sentinel_gpu_worker.exe",
+    "sentinel_url_detonator.exe",
+    "sentinel_agent.exe",
+})
+
+_SENTINEL_MAIN_PROCESS_NAMES = frozenset({
+    "sentinel.exe",
+    "sentinel",
+})
+
 
 def _canonical_path(path: str) -> str:
     """Return a stable lowercase absolute path for trust/cache checks."""
@@ -266,6 +278,104 @@ def _canonical_path(path: str) -> str:
         return str(Path(path).resolve(strict=False)).lower()
     except OSError:
         return os.path.abspath(path).lower()
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    """Return True when *path* resolves inside *root*."""
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        normalized_path = _canonical_path(str(path))
+        normalized_root = _canonical_path(str(root))
+        if not normalized_path or not normalized_root:
+            return False
+        return normalized_path == normalized_root or normalized_path.startswith(
+            normalized_root.rstrip("\\/") + os.sep
+        )
+
+
+def _sentinel_trusted_roots() -> tuple[Path, ...]:
+    """Return immutable application roots that may contain shipped helpers."""
+    try:
+        from backend.runtime import app_root, bundle_root
+
+        candidates = [app_root(), bundle_root()]
+    except Exception:
+        candidates = []
+
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=False)
+        except OSError:
+            resolved = candidate
+        key = _canonical_path(str(resolved))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        roots.append(resolved)
+    return tuple(roots)
+
+
+def _is_path_in_sentinel_tree(path: str) -> bool:
+    """Return True only for paths rooted in Sentinel's app/bundle tree."""
+    if not path:
+        return False
+    candidate = Path(path)
+    return any(_path_is_relative_to(candidate, root) for root in _sentinel_trusted_roots())
+
+
+def _is_sentinel_internal_helper_path(process_name: str, exe_path: str) -> bool:
+    """Return True for exact Sentinel-shipped helper names inside app roots."""
+    name = (process_name or Path(exe_path).name or "").lower()
+    path_name = Path(exe_path).name.lower()
+    if name not in _SENTINEL_INTERNAL_HELPER_NAMES:
+        return False
+    if path_name != name:
+        return False
+    return _is_path_in_sentinel_tree(exe_path)
+
+
+def _is_sentinel_main_process_path(exe_path: str) -> bool:
+    """Return True for Sentinel's own main executable inside app roots."""
+    if not exe_path:
+        return False
+    if Path(exe_path).name.lower() not in _SENTINEL_MAIN_PROCESS_NAMES:
+        return False
+    return _is_path_in_sentinel_tree(exe_path)
+
+
+def _parent_is_current_sentinel_app(parent_pid: int | None, psutil_mod: Any | None) -> bool:
+    """Validate that a helper launch came directly from this Sentinel runtime."""
+    if parent_pid is None or parent_pid <= 0:
+        return False
+    if parent_pid == os.getpid():
+        return True
+    if psutil_mod is None:
+        return False
+
+    try:
+        parent = psutil_mod.Process(parent_pid)
+        parent_exe = str(parent.exe() or "")
+    except Exception:
+        return False
+    return _is_sentinel_main_process_path(parent_exe)
+
+
+def _is_trusted_sentinel_internal_helper(
+    process_name: str,
+    exe_path: str,
+    *,
+    parent_pid: int | None = None,
+    psutil_mod: Any | None = None,
+) -> bool:
+    """Return True only for Sentinel helpers launched by Sentinel from its tree."""
+    return _is_sentinel_internal_helper_path(
+        process_name,
+        exe_path,
+    ) and _parent_is_current_sentinel_app(parent_pid, psutil_mod)
 
 
 def _file_fingerprint(exe_path: str) -> tuple[int, int] | None:
@@ -482,8 +592,8 @@ def _probe_rtp_capability(platform_name: str | None = None) -> dict[str, str]:
     }
 
 
-def _extract_windows_process_event(event: Any) -> tuple[int, str, str] | None:
-    """Normalize a WMI process-creation event into ``(pid, name, exe_path)``."""
+def _extract_windows_process_event(event: Any) -> tuple[int, str, str, int | None] | None:
+    """Normalize a WMI process-creation event into process metadata."""
     process_obj = getattr(event, "TargetInstance", None)
     if process_obj is None:
         process_obj = event
@@ -495,7 +605,15 @@ def _extract_windows_process_event(event: Any) -> tuple[int, str, str] | None:
     except (AttributeError, TypeError, ValueError):
         return None
 
-    return pid, name, exe_path
+    parent_pid: int | None = None
+    try:
+        raw_parent_pid = getattr(process_obj, "ParentProcessId")
+        if raw_parent_pid is not None:
+            parent_pid = int(raw_parent_pid)
+    except (AttributeError, TypeError, ValueError):
+        parent_pid = None
+
+    return pid, name, exe_path, parent_pid
 
 
 # ───────────────────────────────────────────────────────────────────
@@ -678,6 +796,19 @@ class RealTimeProtectionWorker(QThread):
         publisher = str(context.get("publisher") or "")
         strong_evidence = bool(context.get("strong_evidence"))
         fingerprint = context.get("fingerprint") or _file_fingerprint(exe_path)
+        parent_pid = context.get("parent_pid")
+        if parent_pid is not None:
+            try:
+                parent_pid = int(parent_pid)
+            except (TypeError, ValueError):
+                parent_pid = None
+        psutil_mod = context.get("psutil_mod")
+        trusted_internal_helper = _is_trusted_sentinel_internal_helper(
+            process_name,
+            exe_path,
+            parent_pid=parent_pid,
+            psutil_mod=psutil_mod,
+        )
         trusted_install = _is_trusted_install_path(exe_path)
         explicit_override = _has_explicit_enforcement_override(decision_data)
         decision_complete, completeness_reason = _decision_supports_destructive_enforcement(
@@ -705,6 +836,27 @@ class RealTimeProtectionWorker(QThread):
                 reason=base_reason,
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
+                trusted_internal_helper=trusted_internal_helper,
+                strong_evidence=strong_evidence,
+                publisher=publisher,
+                signature_valid=signature_valid,
+                fingerprint=fingerprint,
+            )
+
+        if trusted_internal_helper:
+            return EnforcementPlan(
+                decision_action=decision_action,
+                process_action="log_only",
+                file_action="allow",
+                reason=(
+                    base_reason
+                    + " Enforcement downgraded to log_only because this executable"
+                    " is a Sentinel-shipped internal helper launched by Sentinel"
+                    " from the application tree."
+                ),
+                trusted_install=trusted_install,
+                protected_signed_install=protected_signed_install,
+                trusted_internal_helper=True,
                 strong_evidence=strong_evidence,
                 publisher=publisher,
                 signature_valid=signature_valid,
@@ -724,6 +876,7 @@ class RealTimeProtectionWorker(QThread):
                 ),
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
+                trusted_internal_helper=trusted_internal_helper,
                 strong_evidence=strong_evidence,
                 publisher=publisher,
                 signature_valid=signature_valid,
@@ -744,6 +897,7 @@ class RealTimeProtectionWorker(QThread):
                 ),
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
+                trusted_internal_helper=trusted_internal_helper,
                 strong_evidence=strong_evidence,
                 publisher=publisher,
                 signature_valid=signature_valid,
@@ -778,6 +932,7 @@ class RealTimeProtectionWorker(QThread):
             reason=reason,
             trusted_install=trusted_install,
             protected_signed_install=protected_signed_install,
+            trusted_internal_helper=trusted_internal_helper,
             strong_evidence=strong_evidence,
             publisher=publisher,
             signature_valid=signature_valid,
@@ -1036,7 +1191,7 @@ class RealTimeProtectionWorker(QThread):
                 process_info = _extract_windows_process_event(event)
                 if process_info is None:
                     continue
-                pid, name, exe_path = process_info
+                pid, name, exe_path, parent_pid = process_info
 
 
                 # ── Skip whitelisted / system processes ──
@@ -1049,11 +1204,27 @@ class RealTimeProtectionWorker(QThread):
                 # Timestamp used for all signals related to this process
                 ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
 
+                if _is_trusted_sentinel_internal_helper(
+                    name,
+                    exe_path,
+                    parent_pid=parent_pid,
+                    psutil_mod=psutil,
+                ):
+                    logger.info(
+                        "RTP: Allowed trusted Sentinel internal helper %s (PID %d)",
+                        exe_path,
+                        pid,
+                    )
+                    self.process_detected.emit(ts, name, str(pid))
+                    continue
+
                 # ── Check scan cache ──
                 cache_entry = self._get_cached_scan_entry(exe_path)
                 if cache_entry:
                     cached_decision = cache_entry.get("decision", {})
-                    scan_context = cache_entry.get("scan_context", {})
+                    scan_context = dict(cache_entry.get("scan_context", {}) or {})
+                    scan_context["parent_pid"] = parent_pid
+                    scan_context["psutil_mod"] = psutil
                     plan = self._build_enforcement_plan(
                         name,
                         exe_path,
@@ -1093,10 +1264,14 @@ class RealTimeProtectionWorker(QThread):
                     "publisher": "",
                     "strong_evidence": False,
                     "fingerprint": _file_fingerprint(exe_path),
+                    "parent_pid": parent_pid,
+                    "psutil_mod": psutil,
                 }
 
                 try:
                     decision_data, sha256, scan_context = self._scan_process_decision(exe_path)
+                    scan_context["parent_pid"] = parent_pid
+                    scan_context["psutil_mod"] = psutil
                 except Exception as scan_exc:
                     logger.debug("RTP: Scan error for %s: %s", name, scan_exc)
                     decision_data = build_final_decision(
@@ -1227,7 +1402,7 @@ class RealTimeProtectionWorker(QThread):
                 try:
                     current_pids: set[int] = set()
                     for proc in psutil.process_iter(
-                        ["pid", "name", "exe", "status"]
+                        ["pid", "name", "exe", "ppid", "status"]
                     ):
                         try:
                             info = proc.info
@@ -1239,6 +1414,7 @@ class RealTimeProtectionWorker(QThread):
 
                             name = (info.get("name") or "unknown").lower()
                             exe_path = info.get("exe") or ""
+                            parent_pid = info.get("ppid")
 
                             # Skip kernel threads and system processes
                             if not exe_path:
@@ -1263,11 +1439,27 @@ class RealTimeProtectionWorker(QThread):
 
                             ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
 
+                            if _is_trusted_sentinel_internal_helper(
+                                name,
+                                exe_path,
+                                parent_pid=parent_pid,
+                                psutil_mod=psutil,
+                            ):
+                                logger.info(
+                                    "RTP-Linux: Allowed trusted Sentinel internal helper %s (PID %d)",
+                                    exe_path,
+                                    pid,
+                                )
+                                self.process_detected.emit(ts, name, str(pid))
+                                continue
+
                             # ── Check scan cache ──
                             cache_entry = self._get_cached_scan_entry(exe_path)
                             if cache_entry:
                                 cached_decision = cache_entry.get("decision", {})
-                                scan_context = cache_entry.get("scan_context", {})
+                                scan_context = dict(cache_entry.get("scan_context", {}) or {})
+                                scan_context["parent_pid"] = parent_pid
+                                scan_context["psutil_mod"] = psutil
                                 plan = self._build_enforcement_plan(
                                     name,
                                     exe_path,
@@ -1307,10 +1499,14 @@ class RealTimeProtectionWorker(QThread):
                                 "publisher": "",
                                 "strong_evidence": False,
                                 "fingerprint": _file_fingerprint(exe_path),
+                                "parent_pid": parent_pid,
+                                "psutil_mod": psutil,
                             }
 
                             try:
                                 decision_data, sha256, scan_context = self._scan_process_decision(exe_path)
+                                scan_context["parent_pid"] = parent_pid
+                                scan_context["psutil_mod"] = psutil
                             except Exception as scan_exc:
                                 logger.debug(
                                     "RTP-Linux: Scan error for %s: %s",
