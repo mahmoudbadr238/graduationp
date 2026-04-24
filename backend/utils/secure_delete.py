@@ -46,6 +46,8 @@ def validate_target(path: str) -> tuple[bool, str]:
 
     if not p.exists():
         return False, f"File not found: {path}"
+    if p.is_dir():
+        return False, "Selected path is a directory; secure file shredder only supports files."
     if not p.is_file():
         return False, "Target is not a regular file. Only individual files can be shredded."
     if p.stat().st_size == 0:

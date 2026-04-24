@@ -29,9 +29,14 @@ Rectangle {
         id: filePicker
         title: "Select file to permanently destroy"
         onAccepted: {
-            var s = selectedFile.toString()
-                        .replace(/^file:\/\/\//i, "")
-            if (!root.isLinux) s = s.replace(/\//g, "\\")
+            var raw = selectedFile.toString()
+            var s = ""
+            if (root.isLinux) {
+                s = raw.replace(/^file:\/\//i, "")
+            } else {
+                s = raw.replace(/^file:\/\/\//i, "")
+                s = s.replace(/\//g, "\\")
+            }
             s = decodeURIComponent(s)
             selectedFilePath = s
             shredDone = false
@@ -169,8 +174,13 @@ Rectangle {
                                     onDropped: function(drop) {
                                         if (drop.hasUrls && drop.urls.length > 0) {
                                             var raw = drop.urls[0].toString()
-                                            var s = raw.replace(/^file:\/\/\//i, "")
-                                            if (!root.isLinux) s = s.replace(/\//g, "\\")
+                                            var s = ""
+                                            if (root.isLinux) {
+                                                s = raw.replace(/^file:\/\//i, "")
+                                            } else {
+                                                s = raw.replace(/^file:\/\/\//i, "")
+                                                s = s.replace(/\//g, "\\")
+                                            }
                                             s = decodeURIComponent(s)
                                             selectedFilePath = s
                                             shredDone = false
