@@ -1,11 +1,12 @@
 """Sentinel Settings Engine — QSettings-backed persistence with global effects."""
 
 import logging
+import os
 import platform
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, QThread, Signal, Slot
 
 _log = logging.getLogger(__name__)
 
@@ -13,6 +14,58 @@ _log = logging.getLogger(__name__)
 # Font-size label → pixel-size mapping
 _FONT_SIZE_MAP = {"small": 12, "medium": 14, "large": 16}
 _FONT_SIZE_LABELS = {v: k for k, v in _FONT_SIZE_MAP.items()}
+
+
+class _GroqTestWorker(QThread):
+    """Background worker that tests a Groq API key with a minimal request."""
+
+    result = Signal(str, str)  # (status: "ok"|"error", message)
+
+    def __init__(self, api_key: str, parent=None):
+        super().__init__(parent)
+        self._api_key = api_key
+
+    def run(self) -> None:
+        try:
+            from groq import Groq, AuthenticationError
+
+            client = Groq(api_key=self._api_key, timeout=10.0, max_retries=0)
+            # Minimal request: list models — lightweight, no tokens consumed.
+            client.models.list()
+            self.result.emit("ok", "Connected — API key is valid.")
+        except ImportError:
+            # Official groq package not installed; fall back to a raw HTTP probe.
+            self._http_ping()
+        except Exception as exc:
+            exc_type = type(exc).__name__
+            if "AuthenticationError" in exc_type or "401" in str(exc) or "403" in str(exc):
+                self.result.emit("error", "Invalid API key — authentication failed.")
+            elif "Connection" in exc_type or "Timeout" in exc_type:
+                self.result.emit("error", "Connection failed — check your network.")
+            else:
+                self.result.emit("error", f"Test failed: {exc}")
+
+    def _http_ping(self) -> None:
+        """Fallback probe using urllib when the groq SDK is unavailable."""
+        import json
+        import urllib.request
+
+        url = "https://api.groq.com/openai/v1/models"
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    self.result.emit("ok", "Connected — API key is valid.")
+                else:
+                    self.result.emit("error", f"Unexpected status {resp.status}.")
+        except Exception as exc:
+            if "401" in str(exc) or "403" in str(exc):
+                self.result.emit("error", "Invalid API key — authentication failed.")
+            else:
+                self.result.emit("error", f"Test failed: {exc}")
 
 
 class SettingsService(QObject):
@@ -34,6 +87,9 @@ class SettingsService(QObject):
     sendErrorReportsChanged = Signal()
     networkUnitChanged = Signal()
     saveError = Signal(str)
+    # Groq AI key management
+    groqApiKeyChanged = Signal()            # key was saved or cleared
+    groqTestResult = Signal(str, str)       # (status: "ok"|"error", message)
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
@@ -70,6 +126,13 @@ class SettingsService(QObject):
         if sys.platform != "win32" and self._start_with_system:
             self._start_with_system = False
             self._qs.setValue("startWithSystem", False)
+
+        # Inject stored Groq API key into the environment if one was saved and
+        # the env var is not already set (e.g. via a .env file loaded earlier).
+        _stored_key: str = self._qs.value("groqApiKey", "") or ""
+        if _stored_key and not os.environ.get("GROQ_API_KEY"):
+            os.environ["GROQ_API_KEY"] = _stored_key
+            _log.info("GROQ_API_KEY loaded from settings store")
 
         _log.debug("Loaded from QSettings (scope=%s)", self._qs.fileName())
 
@@ -231,6 +294,63 @@ class SettingsService(QObject):
         return self._qs.fileName()
 
     # ------------------------------------------------------------------
+    # Groq AI key management
+    # ------------------------------------------------------------------
+
+    @Property(bool, notify=groqApiKeyChanged)
+    def groqApiKeyConfigured(self) -> bool:
+        """True when a Groq API key is stored or present in the environment."""
+        stored = self._qs.value("groqApiKey", "") or ""
+        return bool(stored) or bool(os.environ.get("GROQ_API_KEY", "").strip())
+
+    @Property(str, notify=groqApiKeyChanged)
+    def groqApiKeyMasked(self) -> str:
+        """A safely masked representation for UI display (never the full key)."""
+        key = self._qs.value("groqApiKey", "") or os.environ.get("GROQ_API_KEY", "") or ""
+        key = key.strip()
+        if not key:
+            return ""
+        if len(key) > 8:
+            return key[:4] + "••••••••" + key[-4:]
+        return "••••••••"
+
+    @Slot(str, result=bool)
+    def saveGroqApiKey(self, key: str) -> bool:
+        """Persist the Groq API key.  Never logged — only existence is recorded."""
+        key = key.strip()
+        if not key:
+            self._qs.remove("groqApiKey")
+            os.environ.pop("GROQ_API_KEY", None)
+            _log.info("GROQ_API_KEY cleared from settings")
+        else:
+            self._qs.setValue("groqApiKey", key)
+            os.environ["GROQ_API_KEY"] = key
+            _log.info("GROQ_API_KEY saved to settings (length=%d)", len(key))
+        # Reset the Groq provider singleton so the new key is picked up immediately.
+        try:
+            from backend.engines.ai.providers.groq import reset_groq_provider
+            reset_groq_provider()
+        except Exception as exc:
+            _log.warning("Could not reset Groq provider: %s", exc)
+        self.groqApiKeyChanged.emit()
+        return True
+
+    @Slot()
+    def testGroqConnection(self) -> None:
+        """Run a lightweight Groq API ping in a background thread.
+
+        Emits groqTestResult(status, message) when done.
+        Status is "ok" or "error".
+        """
+        key = (self._qs.value("groqApiKey", "") or os.environ.get("GROQ_API_KEY", "") or "").strip()
+        if not key:
+            self.groqTestResult.emit("error", "No API key configured.")
+            return
+        worker = _GroqTestWorker(key, parent=self)
+        worker.result.connect(self.groqTestResult)
+        worker.start()
+
+    # ------------------------------------------------------------------
     # Run on Startup — Windows Registry
     # ------------------------------------------------------------------
     def _set_windows_autostart(self, enable: bool):
@@ -289,6 +409,8 @@ class SettingsService(QObject):
 
         # Persist
         self._qs.setValue("themeMode", self._theme_mode)
+        # Note: groqApiKey is intentionally NOT cleared by resetToDefaults so
+        # the user doesn't lose their API key when resetting UI preferences.
         self._qs.setValue("fontSize", self._font_size)
         self._qs.setValue("liveMonitoring", self._live_monitoring)
         self._qs.setValue("updateIntervalMs", self._update_interval_ms)

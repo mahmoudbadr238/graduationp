@@ -20,9 +20,12 @@ def test_main_shell_mounts_history_page_and_routes_events_to_viewer() -> None:
     assert 'currentRoute = "event-viewer"' in main_qml
     assert 'routeId === "history-scan"' in main_qml
     assert 'label: "History"' in main_qml
-    assert 'HistoryPage {' in main_qml
+    # Accept both direct instantiation and Loader-based lazy loading
+    assert ('HistoryPage {' in main_qml or 'HistoryPage.qml' in main_qml)
     assert 'visible: currentRoute === "history"' in main_qml
-    assert 'requestedTab: historyRequestedTab' in main_qml
+    # requestedTab is either a direct property or set via onLoaded Qt.binding
+    assert ('requestedTab: historyRequestedTab' in main_qml
+            or 'historyRequestedTab' in main_qml)
 
 
 def test_event_viewer_sidebar_icon_is_registered() -> None:

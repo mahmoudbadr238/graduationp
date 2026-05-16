@@ -23,6 +23,7 @@ Item {
     property var selectedSession: null
     property bool isLoading: false
     property int themeUpdateTrigger: 0
+    property bool loadedOnce: false
 
     // Listen to theme changes
     Connections {
@@ -48,8 +49,19 @@ Item {
         }
     }
 
-    // Load sessions on startup
+    // Load sessions when the page is opened.
     Component.onCompleted: {
+        loadSessionsOnce()
+    }
+
+    onVisibleChanged: {
+        loadSessionsOnce()
+    }
+
+    function loadSessionsOnce() {
+        if (!visible || loadedOnce)
+            return
+        loadedOnce = true
         loadSessions()
     }
 

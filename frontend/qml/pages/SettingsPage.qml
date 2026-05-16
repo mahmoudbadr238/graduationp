@@ -355,6 +355,272 @@ Item {
                     }
                 }
 
+                // ===== AI CONFIGURATION SECTION =====
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: aiContent.implicitHeight + 48
+                    color: ThemeManager.panel()
+                    radius: 12
+                    border.color: ThemeManager.border()
+                    border.width: 1
+
+                    ColumnLayout {
+                        id: aiContent
+                        anchors.fill: parent
+                        anchors.margins: 24
+                        spacing: 20
+
+                        Text {
+                            text: "AI Configuration"
+                            font.pixelSize: ThemeManager.fontSize_h3
+                            font.bold: true
+                            color: ThemeManager.foreground()
+                        }
+
+                        Text {
+                            text: "Cloud AI features (event explanation, Security Assistant) require a free Groq API key. Get one at console.groq.com/keys."
+                            color: ThemeManager.muted()
+                            font.pixelSize: ThemeManager.fontSize_small
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        // ── Status chip ──────────────────────────────────
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 36
+                            radius: 8
+                            color: {
+                                if (groqStatusLabel.text === "Configured")
+                                    return Qt.rgba(ThemeManager.success.r, ThemeManager.success.g, ThemeManager.success.b, 0.12)
+                                if (groqStatusLabel.text === "Not configured")
+                                    return Qt.rgba(ThemeManager.warning.r, ThemeManager.warning.g, ThemeManager.warning.b, 0.12)
+                                return Qt.rgba(ThemeManager.info.r, ThemeManager.info.g, ThemeManager.info.b, 0.12)
+                            }
+                            border.color: {
+                                if (groqStatusLabel.text === "Configured")   return ThemeManager.success
+                                if (groqStatusLabel.text === "Not configured") return ThemeManager.warning
+                                return ThemeManager.info
+                            }
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 8
+
+                                Text {
+                                    id: groqStatusLabel
+                                    text: {
+                                        var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                        if (!svc) return "Settings unavailable"
+                                        return svc.groqApiKeyConfigured ? "Configured" : "Not configured"
+                                    }
+                                    color: {
+                                        if (text === "Configured")     return ThemeManager.success
+                                        if (text === "Not configured") return ThemeManager.warning
+                                        return ThemeManager.info
+                                    }
+                                    font.pixelSize: ThemeManager.fontSize_small
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    id: groqTestStatusText
+                                    text: ""
+                                    color: text.indexOf("valid") >= 0 ? ThemeManager.success : ThemeManager.danger
+                                    font.pixelSize: ThemeManager.fontSize_small
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+
+                        // ── Key input row ─────────────────────────────────
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Show the masked saved key as placeholder;
+                            // clear it when the user starts typing a new one.
+                            StyledTextField {
+                                id: groqKeyField
+                                Layout.fillWidth: true
+                                placeholderText: {
+                                    var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                    if (svc && svc.groqApiKeyConfigured)
+                                        return svc.groqApiKeyMasked || "••••••••••••"
+                                    return "gsk_..."
+                                }
+                                echoMode: groqKeyVisible.checked ? TextInput.Normal : TextInput.Password
+                                // Prevent the masked placeholder from being saved as the key
+                                property bool hasNewInput: text.length > 0
+                            }
+
+                            // Show / hide toggle
+                            Rectangle {
+                                id: groqKeyVisible
+                                property bool checked: false
+                                width: 34
+                                height: 34
+                                radius: 6
+                                color: checked
+                                       ? Qt.rgba(ThemeManager.accent.r, ThemeManager.accent.g, ThemeManager.accent.b, 0.18)
+                                       : ThemeManager.elevated()
+                                border.color: ThemeManager.border()
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: parent.checked ? "🙈" : "👁"
+                                    font.pixelSize: 14
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: parent.checked = !parent.checked
+                                }
+                            }
+                        }
+
+                        // ── Action buttons ────────────────────────────────
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Save button
+                            Rectangle {
+                                width: saveBtnText.implicitWidth + 28
+                                height: 36
+                                radius: 8
+                                color: saveMa.containsMouse
+                                       ? Qt.lighter(ThemeManager.accent, 1.15) : ThemeManager.accent
+
+                                Text {
+                                    id: saveBtnText
+                                    anchors.centerIn: parent
+                                    text: "Save Key"
+                                    font.pixelSize: ThemeManager.fontSize_small
+                                    font.bold: true
+                                    color: ThemeManager.selectionForeground
+                                }
+
+                                MouseArea {
+                                    id: saveMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                        if (!svc) return
+                                        var newKey = groqKeyField.text.trim()
+                                        if (!groqKeyField.hasNewInput) {
+                                            // Nothing typed — no-op
+                                            return
+                                        }
+                                        svc.saveGroqApiKey(newKey)
+                                        groqKeyField.text = ""
+                                        groqTestStatusText.text = newKey ? "Key saved." : "Key cleared."
+                                    }
+                                }
+                            }
+
+                            // Clear button (only shown when configured)
+                            Rectangle {
+                                visible: {
+                                    var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                    return svc ? svc.groqApiKeyConfigured : false
+                                }
+                                width: clearBtnText.implicitWidth + 28
+                                height: 36
+                                radius: 8
+                                color: clearMa.containsMouse
+                                       ? Qt.lighter(ThemeManager.danger, 1.15) : ThemeManager.danger
+
+                                Text {
+                                    id: clearBtnText
+                                    anchors.centerIn: parent
+                                    text: "Clear Key"
+                                    font.pixelSize: ThemeManager.fontSize_small
+                                    font.bold: true
+                                    color: "#ffffff"
+                                }
+
+                                MouseArea {
+                                    id: clearMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                        if (svc) {
+                                            svc.saveGroqApiKey("")
+                                            groqKeyField.text = ""
+                                            groqTestStatusText.text = "Key cleared."
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Test Connection button
+                            Rectangle {
+                                width: testBtnText.implicitWidth + 28
+                                height: 36
+                                radius: 8
+                                property bool testing: false
+                                color: testing ? ThemeManager.elevated()
+                                               : (testMa.containsMouse ? ThemeManager.elevated() : ThemeManager.surface())
+                                border.color: ThemeManager.border()
+                                border.width: 1
+
+                                Text {
+                                    id: testBtnText
+                                    anchors.centerIn: parent
+                                    text: parent.testing ? "Testing…" : "Test Connection"
+                                    font.pixelSize: ThemeManager.fontSize_small
+                                    color: ThemeManager.foreground()
+                                }
+
+                                MouseArea {
+                                    id: testMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                        if (!svc) return
+                                        parent.testing = true
+                                        groqTestStatusText.text = "Connecting…"
+                                        svc.testGroqConnection()
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+
+                    // React to key changes and test results
+                    Connections {
+                        target: typeof SettingsService !== "undefined" ? SettingsService : null
+                        function onGroqApiKeyChanged() {
+                            // Refresh the status chip label binding
+                            groqStatusLabel.text = Qt.binding(function() {
+                                var svc = (typeof SettingsService !== "undefined") ? SettingsService : null
+                                if (!svc) return "Settings unavailable"
+                                return svc.groqApiKeyConfigured ? "Configured" : "Not configured"
+                            })
+                        }
+                        function onGroqTestResult(status, message) {
+                            // Find the test button Rectangle and clear the testing flag
+                            testBtnText.parent.testing = false
+                            groqTestStatusText.text = message
+                        }
+                    }
+                }
+
                 // ===== STARTUP SECTION =====
                 Rectangle {
                     Layout.fillWidth: true

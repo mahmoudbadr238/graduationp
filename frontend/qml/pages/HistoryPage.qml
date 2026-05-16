@@ -29,6 +29,7 @@ Item {
     property var pendingQuarantineItem: null
     property string pendingQuarantineAction: ""
     property var quarantineActionResult: null
+    property bool loadedOnce: false
 
     function applyRequestedTab() {
         for (var i = 0; i < tabDefs.length; i++) {
@@ -273,9 +274,20 @@ Item {
         }
     }
 
-    Component.onCompleted: {
+    function loadWhenVisible() {
+        if (!visible || loadedOnce)
+            return
         applyRequestedTab()
         refreshAll()
+        loadedOnce = true
+    }
+
+    Component.onCompleted: {
+        loadWhenVisible()
+    }
+
+    onVisibleChanged: {
+        loadWhenVisible()
     }
 
     onRequestedTabChanged: applyRequestedTab()

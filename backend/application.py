@@ -170,6 +170,10 @@ class DesktopSecurityApplication:
                 100, "Backend Monitoring", init_backend_heavy
             )
 
+            # PLACEHOLDER: Register null so QML gpuServiceAvailable binding tracks this
+            # property reactively from startup (avoids typeof-undefined gotcha).
+            self.engine.rootContext().setContextProperty("GPUService", None)
+
             # DEFERRED: GPU service registration only (NOT auto-started to save resources)
             # GPU monitoring will start when user opens the GPU Monitor page
             def init_gpu():

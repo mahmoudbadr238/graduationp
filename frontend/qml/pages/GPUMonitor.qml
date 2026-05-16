@@ -13,10 +13,25 @@ Item {
     // Check if GPUService is available
     property bool gpuServiceAvailable: typeof GPUService !== 'undefined' && GPUService !== null
     
-    // Start GPU monitoring when page becomes visible (not on Component.onCompleted)
+    // Start GPU monitoring on first open. Three hooks cover all timing scenarios:
+    // 1. Component.onCompleted: page already visible when created (unusual but possible)
+    // 2. onVisibleChanged: normal first-open via tab switch
+    // 3. onGpuServiceAvailableChanged: GPUService registered after tab was already open
+    Component.onCompleted: {
+        if (visible && gpuServiceAvailable && !GPUService.isRunning()) {
+            GPUService.start(1000)
+        }
+    }
+
     onVisibleChanged: {
         if (visible && gpuServiceAvailable && !GPUService.isRunning()) {
-            GPUService.start(5000)
+            GPUService.start(1000)
+        }
+    }
+
+    onGpuServiceAvailableChanged: {
+        if (gpuServiceAvailable && visible && !GPUService.isRunning()) {
+            GPUService.start(1000)
         }
     }
 
@@ -832,12 +847,12 @@ Item {
         
         Connections {
             target: chart
-            function onHistoryDataChanged() { chartCanvas.requestPaint() }
+            function onHistoryDataChanged() { if (chart.visible) chartCanvas.requestPaint() }
         }
-        
+
         Timer {
             interval: 500
-            running: true
+            running: chart.visible
             repeat: true
             onTriggered: chartCanvas.requestPaint()
         }
@@ -950,13 +965,13 @@ Item {
         
         Connections {
             target: dualChart
-            function onHistoryData1Changed() { dualChartCanvas.requestPaint() }
-            function onHistoryData2Changed() { dualChartCanvas.requestPaint() }
+            function onHistoryData1Changed() { if (dualChart.visible) dualChartCanvas.requestPaint() }
+            function onHistoryData2Changed() { if (dualChart.visible) dualChartCanvas.requestPaint() }
         }
-        
+
         Timer {
             interval: 500
-            running: true
+            running: dualChart.visible
             repeat: true
             onTriggered: dualChartCanvas.requestPaint()
         }

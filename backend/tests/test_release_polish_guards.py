@@ -97,8 +97,10 @@ def test_user_facing_copy_drops_demo_and_gamer_language() -> None:
 
     assert "Real-time GPU telemetry, thermal data, and device health" in gpu_monitor
     assert "MSI Afterburner" not in gpu_monitor
-    assert "bundled recovery sample data in this session" in file_function
+    # Demo/sample fallback was removed; recovery now requires real privileges or shows a clear error.
+    assert "bundled recovery sample data in this session" not in file_function
     assert "Running in demo mode instead." not in file_function
+    assert "File Recovery is unavailable in this session" in file_function
 
 
 def test_release_readme_matches_current_product_surface() -> None:
@@ -159,8 +161,9 @@ def test_event_viewer_is_top_level_route_in_main_shell() -> None:
     own route, sidebar entry, title, and subtitle.
     """
     main_qml = _read("frontend/qml/main.qml")
-    # Top-level page instance
-    assert 'EventViewer {' in main_qml
+    # Top-level page (may be a direct instance or a Loader; either is valid)
+    assert ('EventViewer {' in main_qml
+            or 'EventViewer.qml' in main_qml)
     assert 'visible: currentRoute === "event-viewer"' in main_qml
     # Sidebar entry
     assert 'iconName: "events"' in main_qml

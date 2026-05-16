@@ -65,20 +65,34 @@ Item {
             rtpRuntimeDetail = rtpCapabilityDetail
     }
 
-    // ── Auto-start monitor & poll stats ──
-    Component.onCompleted: {
-        if (typeof ResourceMonitor !== "undefined" && ResourceMonitor) {
+    // ── Start monitor when page becomes visible ──
+    // ResourceMonitor is registered as null at startup and replaced at 500ms.
+    // The poll timer syncs monitorRunning every 2s; the visible handler handles
+    // the case where the user opens this page before the poll fires.
+    function _startMonitorIfNeeded() {
+        if (typeof ResourceMonitor === "undefined" || !ResourceMonitor) return
+        if (!ResourceMonitor.getIsRunning()) {
             ResourceMonitor.start()
-            monitorRunning = true
         }
+        monitorRunning = ResourceMonitor.getIsRunning()
+    }
+
+    Component.onCompleted: {
+        if (visible) _startMonitorIfNeeded()
         syncRtpState()
     }
 
+    onVisibleChanged: {
+        if (visible) _startMonitorIfNeeded()
+    }
+
     // ── Poll timer (syncs bridge → QML properties) ──
+    // Only poll while this page is visible; triggeredOnStart refreshes data
+    // immediately on each navigation to this page.
     Timer {
         id: pollTimer
         interval: 2000
-        running: true
+        running: root.visible
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -609,24 +623,45 @@ Item {
                             model: logModel
 
                             delegate: Rectangle {
+                                id: logRow
                                 width: logView.width
                                 height: logText.implicitHeight + 12
-                                color: index % 2 === 0 ? "transparent" : Qt.rgba(1, 1, 1, 0.02)
+                                color: rowHover.containsMouse
+                                       ? Qt.rgba(1, 1, 1, 0.04)
+                                       : (index % 2 === 0 ? "transparent" : Qt.rgba(1, 1, 1, 0.02))
+
+                                // Detect whether this entry can be whitelisted
+                                readonly property string _entry: model.entry || ""
+                                readonly property bool _isFlagged: _entry.indexOf("RTP: Flagged") >= 0
+                                readonly property bool _isBlocked: _entry.indexOf("RTP: Blocked") >= 0
+                                readonly property bool _canWhitelist: _isFlagged || _isBlocked
+
+                                // Extract process name from "RTP: Flagged/Blocked <name> (PID"
+                                readonly property string _processName: {
+                                    var m = _entry.match(/RTP: (?:Flagged|Blocked) (.+?) \(PID/)
+                                    return m ? m[1].trim() : ""
+                                }
+
+                                HoverHandler { id: rowHover }
 
                                 Text {
                                     id: logText
                                     anchors {
-                                        left: parent.left; right: parent.right
+                                        left: parent.left
+                                        right: whitelistBtn.visible ? whitelistBtn.left : parent.right
                                         verticalCenter: parent.verticalCenter
-                                        margins: 14
+                                        leftMargin: 14
+                                        rightMargin: whitelistBtn.visible ? 6 : 14
                                     }
-                                    text: model.entry
+                                    text: logRow._entry
                                     font.pixelSize: ThemeManager.fontSize_small
                                     font.family: "Consolas, monospace"
                                     color: {
-                                        var t = model.entry || ""
-                                        if (t.indexOf("Blocked") >= 0 || t.indexOf("⚠") >= 0 || t.indexOf("THREAT") >= 0)
+                                        var t = logRow._entry
+                                        if (t.indexOf("Blocked") >= 0 || t.indexOf("THREAT") >= 0)
                                             return ThemeManager.danger
+                                        if (t.indexOf("Flagged") >= 0 || t.indexOf("⚠") >= 0)
+                                            return ThemeManager.warning
                                         if (t.indexOf("🛡") >= 0)
                                             return ThemeManager.success
                                         if (t.indexOf("Allowed") >= 0)
@@ -636,6 +671,61 @@ Item {
                                         return ThemeManager.muted()
                                     }
                                     wrapMode: Text.WordWrap
+                                }
+
+                                // "Whitelist" action button — shown on hover for flagged/blocked rows
+                                Rectangle {
+                                    id: whitelistBtn
+                                    anchors {
+                                        right: parent.right
+                                        rightMargin: 10
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: wlLabel.implicitWidth + 16
+                                    height: 22
+                                    radius: 4
+                                    visible: logRow._canWhitelist
+                                             && logRow._processName !== ""
+                                             && rowHover.containsMouse
+                                    color: wlMouse.containsMouse
+                                           ? ThemeManager.warning
+                                           : Qt.rgba(ThemeManager.warning.r,
+                                                     ThemeManager.warning.g,
+                                                     ThemeManager.warning.b, 0.18)
+                                    border.color: ThemeManager.warning
+                                    border.width: 1
+
+                                    Text {
+                                        id: wlLabel
+                                        anchors.centerIn: parent
+                                        text: "Whitelist"
+                                        font.pixelSize: ThemeManager.fontSize_caption
+                                        font.bold: true
+                                        color: wlMouse.containsMouse ? "#000" : ThemeManager.warning
+                                    }
+
+                                    ToolTip.visible: wlMouse.containsMouse
+                                    ToolTip.delay: 300
+                                    ToolTip.text: "Add '" + logRow._processName
+                                                  + "' to user whitelist — RTP will allow it in future"
+
+                                    MouseArea {
+                                        id: wlMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (typeof RTPBridge !== "undefined" && RTPBridge
+                                                    && logRow._processName !== "") {
+                                                var added = RTPBridge.addUserWhitelistEntry(
+                                                    logRow._processName)
+                                                var msg = added
+                                                    ? ("✅ Whitelisted: " + logRow._processName)
+                                                    : ("ℹ️ Already whitelisted: " + logRow._processName)
+                                                addLog(msg)
+                                            }
+                                        }
+                                    }
                                 }
                             }
 

@@ -70,6 +70,9 @@ hiddenimports = sorted(
             "win32con",
             "win32evtlog",
             "win32evtlogutil",
+            # WMI + COM required for Real-Time Protection (Windows process watcher)
+            "wmi",
+            "pythoncom",
         ]
         + collect_submodules("backend.engines.ai.providers")
         + collect_submodules("backend.engines.sandbox_vmware")
@@ -94,6 +97,13 @@ a = Analysis(
         "tkinter",
         "PyQt5",
         "PyQt6",
+        # Development/testing tools — must not ship in production
+        "mypy",
+        "mypy_extensions",
+        # CUDA/GPU acceleration library — not used by Sentinel security features
+        "cupy",
+        "cupy_backends",
+        "cupyx",
     ],
     noarchive=False,
 )

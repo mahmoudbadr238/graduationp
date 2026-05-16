@@ -22,7 +22,20 @@ Item {
     // Start GPU service when switching to GPU tab (index 1)
     onCurrentTabIndexChanged: {
         if (currentTabIndex === 1 && gpuServiceAvailable && !GPUService.isRunning()) {
-            GPUService.start(5000)
+            GPUService.start(1000)
+        }
+    }
+
+    // If GPUService registers after the GPU tab is already open, start it now.
+    onGpuServiceAvailableChanged: {
+        if (gpuServiceAvailable && currentTabIndex === 1 && !GPUService.isRunning()) {
+            GPUService.start(1000)
+        }
+    }
+
+    Component.onCompleted: {
+        if (currentTabIndex === 1 && gpuServiceAvailable && !GPUService.isRunning()) {
+            GPUService.start(1000)
         }
     }
     

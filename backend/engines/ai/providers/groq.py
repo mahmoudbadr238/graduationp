@@ -49,10 +49,11 @@ DEFAULT_EVENT_MODEL = "llama-3.3-70b-versatile"  # Powerful, good for explanatio
 REQUESTS_PER_MINUTE = 30
 MIN_REQUEST_INTERVAL = 2.0  # 2 seconds between requests (safe)
 
-# Retry configuration
-MAX_RETRIES = 3
+# Retry configuration. Keep GUI-triggered AI failures bounded so cloud issues do
+# not make Sentinel feel hung.
+MAX_RETRIES = 1
 INITIAL_BACKOFF = 1.0
-MAX_BACKOFF = 30.0
+MAX_BACKOFF = 5.0
 
 
 # =============================================================================
@@ -417,6 +418,7 @@ class GroqProvider(AIProvider):
             self.config.api_key = os.environ.get("GROQ_API_KEY", "")
 
         if not self.config.api_key:
+            self._last_error = "GROQ_API_KEY is not configured."
             logger.warning(
                 "GROQ_API_KEY not set. Set it in your .env file or environment variables."
             )
@@ -446,7 +448,8 @@ class GroqProvider(AIProvider):
         self._cache = PromptCache()
 
         # Last error message (surfaced to callers for specific UI messages)
-        self._last_error: str | None = None
+        if not hasattr(self, "_last_error"):
+            self._last_error: str | None = None
 
         # HTTP client (lazy init)
         self._client = None
@@ -563,6 +566,10 @@ class GroqProvider(AIProvider):
         Returns:
             (content, usage) or (None, None) on error
         """
+        if not self.config.api_key:
+            self._last_error = "GROQ_API_KEY is not configured."
+            return None, None
+
         if not self._check_circuit():
             return None, None
 
@@ -586,7 +593,8 @@ class GroqProvider(AIProvider):
             "temperature": temperature or self.config.temperature,
         }
 
-        for attempt in range(MAX_RETRIES):
+        attempts = max(1, int(getattr(self.config, "max_retries", MAX_RETRIES)))
+        for attempt in range(attempts):
             if request_id and self._is_cancelled(request_id):
                 self._clear_cancelled(request_id)
                 return None, None
@@ -618,16 +626,26 @@ class GroqProvider(AIProvider):
 
                         if response.status == 429:
                             # Rate limited
-                            retry_after = int(response.headers.get("retry-after", 60))
+                            retry_after = min(
+                                int(response.headers.get("retry-after", 5)),
+                                MAX_BACKOFF,
+                            )
                             logger.warning(f"Groq rate limited, waiting {retry_after}s")
                             await asyncio.sleep(retry_after)
                             continue
 
-                        if response.status == 403:
+                        if response.status in {401, 403}:
                             error_text = await response.text()
-                            logger.error(f"Groq API access denied (403): {error_text[:200]}")
-                            self._record_failure("HTTP 403 Forbidden")
-                            self._last_error = "AI Analysis unavailable: API key invalid or endpoint blocked (HTTP 403)."
+                            logger.error(
+                                "Groq API access denied (%s): %s",
+                                response.status,
+                                error_text[:200],
+                            )
+                            self._record_failure(f"HTTP {response.status}")
+                            self._last_error = (
+                                "AI unavailable: GROQ_API_KEY is invalid, expired, "
+                                "or the endpoint is blocked."
+                            )
                             return None, None
 
                         error_text = await response.text()
@@ -1241,6 +1259,17 @@ def get_groq_provider() -> GroqProvider:
         if _groq_provider is None:
             _groq_provider = GroqProvider()
         return _groq_provider
+
+
+def reset_groq_provider() -> None:
+    """Discard the cached singleton so the next call creates a fresh instance.
+
+    Call this after updating GROQ_API_KEY in os.environ (e.g. from Settings)
+    so the new key is picked up immediately without restarting the app.
+    """
+    global _groq_provider
+    with _groq_lock:
+        _groq_provider = None
 
 
 def is_groq_available() -> bool:

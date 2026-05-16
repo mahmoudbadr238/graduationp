@@ -12,15 +12,27 @@ Item {
     property var    historyItems: []
     property bool   loading: false
     property string _histReqId: ""   // last request_id sent — stale signals are ignored
+    property bool loadedOnce: false
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
-    Component.onCompleted: {
+    function loadHistoryOnce() {
+        if (!visible || loadedOnce)
+            return
         if (root.backend) {
             var rid = "scan-history-" + Date.now()
             _histReqId = rid
             loading = true
+            loadedOnce = true
             root.backend.listScanHistory(200, rid)
         }
+    }
+
+    Component.onCompleted: {
+        loadHistoryOnce()
+    }
+
+    onVisibleChanged: {
+        loadHistoryOnce()
     }
 
     // ── Backend wiring ───────────────────────────────────────────────────────

@@ -13,10 +13,20 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-# Load .env file early so GROQ_API_KEY and other secrets are available
+# Load .env file early so GROQ_API_KEY and other optional secrets are available.
+# In frozen builds, users edit files next to Sentinel.exe; bundled modules live
+# under _internal, so check both runtime roots.
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    from backend.runtime import app_root, bundle_root
+
+    for env_path in (
+        app_root() / ".env",
+        bundle_root() / ".env",
+        Path(__file__).resolve().parent.parent / ".env",
+    ):
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
 except ImportError:
     pass
 
@@ -110,4 +120,3 @@ def main(argv: list[str] | None = None) -> int:
     if cli_result is not None:
         return cli_result
     return _run_gui()
-

@@ -71,11 +71,12 @@ def configure() -> None:
 
     DI.register(INetworkScanner, lambda: NmapCli())
 
-    # Register AI services (cloud-based via Groq API)
+    # Register AI services. These factories must remain lightweight because
+    # packaged GUI startup should not require cloud configuration.
     try:
         from backend.engines.ai.event_explainer_v5 import EventExplainerV5, get_event_explainer_v5
         from backend.engines.ai.event_summarizer import EventSummarizer, get_event_summarizer
-        from backend.engines.ai.security_chatbot_v4 import SecurityChatbotV4
+        from backend.engines.ai.security_chatbot_v4 import ChatbotBridge
 
         # Register Event Explainer V5 (uses Groq cloud API)
         DI.register(EventExplainerV5, lambda: get_event_explainer_v5())
@@ -83,12 +84,10 @@ def configure() -> None:
         # Register Event Summarizer (fallback for batch summaries)
         DI.register(EventSummarizer, lambda: get_event_summarizer(None))
 
-        # Security Chatbot V4 will be initialized with services in application.py
-        # since it needs snapshot_service which isn't available at container config time
-        # SecurityChatbotV4 is initialized with snapshot_service in application.py
-        # because it requires services not available at container config time.
-        DI.register(SecurityChatbotV4, lambda: None)
+        # The chatbot bridge is created lazily on first user request so missing
+        # GROQ_API_KEY never slows or blocks core app startup.
+        DI.register(ChatbotBridge, lambda: None)
 
-        _log.info("Cloud AI services registered (Groq API)")
+        _log.info("AI service factories registered")
     except Exception as e:
         _log.warning("AI services not available: %s", e)

@@ -55,6 +55,11 @@ ApplicationWindow {
     property string currentRoute: "home"
     property string historyRequestedTab: "scan"
 
+    // Shared AI report text — set by ScanCenter, consumed by AiReport.
+    // Tracked here so both Loaders can stay lazy and independent.
+    property string _scanAiBriefText: ""
+    property string _scanAiDetailedText: ""
+
     function routeTitle(routeId) {
         switch (routeId) {
         case "event-viewer":
@@ -598,83 +603,176 @@ ApplicationWindow {
             }
 
             // Page content area (below top bar)
+            // Each page is created only on first navigation (lazy Loader) and
+            // kept alive afterwards. Pages that are never visited are never created.
             Item {
                 anchors.top: topBar.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
 
-                // Simple page switching - show/hide based on currentRoute
-                HomePage {
+                // ── HomePage ─────────────────────────────────────
+                // Loaded immediately — it is the startup landing page.
+                Loader {
+                    id: homeLoader
                     anchors.fill: parent
+                    source: "pages/HomePage.qml"
+                    active: true
                     visible: currentRoute === "home"
                 }
-                
-                HistoryPage {
+
+                // ── HistoryPage ───────────────────────────────────
+                Loader {
+                    id: historyLoader
                     anchors.fill: parent
+                    source: "pages/HistoryPage.qml"
+                    active: _wasLoaded || currentRoute === "history"
                     visible: currentRoute === "history"
-                    requestedTab: historyRequestedTab
-                    onRequestRoute: route => loadRoute(route)
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
+                    onLoaded: item.requestedTab = Qt.binding(
+                        function() { return window.historyRequestedTab })
+                }
+                Connections {
+                    target: historyLoader.item
+                    function onRequestRoute(route) { loadRoute(route) }
                 }
 
-                EventViewer {
+                // ── EventViewer ───────────────────────────────────
+                Loader {
+                    id: eventViewerLoader
                     anchors.fill: parent
+                    source: "pages/EventViewer.qml"
+                    active: _wasLoaded || currentRoute === "event-viewer"
                     visible: currentRoute === "event-viewer"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
 
-                SystemSnapshot {
+                // ── SystemSnapshot ────────────────────────────────
+                Loader {
+                    id: snapshotLoader
                     anchors.fill: parent
+                    source: "pages/SystemSnapshot.qml"
+                    active: _wasLoaded || currentRoute === "snapshot"
                     visible: currentRoute === "snapshot"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                SystemMonitor {
+
+                // ── SystemMonitor ─────────────────────────────────
+                Loader {
+                    id: systemMonitorLoader
                     anchors.fill: parent
+                    source: "pages/SystemMonitor.qml"
+                    active: _wasLoaded || currentRoute === "system-monitor"
                     visible: currentRoute === "system-monitor"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                NetworkScan {
+
+                // ── NetworkScan ───────────────────────────────────
+                Loader {
+                    id: networkScanLoader
                     anchors.fill: parent
+                    source: "pages/NetworkScan.qml"
+                    active: _wasLoaded || currentRoute === "net-scan"
                     visible: currentRoute === "net-scan"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                NmapScanResultPage {
-                    id: nmapResultPage
+
+                // ── NmapScanResultPage ────────────────────────────
+                Loader {
+                    id: nmapResultLoader
                     anchors.fill: parent
+                    source: "pages/NmapScanResultPage.qml"
+                    active: _wasLoaded || currentRoute === "nmap-result"
                     visible: currentRoute === "nmap-result"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                ScanCenter {
-                    id: scanCenterPage
+
+                // ── ScanCenter ────────────────────────────────────
+                Loader {
+                    id: scanCenterLoader
                     anchors.fill: parent
+                    source: "pages/ScanCenter.qml"
+                    active: _wasLoaded || currentRoute === "scan-tool"
                     visible: currentRoute === "scan-tool"
-                    onRequestRoute: route => loadRoute(route)
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
+                }
+                Connections {
+                    target: scanCenterLoader.item
+                    function onRequestRoute(route) { loadRoute(route) }
+                    function onAiBriefTextChanged() {
+                        window._scanAiBriefText = scanCenterLoader.item.aiBriefText
+                    }
+                    function onAiDetailedTextChanged() {
+                        window._scanAiDetailedText = scanCenterLoader.item.aiDetailedText
+                    }
                 }
 
-                AiReport {
+                // ── AiReport ──────────────────────────────────────
+                Loader {
+                    id: aiReportLoader
                     anchors.fill: parent
+                    source: "pages/AiReport.qml"
+                    active: _wasLoaded || currentRoute === "ai-report"
                     visible: currentRoute === "ai-report"
-                    briefText: scanCenterPage.aiBriefText
-                    detailedText: scanCenterPage.aiDetailedText
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
+                    onLoaded: {
+                        item.briefText = Qt.binding(
+                            function() { return window._scanAiBriefText })
+                        item.detailedText = Qt.binding(
+                            function() { return window._scanAiDetailedText })
+                    }
                 }
 
-                FileFunction {
+                // ── FileFunction ──────────────────────────────────
+                Loader {
+                    id: fileFunctionLoader
                     anchors.fill: parent
+                    source: "pages/FileFunction.qml"
+                    active: _wasLoaded || currentRoute === "file-function"
                     visible: currentRoute === "file-function"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
 
-                SandboxLabPage {
+                // ── SandboxLabPage ────────────────────────────────
+                Loader {
+                    id: sandboxLoader
                     anchors.fill: parent
+                    source: "pages/SandboxLabPage.qml"
+                    active: _wasLoaded || currentRoute === "sandbox-lab"
                     visible: currentRoute === "sandbox-lab"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                SecurityAssistant {
+
+                // ── SecurityAssistant ─────────────────────────────
+                Loader {
+                    id: securityAssistantLoader
                     anchors.fill: parent
+                    source: "pages/SecurityAssistant.qml"
+                    active: _wasLoaded || currentRoute === "ai-assistant"
                     visible: currentRoute === "ai-assistant"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
-                
-                SettingsPage {
+
+                // ── SettingsPage ──────────────────────────────────
+                Loader {
+                    id: settingsLoader
                     anchors.fill: parent
+                    source: "pages/SettingsPage.qml"
+                    active: _wasLoaded || currentRoute === "settings"
                     visible: currentRoute === "settings"
+                    property bool _wasLoaded: false
+                    onStatusChanged: if (status === Loader.Ready) _wasLoaded = true
                 }
             }
         }

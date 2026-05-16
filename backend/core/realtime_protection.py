@@ -177,6 +177,7 @@ class EnforcementPlan:
 
 # System-critical processes that must NEVER be terminated
 WHITELISTED_PROCESSES = frozenset({
+    # ── Core Windows kernel / session processes ────────────────────
     "system", "system idle process", "registry", "smss.exe",
     "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe",
     "lsass.exe", "lsm.exe", "svchost.exe", "dwm.exe",
@@ -185,12 +186,78 @@ WHITELISTED_PROCESSES = frozenset({
     "shellexperiencehost.exe", "textinputhost.exe",
     "conhost.exe", "dllhost.exe", "sihost.exe",
     "fontdrvhost.exe", "ctfmon.exe", "audiodg.exe",
-    # Security software
+    "spoolsv.exe", "lsaiso.exe", "wbemiprvse.exe",
+    # ── Windows Search & indexing ──────────────────────────────────
+    "searchindexer.exe", "searchprotocolhost.exe", "searchfilterhost.exe",
+    # ── Windows Update & servicing ─────────────────────────────────
+    "wuauclt.exe", "wudfhost.exe", "wufaupd.exe",
+    "trustedinstaller.exe", "tiworker.exe",
+    "msiexec.exe", "msiexec",
+    "dism.exe", "dismhost.exe",
+    # ── Windows Error Reporting & diagnostics ──────────────────────
+    "wermgr.exe", "werhost.exe", "werfault.exe", "werfaultsecure.exe",
+    "wuauclt.exe",
+    # ── .NET / CLR ─────────────────────────────────────────────────
+    "mscorsvw.exe", "ngen.exe", "clrjit.dll",
+    # ── UWP / modern Windows app host ─────────────────────────────
+    "backgroundtaskhost.exe", "applicationframehost.exe",
+    "wwahost.exe", "browser_broker.exe", "lockapp.exe",
+    "usocoreworker.exe", "mousocoreworker.exe",
+    # ── COM / DLL host processes ───────────────────────────────────
+    "regsvr32.exe", "rundll32.exe", "mshta.exe",
+    # ── Task Scheduler ─────────────────────────────────────────────
+    "taskeng.exe", "taskhost.exe",
+    # ── Windows Defender / built-in security ──────────────────────
     "msmpeng.exe", "nissrv.exe", "securityhealthservice.exe",
     "securityhealthsystray.exe", "mpcmdrun.exe",
-    # Our own process
+    "antimalwareserviceexecutable.exe",
+    "mdnsresponder.exe",
+    # ── Common third-party security software ──────────────────────
+    "clamscan.exe", "clamd.exe", "clamav.exe", "freshclam.exe",
+    "mbam.exe", "mbamservice.exe", "mbamscheduler.exe", "mbamupdater.exe",
+    "avp.exe", "kavsvc.exe",            # Kaspersky
+    "avgnt.exe", "avguard.exe",         # Avira
+    "bdagent.exe",                       # Bitdefender
+    "egui.exe",                          # ESET
+    "mbae64.exe",                        # Malwarebytes Anti-Exploit
+    # ── Developer & build tooling ─────────────────────────────────
+    "code.exe", "code - insiders.exe",  # VS Code
+    "devenv.exe", "msdev.exe",          # Visual Studio
+    "msbuild.exe", "csc.exe", "vbc.exe",
+    "git.exe", "git-remote-https.exe",
+    "node.exe", "npm.cmd", "npx.cmd",
+    "dotnet.exe", "nuget.exe",
+    "pip.exe", "pip3.exe",
+    # ── Common trusted desktop applications ───────────────────────
+    "notepad.exe", "notepad++.exe",
+    "mspaint.exe", "calc.exe", "wordpad.exe",
+    "winword.exe", "excel.exe", "powerpnt.exe",  # Office
+    "outlook.exe", "onenote.exe", "teams.exe",
+    "vlc.exe", "wmplayer.exe", "mpc-hc.exe", "mpc-be.exe",
+    "spotify.exe", "discord.exe",
+    "7z.exe", "7zfm.exe", "winrar.exe", "winzip64.exe",
+    "java.exe", "javaw.exe", "javaws.exe",
+    "acrobat.exe", "acrord32.exe",      # Adobe Acrobat / Reader
+    # ── Our own process ───────────────────────────────────────────
     "python.exe", "pythonw.exe", "python3.exe",
+    # ── Sentinel internal helpers — belt-and-suspenders alongside
+    #    _SENTINEL_INTERNAL_HELPER_NAMES / parent-chain trust check.
+    "sentinel_gpu_worker.exe",
+    "sentinel_url_detonator.exe",
+    "sentinel_agent.exe",
+    "sentinel.exe",
 })
+
+# Lowercase name prefix/suffix patterns that reliably identify Microsoft or
+# OEM signed processes without needing a full name match.  Checked only when
+# the name is NOT already in WHITELISTED_PROCESSES.
+_WHITELISTED_NAME_PREFIXES: tuple[str, ...] = (
+    "microsoft.",       # Microsoft-signed helper processes
+    "windows.",         # Windows component helper processes
+)
+
+# QSettings key for the user-configurable whitelist.
+_USER_WHITELIST_KEY = "rtpUserWhitelist"
 
 # WMI polling interval (seconds between event checks)
 WMI_POLL_INTERVAL = 0.5
@@ -268,6 +335,60 @@ _SENTINEL_MAIN_PROCESS_NAMES = frozenset({
     "sentinel.exe",
     "sentinel",
 })
+
+
+def _load_user_whitelist() -> frozenset[str]:
+    """Load the user-managed whitelist from QSettings (thread-safe read)."""
+    try:
+        from PySide6.QtCore import QSettings
+        qs = QSettings("SentinelSecurity", "SentinelApp")
+        raw = qs.value(_USER_WHITELIST_KEY, [], type=list)
+        return frozenset(str(e).lower().strip() for e in raw if str(e).strip())
+    except Exception:
+        return frozenset()
+
+
+def _save_user_whitelist(entries: set[str]) -> None:
+    """Persist the user whitelist to QSettings."""
+    try:
+        from PySide6.QtCore import QSettings
+        qs = QSettings("SentinelSecurity", "SentinelApp")
+        qs.setValue(_USER_WHITELIST_KEY, sorted(entries))
+        qs.sync()
+    except Exception as exc:
+        logger.warning("RTP: Could not save user whitelist: %s", exc)
+
+
+def _is_user_whitelisted(
+    name: str,
+    exe_path: str,
+    user_whitelist: frozenset[str],
+) -> bool:
+    """Return True when the process matches any user-added whitelist entry.
+
+    Entries are matched as:
+    - Exact process name   (e.g. "myapp.exe")
+    - Canonical exe path   (e.g. "c:\\tools\\myapp.exe")
+    - Path prefix/folder   (e.g. "c:\\tools\\")  — matches everything inside
+    """
+    if not user_whitelist:
+        return False
+    name_lc = (name or "").lower().strip()
+    path_lc = _canonical_path(exe_path)
+    for entry in user_whitelist:
+        if not entry:
+            continue
+        if entry == name_lc:
+            return True
+        if path_lc and (path_lc == entry or path_lc.startswith(entry.rstrip("/\\") + os.sep)):
+            return True
+    return False
+
+
+def _name_matches_whitelist_prefix(name: str) -> bool:
+    """Return True when the process name starts with a trusted vendor prefix."""
+    name_lc = (name or "").lower()
+    return any(name_lc.startswith(prefix) for prefix in _WHITELISTED_NAME_PREFIXES)
 
 
 def _canonical_path(path: str) -> str:
@@ -664,6 +785,10 @@ class RealTimeProtectionWorker(QThread):
         self._scan_cache: dict[str, dict[str, Any]] = {}
         self._cache_max = 5000
 
+        # User-managed whitelist — loaded from QSettings when the bridge
+        # starts the worker.  Updated at runtime via the bridge slot.
+        self._user_whitelist: frozenset[str] = frozenset()
+
     # ─────────────────────────────────────────────────────────────
     # Public control
     # ─────────────────────────────────────────────────────────────
@@ -824,8 +949,35 @@ class RealTimeProtectionWorker(QThread):
             _is_windows_system_path(exe_path) and signature_valid is not False
         )
         protected_signed_install = bool(signature_valid is True and trusted_install)
+        # A validly-signed binary anywhere in ProgramFiles or Windows is
+        # always treated as protected even if it isn't a known browser.
+        any_signed_install = bool(
+            signature_valid is True and (trusted_install or protected_system_binary)
+        )
         protected_install = bool(
-            protected_browser or protected_system_binary or protected_signed_install
+            protected_browser
+            or protected_system_binary
+            or protected_signed_install
+            or any_signed_install
+        )
+
+        # Build a human-readable diagnostic prefix that explains what the
+        # scanner found.  This appears in the threat log regardless of outcome.
+        score = int(decision_data.get("score", 0) or 0)
+        verdict = str(decision_data.get("verdict_label") or decision_data.get("verdict_code") or "Unknown")
+        triggered = decision_data.get("triggered_rules") or []
+        if isinstance(triggered, str):
+            triggered = [triggered] if triggered else []
+        rules_str = ", ".join(str(r) for r in triggered) if triggered else "none"
+        sig_str = (
+            f"signed by '{publisher}'" if signature_valid is True and publisher
+            else "unsigned/unknown signature" if signature_valid is not True
+            else "signature unknown"
+        )
+        diag_prefix = (
+            f"[Score={score}/100 | Verdict={verdict} | Rules={rules_str}"
+            f" | {sig_str} | trusted_install={trusted_install}"
+            f" | system_path={protected_system_binary}]"
         )
 
         if decision_action != "block":
@@ -833,7 +985,7 @@ class RealTimeProtectionWorker(QThread):
                 decision_action=decision_action,
                 process_action="allow",
                 file_action="allow",
-                reason=base_reason,
+                reason=f"{diag_prefix} {base_reason}",
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
                 trusted_internal_helper=trusted_internal_helper,
@@ -849,10 +1001,8 @@ class RealTimeProtectionWorker(QThread):
                 process_action="log_only",
                 file_action="allow",
                 reason=(
-                    base_reason
-                    + " Enforcement downgraded to log_only because this executable"
-                    " is a Sentinel-shipped internal helper launched by Sentinel"
-                    " from the application tree."
+                    f"{diag_prefix} {base_reason}"
+                    " — Guardrail: Sentinel internal helper; enforcement downgraded to log_only."
                 ),
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
@@ -869,10 +1019,9 @@ class RealTimeProtectionWorker(QThread):
                 process_action="log_only",
                 file_action="allow",
                 reason=(
-                    base_reason
-                    + completeness_reason
-                    + " Enforcement downgraded to log_only until a complete final"
-                    " decision is available."
+                    f"{diag_prefix} {base_reason}"
+                    f"{completeness_reason}"
+                    " — Guardrail: decision incomplete; enforcement downgraded to log_only."
                 ),
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
@@ -889,11 +1038,9 @@ class RealTimeProtectionWorker(QThread):
                 process_action="log_only",
                 file_action="allow",
                 reason=(
-                    base_reason
-                    + " Enforcement downgraded to log_only because this is a protected"
-                    " signed/system or mainstream installed application."
-                    " Sentinel requires an explicit override before taking"
-                    " destructive action against this class of software."
+                    f"{diag_prefix} {base_reason}"
+                    " — Guardrail: protected/signed install; enforcement downgraded to"
+                    " log_only. Use an explicit override rule to enable enforcement."
                 ),
                 trusted_install=trusted_install,
                 protected_signed_install=protected_signed_install,
@@ -904,25 +1051,49 @@ class RealTimeProtectionWorker(QThread):
                 fingerprint=fingerprint,
             )
 
+        # Extra FP guard: even when the decision is complete, a validly-signed
+        # binary without corroborating ClamAV / explicit-override evidence must
+        # not be killed.  Score-only blocks on signed software are false positives.
+        if signature_valid is True and not strong_evidence and not explicit_override:
+            return EnforcementPlan(
+                decision_action=decision_action,
+                process_action="log_only",
+                file_action="allow",
+                reason=(
+                    f"{diag_prefix} {base_reason}"
+                    " — Guardrail: valid Authenticode signature without corroborating"
+                    " ClamAV or explicit-override evidence; enforcement downgraded to"
+                    " log_only to prevent false positive."
+                ),
+                trusted_install=trusted_install,
+                protected_signed_install=protected_signed_install,
+                trusted_internal_helper=trusted_internal_helper,
+                strong_evidence=False,
+                publisher=publisher,
+                signature_valid=signature_valid,
+                fingerprint=fingerprint,
+            )
+
         if strong_evidence:
             file_action = "quarantine_file"
             reason = (
-                base_reason
-                + " Strong corroborating evidence authorizes process kill and file quarantine."
+                f"{diag_prefix} {base_reason}"
+                " Strong corroborating evidence (ClamAV or explicit override)"
+                " authorizes process kill and file quarantine."
             )
         else:
             file_action = "allow"
             if protected_signed_install:
                 reason = (
-                    base_reason
-                    + " File quarantine skipped because signed software in a trusted"
-                    " install path requires stronger evidence than a score-only block."
+                    f"{diag_prefix} {base_reason}"
+                    " File quarantine skipped: signed software in a trusted install"
+                    " path requires ClamAV corroboration for destructive file action."
                 )
             else:
                 reason = (
-                    base_reason
-                    + " File quarantine skipped because score-only evidence never"
-                    " authorizes destructive file action."
+                    f"{diag_prefix} {base_reason}"
+                    " File quarantine skipped: score-only evidence never authorizes"
+                    " destructive file action without corroborating signals."
                 )
 
         return EnforcementPlan(
@@ -1196,6 +1367,18 @@ class RealTimeProtectionWorker(QThread):
 
                 # ── Skip whitelisted / system processes ──
                 if name in WHITELISTED_PROCESSES:
+                    continue
+
+                # Skip processes whose names match a trusted vendor prefix
+                # (e.g. "microsoft.winget.source.exe", "windows.immersiveshell.exe")
+                if _name_matches_whitelist_prefix(name):
+                    continue
+
+                # Skip processes the user has explicitly trusted
+                if _is_user_whitelisted(name, exe_path, self._user_whitelist):
+                    logger.info(
+                        "RTP: Skipped user-whitelisted process %s (PID %d)", name, pid
+                    )
                     continue
 
                 if not exe_path or not Path(exe_path).exists():
@@ -1683,6 +1866,7 @@ class RealTimeProtectionBridge(QObject):
     statsUpdated = Signal(int, int, int)
     new_event_log = Signal(str)  # Pre-formatted log line for QML console
     capabilityChanged = Signal()
+    userWhitelistChanged = Signal()  # Emitted when user whitelist is modified
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -1720,6 +1904,9 @@ class RealTimeProtectionBridge(QObject):
             self._enabled = True
 
         self._worker = RealTimeProtectionWorker(parent=self)
+        # Propagate the current user whitelist into the new worker so it takes
+        # effect immediately without requiring a restart.
+        self._worker._user_whitelist = _load_user_whitelist()
         self._worker.threat_detected.connect(self._on_threat)
         self._worker.threat_recorded.connect(self._on_threat_recorded)
         self._worker.process_scanned.connect(self.processScanned)
@@ -1890,6 +2077,63 @@ class RealTimeProtectionBridge(QObject):
     def clearThreatLog(self) -> None:
         """Clear the threat log."""
         self._threat_log.clear()
+
+    # ── User whitelist slots (callable from QML) ──
+
+    @Slot(str, result=bool)
+    def addUserWhitelistEntry(self, entry: str) -> bool:
+        """Add a process name or exe path to the persistent user whitelist.
+
+        Returns True when the entry was newly added, False if already present.
+        The running worker is updated immediately without restart.
+        """
+        entry = entry.strip().lower()
+        if not entry:
+            return False
+        existing = set(_load_user_whitelist())
+        if entry in existing:
+            return False
+        existing.add(entry)
+        _save_user_whitelist(existing)
+        new_wl = frozenset(existing)
+        if self._worker:
+            self._worker._user_whitelist = new_wl
+        self.userWhitelistChanged.emit()
+        logger.info("RTP: User whitelist entry added: %s", entry)
+        return True
+
+    @Slot(str, result=bool)
+    def removeUserWhitelistEntry(self, entry: str) -> bool:
+        """Remove a process name or exe path from the persistent user whitelist.
+
+        Returns True when the entry was found and removed.
+        """
+        entry = entry.strip().lower()
+        existing = set(_load_user_whitelist())
+        if entry not in existing:
+            return False
+        existing.discard(entry)
+        _save_user_whitelist(existing)
+        new_wl = frozenset(existing)
+        if self._worker:
+            self._worker._user_whitelist = new_wl
+        self.userWhitelistChanged.emit()
+        logger.info("RTP: User whitelist entry removed: %s", entry)
+        return True
+
+    @Slot(result=list)
+    def getUserWhitelist(self) -> list[str]:
+        """Return the current user whitelist as a sorted list of strings."""
+        return sorted(_load_user_whitelist())
+
+    @Slot()
+    def clearUserWhitelist(self) -> None:
+        """Remove all user-added whitelist entries."""
+        _save_user_whitelist(set())
+        if self._worker:
+            self._worker._user_whitelist = frozenset()
+        self.userWhitelistChanged.emit()
+        logger.info("RTP: User whitelist cleared")
 
     # ── Private Slots ──
 

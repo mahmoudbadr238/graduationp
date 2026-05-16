@@ -79,10 +79,12 @@ Item {
         } catch(e) { return "" }
     }
 
-    // Poll RTP state every 3 s (light; RTPBridge signals also drive instant updates)
+    // Poll RTP state every 3 s (light; RTPBridge signals also drive instant updates).
+    // Only runs while the home page is visible; triggeredOnStart refreshes state on
+    // each navigation back to this page.
     Timer {
         interval: 3000
-        running: true
+        running: root.visible
         repeat: true
         triggeredOnStart: true
         onTriggered: root.syncRtpState()
@@ -105,7 +107,9 @@ Item {
 
     Component.onCompleted: {
         syncRtpState()
-        loadActivitySummary()
+        // Defer the three SQLite lookups off the synchronous init path so the
+        // first paint is not blocked by database reads on the UI thread.
+        Qt.callLater(loadActivitySummary)
     }
 
     // Security facts data

@@ -38,6 +38,7 @@ Item {
     property bool   optGuiAuto:  false   // deprecated: kept for payload compatibility
     property bool   optNet:      true
     property var    explainData: null
+    property bool integrationStatusLoaded: false
 
     // ── AI Security Analyst Summary (from Groq via orchestrator) ──
     property string aiBriefText: ""
@@ -80,10 +81,21 @@ Item {
         return false
     }
 
-    Component.onCompleted: {
+    function refreshIntegrationStatusOnce() {
+        if (!visible || integrationStatusLoaded)
+            return
         if (backend && typeof backend.refreshIntegrationStatus === "function") {
             backend.refreshIntegrationStatus()
+            integrationStatusLoaded = true
         }
+    }
+
+    Component.onCompleted: {
+        refreshIntegrationStatusOnce()
+    }
+
+    onVisibleChanged: {
+        refreshIntegrationStatusOnce()
     }
     function resetReportScrolls() {
         var views = [ovScroll, engScroll, behScroll, iocScroll, exScroll]

@@ -35,6 +35,18 @@ from backend.engines.scanning.decision import build_final_decision
 logger = logging.getLogger(__name__)
 
 
+def _groq_api_key_configured() -> bool:
+    """Return True when cloud AI has a configured Groq API key."""
+    return bool(os.environ.get("GROQ_API_KEY", "").strip())
+
+
+_AI_CONFIG_REQUIRED_MESSAGE = (
+    "Groq AI is not configured. Core Sentinel features remain available. "
+    "Set GROQ_API_KEY in a .env file next to the app or in the environment "
+    "to enable cloud AI."
+)
+
+
 class BackendBridge(QObject):
     """
     Backend facade exposing signals/slots to QML.
@@ -209,6 +221,8 @@ class BackendBridge(QObject):
         # AI services (Groq cloud + offline knowledge base where available)
         self._event_explainer = None
         self._chatbot_bridge = None  # ChatbotBridge (Groq API)
+        self._chatbot_initialized = False
+        self._groq_configured = _groq_api_key_configured()
         self._chat_conversation: list[dict[str, str]] = []
 
         # Cache of loaded events (for AI explanation lookup)
@@ -254,10 +268,11 @@ class BackendBridge(QObject):
         self._scancenter_cancel = threading.Event()
         self._scancenter_current_report: dict | None = None  # last finished V3 report
 
-        self._init_ai_services()
-        self._init_smart_assistant()
-        self._init_scan_history_table()
-        self.refreshIntegrationStatus()
+        # Defer all heavyweight init off the synchronous __init__ path so the
+        # first QML paint is never blocked by SQLite, imports, or ClamAV probes.
+        QTimer.singleShot(0, self._init_scan_history_table)   # SQLite CREATE TABLE
+        QTimer.singleShot(50, self._init_ai_services)         # EventExplainerV5 + SQLite
+        QTimer.singleShot(100, self.refreshIntegrationStatus) # ClamAV subprocess probe
 
         # Pre-warm security snapshot cache (background, non-blocking)
         # This speeds up first chatbot security question by 3-5 seconds
@@ -770,8 +785,6 @@ class BackendBridge(QObject):
             # Try V5 (Groq-powered) first
             try:
                 from backend.engines.ai.event_explainer_v5 import get_event_explainer_v5
-                from backend.engines.ai.providers.groq import is_groq_available
-
                 # Initialize V5 explainer (Groq + offline KB)
                 self._event_explainer = get_event_explainer_v5(db_repo=self.scan_repo)
 
@@ -783,11 +796,12 @@ class BackendBridge(QObject):
                     self._on_v5_explanation_failed
                 )
 
-                if is_groq_available():
+                self._groq_configured = _groq_api_key_configured()
+                if self._groq_configured:
                     logger.info("AI services initialized (Groq Cloud + offline KB)")
                 else:
                     logger.info(
-                        "AI services initialized (offline KB only - set GROQ_API_KEY for cloud AI)"
+                        "AI services initialized (offline KB only - GROQ_API_KEY not configured)"
                     )
 
             except ImportError as e:
@@ -972,8 +986,19 @@ class BackendBridge(QObject):
             "query_success": False,
         }
 
-    def _init_smart_assistant(self):
-        """Initialize the ChatbotBridge (Groq API powered chatbot)."""
+    def _ensure_chatbot_bridge(self) -> bool:
+        """Create the Groq chatbot bridge on first use when configured."""
+        if self._chatbot_bridge is not None:
+            return True
+        if self._chatbot_initialized:
+            return False
+
+        self._groq_configured = _groq_api_key_configured()
+        if not self._groq_configured:
+            self._chatbot_initialized = True
+            logger.info("ChatbotBridge disabled: GROQ_API_KEY not configured")
+            return False
+
         try:
             from backend.engines.ai.security_chatbot_v4 import get_chatbot_bridge
 
@@ -985,13 +1010,21 @@ class BackendBridge(QObject):
             self._chatbot_bridge.scan_progress.connect(self.chatScanProgress)
 
             logger.info("ChatbotBridge initialized (Groq API)")
+            self._chatbot_initialized = True
+            return True
 
         except Exception as e:
             logger.warning(f"ChatbotBridge not available: {e}")
-            import traceback
-
-            traceback.print_exc()
             self._chatbot_bridge = None
+            self._chatbot_initialized = True
+            return False
+
+    def _emit_ai_config_required(self, user_text: str = "") -> None:
+        """Emit a non-blocking config-required chat response."""
+        if user_text:
+            self.chatMessageAdded.emit("user", user_text)
+        self.chatMessageAdded.emit("assistant", _AI_CONFIG_REQUIRED_MESSAGE)
+        self.smartAssistantError.emit("GROQ_API_KEY not configured")
 
     def _start_ai_worker(self):
         """Start the AI worker process."""
@@ -3955,9 +3988,17 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def aiMode(self) -> str:
-        """Get the current AI mode (online or unavailable)."""
-        if self._event_explainer is None:
-            return "unavailable"
+        """Get the current AI mode for QML status chips.
+
+        Returns "config-required" when GROQ_API_KEY is absent, "online" when
+        the provider is reachable, and "offline-kb" otherwise.  The event
+        explainer lazy-init state is intentionally not checked here — the
+        chatbot bridge works independently of it, and checking it produced
+        false "unavailable" labels during normal startup.
+        """
+        self._groq_configured = _groq_api_key_configured()
+        if not self._groq_configured:
+            return "config-required"
         try:
             from backend.engines.ai.providers.groq import is_groq_available
 
@@ -4096,7 +4137,7 @@ class BackendBridge(QObject):
                     try:
                         from backend.engines.ai.providers.groq import is_groq_available
 
-                        if is_groq_available():
+                        if self._groq_configured and is_groq_available():
                             # Store event_index for async callback
                             self._pending_v5_requests = getattr(
                                 self, "_pending_v5_requests", {}
@@ -4592,12 +4633,11 @@ class BackendBridge(QObject):
         user_text = user_text.strip()
 
         if self._chatbot_bridge is None:
-            self.toast.emit("error", "AI chatbot not available")
-            self.chatMessageAdded.emit("user", user_text)
-            self.chatMessageAdded.emit(
-                "assistant", "I'm sorry, the AI assistant is not available right now."
-            )
-            return
+            if not self._ensure_chatbot_bridge():
+                self.toast.emit("warning", "Groq AI is not configured")
+                self._emit_ai_config_required(user_text)
+                return
+            # Bridge was just created — fall through and send
 
         # Emit user message to QML immediately
         self.chatMessageAdded.emit("user", user_text)

@@ -31,8 +31,8 @@ class ProviderConfig:
     model: str = ""
     max_tokens: int = 1024
     temperature: float = 0.3
-    timeout_seconds: float = 30.0
-    max_retries: int = 2
+    timeout_seconds: float = 12.0
+    max_retries: int = 1
 
     # Privacy settings
     redact_usernames: bool = True

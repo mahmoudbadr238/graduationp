@@ -29,6 +29,7 @@ Item {
     // Explanation mode: "none" | "brief" | "detailed"
     property string explanationMode: "none"
     property var briefData: null
+    property bool eventsLoadedOnce: false
     
     // ===========================================
     // HELPER FUNCTIONS
@@ -193,11 +194,24 @@ Item {
         }
     }
     
-    Component.onCompleted: {
+    function loadEventsOnce() {
+        if (eventsLoadedOnce)
+            return
         if (typeof Backend !== "undefined" && Backend.loadRecentEvents) {
             isLoading = true
+            eventsLoadedOnce = true
             Backend.loadRecentEvents()
         }
+    }
+
+    Component.onCompleted: {
+        if (visible)
+            loadEventsOnce()
+    }
+
+    onVisibleChanged: {
+        if (visible)
+            loadEventsOnce()
     }
     
     // Watch for filter changes

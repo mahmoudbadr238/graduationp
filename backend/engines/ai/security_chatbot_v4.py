@@ -451,10 +451,15 @@ class SentinelTools:
         """Run a lightweight health check of Sentinel's backend services."""
         logger.info("[SentinelTools] run_system_diagnostics invoked")
 
-        # Ensure .env is loaded so API key checks are accurate
+        # Ensure .env is loaded so API key checks are accurate.
+        # Use the same multi-path search as entrypoint.py.
         try:
             from dotenv import load_dotenv
-            load_dotenv()
+            from backend.runtime import app_root, bundle_root
+
+            for env_path in (app_root() / ".env", bundle_root() / ".env"):
+                if env_path.exists():
+                    load_dotenv(env_path, override=False)
         except ImportError:
             pass
 
@@ -568,7 +573,7 @@ class SentinelTools:
             lines: list[str] = ["System Resources:"]
 
             # CPU
-            cpu_pct = psutil.cpu_percent(interval=1)
+            cpu_pct = psutil.cpu_percent(interval=0)
             cpu_count = psutil.cpu_count(logical=True)
             cpu_freq = psutil.cpu_freq()
             freq_str = f" @ {cpu_freq.current:.0f} MHz" if cpu_freq else ""
@@ -1137,29 +1142,39 @@ class GroqChatWorker(QThread):
         self._model = model or os.environ.get("AI_MODEL_CHAT", DEFAULT_MODEL)
 
     @staticmethod
-    def _gather_system_context() -> str:
-        """Collect live system info to embed in the system prompt."""
+    def _gather_system_context(user_message: str) -> str:
+        """Collect only the live context that is relevant to the question."""
+        query = user_message.lower()
         sections: list[str] = []
         try:
             sections.append(SentinelTools.get_system_resources())
         except Exception:
             pass
-        try:
-            sections.append(SentinelTools.get_running_processes(sort_by="cpu"))
-        except Exception:
-            pass
-        try:
-            sections.append(SentinelTools.get_network_info())
-        except Exception:
-            pass
-        try:
-            sections.append(SentinelTools.get_startup_programs())
-        except Exception:
-            pass
-        try:
-            sections.append(SentinelTools.run_system_diagnostics())
-        except Exception:
-            pass
+
+        if any(term in query for term in ("process", "cpu", "ram", "memory", "slow", "heavy")):
+            try:
+                sections.append(SentinelTools.get_running_processes(sort_by="cpu"))
+            except Exception:
+                pass
+
+        if any(term in query for term in ("network", "connection", "ip address", "traffic", "port")):
+            try:
+                sections.append(SentinelTools.get_network_info())
+            except Exception:
+                pass
+
+        if any(term in query for term in ("startup", "boot", "login item", "autorun")):
+            try:
+                sections.append(SentinelTools.get_startup_programs())
+            except Exception:
+                pass
+
+        if any(term in query for term in ("security", "defender", "firewall", "status", "diagnostic")):
+            try:
+                sections.append(SentinelTools.run_system_diagnostics())
+            except Exception:
+                pass
+
         return "\n\n".join(sections) if sections else "(system info unavailable)"
 
     # ------------------------------------------------------------------
@@ -1170,7 +1185,11 @@ class GroqChatWorker(QThread):
 
             try:
                 from dotenv import load_dotenv
-                load_dotenv()
+                from backend.runtime import app_root, bundle_root
+
+                for env_path in (app_root() / ".env", bundle_root() / ".env"):
+                    if env_path.exists():
+                        load_dotenv(env_path, override=False)
             except ImportError:
                 pass
 
@@ -1184,13 +1203,15 @@ class GroqChatWorker(QThread):
 
             client = Groq(
                 api_key=api_key,
+                timeout=12.0,
+                max_retries=0,
                 default_headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 },
             )
 
             # Gather live system snapshot --------------------------------
-            system_context = self._gather_system_context()
+            system_context = self._gather_system_context(self._user_message)
 
             system_message = (
                 f"{SYSTEM_PROMPT}\n\n"

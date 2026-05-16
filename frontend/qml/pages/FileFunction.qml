@@ -576,16 +576,21 @@ Rectangle {
                 }
 
                 Component.onCompleted: {
-                    if (typeof RecoveryService !== 'undefined' && RecoveryService !== null) {
-                        tabRecovery.isAdmin = RecoveryService.checkAdmin()
-                        var drivesJson = RecoveryService.getAvailableDrives()
-                        var drives = JSON.parse(drivesJson)
-                        var model = ["All Drives"]
-                        for (var i = 0; i < drives.length; i++) model.push(drives[i])
-                        tabRecovery.driveList = model
-                    } else {
-                        tabRecovery.errorMsg = "File Recovery requires the Windows Agent. This feature is not available on Linux."
-                    }
+                    // Defer drive enumeration out of the synchronous QML init path.
+                    // getAvailableDrives() spawns subprocesses; deferring avoids blocking
+                    // startup even when the File Function page is not yet open.
+                    Qt.callLater(function() {
+                        if (typeof RecoveryService !== 'undefined' && RecoveryService !== null) {
+                            tabRecovery.isAdmin = RecoveryService.checkAdmin()
+                            var drivesJson = RecoveryService.getAvailableDrives()
+                            var drives = JSON.parse(drivesJson)
+                            var model = ["All Drives"]
+                            for (var i = 0; i < drives.length; i++) model.push(drives[i])
+                            tabRecovery.driveList = model
+                        } else {
+                            tabRecovery.errorMsg = "File Recovery requires the Windows Agent. This feature is not available on Linux."
+                        }
+                    })
                 }
 
                 Flickable {
@@ -628,7 +633,7 @@ Rectangle {
                                 id: adminWarnCol
                                 anchors.fill: parent; anchors.margins: 12
                                 Text { text: root.isLinux ? "\u26A0  Not running as Root" : "\u26A0  Not running as Administrator"; color: ThemeManager.warning; font.bold: true; font.pixelSize: ThemeManager.fontSize_body }
-                                Text { text: root.isLinux ? "Raw disk scanning requires root privileges. Sentinel is using bundled recovery sample data in this session." : "Raw disk scanning requires administrator privileges. Sentinel is using bundled recovery sample data in this session."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                Text { text: root.isLinux ? "Raw disk scanning requires root privileges. File Recovery is unavailable in this session — restart Sentinel with: sudo ./Sentinel" : "Raw disk scanning requires Administrator privileges. File Recovery is unavailable in this session — restart Sentinel as Administrator."; color: ThemeManager.warning; font.pixelSize: ThemeManager.fontSize_small; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             }
                         }
 

@@ -911,10 +911,10 @@ class ScannerOrchestrator(QThread):
         logger.debug("Groq — POST %s  model=%s", url, payload["model"])
 
         try:
-            resp = _req.post(url, json=payload, headers=headers, timeout=30)
+            resp = _req.post(url, json=payload, headers=headers, timeout=12)
             resp.raise_for_status()
         except _req.exceptions.Timeout:
-            logger.warning("Groq API timed out (30 s)")
+            logger.warning("Groq API timed out (12 s)")
             return None
         except _req.exceptions.HTTPError as exc:
             logger.warning("Groq API HTTP error: %s", exc)

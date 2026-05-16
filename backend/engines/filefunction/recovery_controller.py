@@ -1,4 +1,5 @@
-"""Market-ready file recovery controller using Win32 CreateFile + sector-aligned reads."""
+"""File recovery controller using Win32 CreateFile + sector-aligned reads (Windows)
+and direct raw block device access (Linux, requires root)."""
 
 import ctypes
 import ctypes.wintypes
@@ -41,8 +42,6 @@ SIGNATURES = {
     "any":  None,
 }
 ALL_SIGS = {k: v for k, v in SIGNATURES.items() if v is not None}
-
-DEMO_BLOB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "test_recovery_blob.bin"
 
 
 def _is_admin() -> bool:
@@ -217,10 +216,9 @@ class _ScanWorker(QThread):
 
     BATCH_INTERVAL = 0.4  # seconds between batch emissions
 
-    def __init__(self, target_type: str, demo: bool = False, target_drive: str = ""):
+    def __init__(self, target_type: str, target_drive: str = ""):
         super().__init__()
         self.target_type = target_type.lower().strip().lstrip(".")
-        self.demo = demo
         self.target_drive = target_drive.strip().rstrip(":").rstrip("\\") if target_drive else ""
         self._cancel = threading.Event()
         self._pending_batch: list = []
@@ -234,13 +232,10 @@ class _ScanWorker(QThread):
             candidates = []
             cid = 0
 
-            if self.demo:
-                candidates, cid = self._scan_demo_blob(candidates, cid)
-            else:
-                if not _is_admin():
-                    self.error.emit("Administrator privileges required for raw disk access.")
-                    return
-                candidates, cid = self._scan_volumes(candidates, cid)
+            if not _is_admin():
+                self.error.emit("Administrator privileges required for raw disk access.")
+                return
+            candidates, cid = self._scan_volumes(candidates, cid)
 
             # Flush any remaining candidates
             self._flush_batch()
@@ -259,59 +254,7 @@ class _ScanWorker(QThread):
         except Exception as exc:
             self.error.emit(str(exc))
 
-    # ── Demo blob scan ───────────────────────────────────────────────
-    def _scan_demo_blob(self, candidates, cid):
-        if not DEMO_BLOB_PATH.exists():
-            self.error.emit(f"Demo blob not found: {DEMO_BLOB_PATH}")
-            return candidates, cid
-
-        data = DEMO_BLOB_PATH.read_bytes()
-        total = len(data)
-        sigs = self._get_target_sigs()
-
-        self.progressChanged.emit(json.dumps({
-            "percent": 0, "stage": "Scanning demo blob",
-            "drive": "demo", "found_count": 0, "speed_mbps": 0,
-        }))
-
-        for sig_name, (header, footer, max_size, ext) in sigs.items():
-            pos = 0
-            while pos < total:
-                if self._cancel.is_set():
-                    return candidates, cid
-                idx = data.find(header, pos)
-                if idx == -1:
-                    break
-                end_offset = self._find_end(data, idx, header, footer, max_size)
-                size_guess = end_offset - idx
-                confidence = 85 if footer and data[idx:end_offset].endswith(footer) else 45
-                preview = self._extract_preview(data[idx:idx + 256], sig_name)
-                sha = hashlib.sha256(data[idx:idx + min(4096, size_guess)]).hexdigest()[:16]
-                cand_obj = {
-                    "id": cid, "drive": "demo_blob",
-                    "offset_start": idx, "offset_end_guess": end_offset,
-                    "offset_hex": f"0x{idx:X}",
-                    "type": sig_name, "size_guess": size_guess,
-                    "confidence": confidence, "preview_text": preview,
-                    "sha256_guess": sha,
-                }
-                candidates.append(cand_obj)
-                self._emit_candidate(cand_obj)
-                cid += 1
-                pos = end_offset
-                self.progressChanged.emit(json.dumps({
-                    "percent": int(pos * 100 / total),
-                    "stage": f"Found {sig_name.upper()} @ offset {idx}",
-                    "drive": "demo", "found_count": len(candidates), "speed_mbps": 0,
-                }))
-
-        self.progressChanged.emit(json.dumps({
-            "percent": 100, "stage": "Demo scan complete",
-            "drive": "demo", "found_count": len(candidates), "speed_mbps": 0,
-        }))
-        return candidates, cid
-
-    # ── Real volume scan using Win32 CreateFile ──────────────────────
+    # ── Volume scan using Win32 CreateFile ──────────────────────────
     def _scan_volumes(self, candidates, cid):
         import psutil
         if self.target_drive:
@@ -530,7 +473,7 @@ _LINUX_SIGNATURES = {
 
 _LINUX_CHUNK_SIZE  = 1 * 1024 * 1024   # 1 MiB per read
 _LINUX_OVERLAP     = 1024              # cross-boundary guard bytes
-_LINUX_MAX_CHUNKS  = 500               # 500 MB cap keeps demo scans fast
+_LINUX_MAX_CHUNKS  = 500               # 500 MB default scan depth (configurable via SENTINEL_RECOVERY_MAX_MB)
 
 
 class _LinuxScanWorker(QThread):
@@ -722,11 +665,10 @@ class _RecoverWorker(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, candidates: list, output_dir: str, demo: bool = False):
+    def __init__(self, candidates: list, output_dir: str):
         super().__init__()
         self.candidates = candidates
         self.output_dir = output_dir
-        self.demo = demo
         self._cancel = threading.Event()
 
     def cancel(self):
@@ -781,12 +723,6 @@ class _RecoverWorker(QThread):
         end    = cand["offset_end_guess"]
         length = end - start
         drive  = cand["drive"]
-
-        if drive == "demo_blob" or self.demo:
-            if DEMO_BLOB_PATH.exists():
-                all_data = DEMO_BLOB_PATH.read_bytes()
-                return all_data[start:end]
-            return None
 
         # Linux raw device (path starts with /dev/)
         if sys.platform != "win32":
@@ -873,19 +809,18 @@ class RecoveryController(QObject):
         self._candidates = []
 
         if sys.platform != "win32":
-            # Linux path — raw open() via _LinuxScanWorker
+            # Linux path — raw open() via _LinuxScanWorker (requires root)
             device = drive if drive.startswith("/dev/") else ""
             self._scan_worker = _LinuxScanWorker(target_type, device=device)
         else:
-            # Windows path — Win32 CreateFile via _ScanWorker
-            demo = not _is_admin()
-            if demo and not DEMO_BLOB_PATH.exists():
+            # Windows path — Win32 CreateFile via _ScanWorker (requires Administrator)
+            if not _is_admin():
                 self.recoveryScanError.emit(
                     "Administrator privileges required for raw disk access. "
-                    "No demo data available."
+                    "Restart Sentinel as Administrator to use File Recovery."
                 )
                 return
-            self._scan_worker = _ScanWorker(target_type, demo=demo, target_drive=drive)
+            self._scan_worker = _ScanWorker(target_type, target_drive=drive)
 
         self._scan_worker.progressChanged.connect(self.recoveryScanProgressChanged.emit)
         self._scan_worker.candidateFound.connect(self._on_candidate_found)
@@ -928,9 +863,8 @@ class RecoveryController(QObject):
 
         _default = "/tmp/Sentinel_Recovery" if sys.platform != "win32" else r"C:\Sentinel_Recovery"
         output_dir = os.environ.get("SENTINEL_RECOVERY_DIR", _default)
-        demo = any(c["drive"] == "demo_blob" for c in selected)
 
-        self._recover_worker = _RecoverWorker(selected, output_dir, demo=demo)
+        self._recover_worker = _RecoverWorker(selected, output_dir)
         self._recover_worker.progressChanged.connect(self.recoveryRecoverProgressChanged.emit)
         self._recover_worker.finished.connect(self.recoveryRecoverFinished.emit)
         self._recover_worker.error.connect(self.recoveryRecoverError.emit)

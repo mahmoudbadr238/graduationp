@@ -19,7 +19,20 @@ Item {
     id: root
     anchors.fill: parent
     readonly property var backend: (typeof Backend !== "undefined") ? Backend : null
-    readonly property string assistantAiMode: root.backend ? root.backend.aiMode() : "loading"
+
+    // Incremented by onGroqApiKeyChanged so the aiMode binding re-evaluates.
+    property int _aiModeRefresh: 0
+    readonly property string assistantAiMode: {
+        _aiModeRefresh  // dependency — forces re-evaluation when key changes
+        return root.backend ? root.backend.aiMode() : "loading"
+    }
+
+    // Refresh aiMode when the Groq key is saved from Settings.
+    Connections {
+        target: typeof SettingsService !== "undefined" ? SettingsService : null
+        enabled: target !== null
+        function onGroqApiKeyChanged() { root._aiModeRefresh++ }
+    }
 
     // State
     property bool isThinking: false
@@ -161,21 +174,60 @@ Item {
                 width: aiModeLabel.implicitWidth + 20
                 height: 28
                 radius: 14
-                color: root.assistantAiMode === "online" ?
-                       ThemeManager.accent :
-                       (root.assistantAiMode === "offline-kb" ? ThemeManager.warning : ThemeManager.surface())
-                opacity: 0.8
+                color: {
+                    switch (root.assistantAiMode) {
+                    case "online":          return ThemeManager.accent
+                    case "offline-kb":      return ThemeManager.warning
+                    case "config-required": return ThemeManager.warning
+                    default:                return ThemeManager.surface()
+                    }
+                }
+                opacity: 0.9
 
                 Text {
                     id: aiModeLabel
                     anchors.centerIn: parent
-                    text: root.assistantAiMode === "online" ? "Groq Connected"
-                         : (root.assistantAiMode === "offline-kb" ? "Offline KB Only" : "AI Unavailable")
-                    color: root.assistantAiMode === "online" ?
-                           ThemeManager.selectionForeground :
-                           ThemeManager.foreground()
+                    text: {
+                        switch (root.assistantAiMode) {
+                        case "online":          return "Groq Connected"
+                        case "offline-kb":      return "Offline (No Key)"
+                        case "config-required": return "Config Required"
+                        case "loading":         return "Initializing…"
+                        default:                return "Config Required"
+                        }
+                    }
+                    color: root.assistantAiMode === "online"
+                           ? ThemeManager.selectionForeground
+                           : ThemeManager.foreground()
                     font.pixelSize: ThemeManager.fontSize_small
                     font.bold: true
+                }
+
+                // Tooltip on hover explaining each state
+                ToolTip.visible: aiModeMouse.containsMouse
+                ToolTip.delay: 400
+                ToolTip.text: {
+                    switch (root.assistantAiMode) {
+                    case "online":
+                        return "Groq API connected — full AI features active"
+                    case "offline-kb":
+                        return "Groq API key is set but the service is unreachable"
+                    case "config-required":
+                        return "Set GROQ_API_KEY in Settings to enable cloud AI features"
+                    case "loading":
+                        return "AI services are initializing…"
+                    default:
+                        return "Set GROQ_API_KEY in Settings to enable AI features"
+                    }
+                }
+
+                MouseArea {
+                    id: aiModeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    // Click → navigate to settings when API key is missing
+                    cursorShape: root.assistantAiMode === "config-required"
+                                 ? Qt.PointingHandCursor : Qt.ArrowCursor
                 }
             }
             
@@ -248,6 +300,43 @@ Item {
                 ToolTip.visible: clearMouse.containsMouse
                 ToolTip.text: "Clear chat history"
                 ToolTip.delay: 500
+            }
+        }
+
+        // Config-required setup banner — shown when GROQ_API_KEY is not configured
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root.assistantAiMode === "config-required"
+            height: visible ? configBannerCol.implicitHeight + 24 : 0
+            radius: 10
+            color: Qt.rgba(ThemeManager.warning.r, ThemeManager.warning.g, ThemeManager.warning.b, 0.10)
+            border.color: Qt.rgba(ThemeManager.warning.r, ThemeManager.warning.g, ThemeManager.warning.b, 0.40)
+            border.width: 1
+
+            ColumnLayout {
+                id: configBannerCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 4
+
+                Text {
+                    text: "⚙️  Groq AI is not configured — AI features are disabled"
+                    color: ThemeManager.foreground()
+                    font.pixelSize: ThemeManager.fontSize_small
+                    font.bold: true
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    text: "Get a free API key at https://console.groq.com/keys — then add it to a .env file next to Sentinel.exe:\n  GROQ_API_KEY=your_key_here"
+                    color: ThemeManager.muted()
+                    font.pixelSize: ThemeManager.fontSize_caption
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                }
             }
         }
 
